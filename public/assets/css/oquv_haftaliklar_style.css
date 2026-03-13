@@ -1,0 +1,222 @@
+/* Qo'shimcha stillar */
+.calendar-view {
+    margin-top: 20px;
+    overflow-x: auto;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    border: 1px solid #dee2e6;
+    display: block; /* Dastlab barchasi ko'rinadi */
+}
+
+.calendar-view.hidden {
+    display: none; /* Filterlanadi */
+}
+
+.calendar-table {
+    min-width: 2000px;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 12px;
+}
+
+.calendar-table th,
+.calendar-table td {
+    border: 1px solid #dee2e6;
+    text-align: center;
+    vertical-align: middle;
+    min-width: 40px;
+    height: 50px;
+    padding: 4px;
+}
+
+/* Oy nomlari qatori */
+.month-row th {
+    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+    color: white;
+    font-weight: 600;
+    padding: 14px 6px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Hafta raqamlari qatori */
+.week-row th {
+    background: #f8f9fa;
+    color: #333;
+    font-weight: 500;
+    padding: 12px 4px;
+    position: sticky;
+    top: 60px;
+    z-index: 19;
+    border-bottom: 2px solid #dee2e6;
+}
+
+/* Kurs raqamlari ustuni */
+.course-number {
+    width: 70px;
+    background: #f8f9fa;
+    color: #333;
+    font-weight: 600;
+    padding: 15px 8px;
+    position: sticky;
+    left: 0;
+    z-index: 18;
+    border-right: 2px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Hafta katakchalari */
+.week-cell {
+    min-width: 40px;
+    height: 50px;
+    padding: 4px !important;
+    position: relative;
+}
+
+/* Rangli katakchalar */
+.week-cell.theory {
+    background-color: #d5f5e3 !important;
+}
+
+.week-cell.holiday {
+    background-color: #ffebee !important;
+}
+
+.week-cell.practice {
+    background-color: #e3f2fd !important;
+}
+
+.week-cell.attestation {
+    background-color: #fff3e0 !important;
+}
+
+.week-cell.exam {
+    background-color: #f3e5f5 !important;
+}
+
+.week-cell.rest {
+    background-color: #f5f5f5 !important;
+}
+
+/* Ma'lumot ko'rsatish */
+.week-info {
+    font-size: 11px;
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+    line-height: 1.2;
+}
+
+/* Filter paneli */
+.filter-panel {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Quick filter buttons */
+.filter-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 8px 16px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.filter-btn:hover {
+    background: #e9ecef;
+}
+
+.filter-btn.active {
+    background: #2ecc71;
+    color: white;
+    border-color: #27ae60;
+}
+
+/* Hafta turi afishasi */
+.legend-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin: 15px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.legend-color {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+/* Info badge */
+.info-badge {
+    background: #2ecc71;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Calendar count */
+.calendar-count {
+    color: #6c757d;
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+/* No results */
+.no-results {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6c757d;
+    background: white;
+    border-radius: 12px;
+    border: 2px dashed #dee2e6;
+    display: none;
+}
+
+.no-results i {
+    font-size: 48px;
+    margin-bottom: 20px;
+    color: #dee2e6;
+}
+
+/* Results count */
+.results-count {
+    font-size: 14px;
+    color: #6c757d;
+    margin-top: 10px;
+    font-weight: 500;
+}

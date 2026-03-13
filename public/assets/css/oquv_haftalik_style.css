@@ -1,0 +1,444 @@
+:root {
+    --primary: #10b981;
+    --primary-light: #d1fae5;
+    --primary-dark: #059669;
+    --bg-light: #f9fafb;
+    --border: #e5e7eb;
+    --text: #374151;
+    --text-light: #6b7280;
+    --white: #ffffff;
+    --selected-bg: #ecfdf5;
+    --holiday-bg: #fef2f2;
+    --practice-bg: #eff6ff;
+    --theory-bg: #f0fdf4;
+}
+
+.academic-calendar {
+    margin-top: 20px;
+    overflow-x: auto;
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    border: 1px solid var(--border);
+}
+
+.calendar-table {
+    min-width: 2000px;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.calendar-table th,
+.calendar-table td {
+    border: 1px solid var(--border);
+    text-align: center;
+    vertical-align: middle;
+    transition: all 0.15s ease;
+}
+
+/* Oy nomlari qatori */
+.month-row th {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--white);
+    font-weight: 600;
+    padding: 16px 8px;
+    font-size: 13px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.month-row th:first-child {
+    border-top-left-radius: 8px;
+}
+
+.month-row th:last-child {
+    border-top-right-radius: 8px;
+}
+
+/* Hafta raqamlari qatori */
+.week-row th {
+    background: var(--bg-light);
+    color: var(--text);
+    font-weight: 500;
+    padding: 14px 6px;
+    font-size: 12px;
+    position: sticky;
+    top: 60px;
+    z-index: 19;
+    border-bottom: 2px solid var(--border);
+}
+
+/* Kurs raqamlari ustuni */
+.course-number {
+    width: 75px;
+    background: var(--bg-light);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 18px 10px;
+    position: sticky;
+    left: 0;
+    z-index: 18;
+    border-right: 2px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+/* Hafta katakchalari */
+.week-cell {
+    width: 48px;
+    min-width: 48px;
+    height: 65px;
+    padding: 6px !important;
+    background-color: var(--white);
+    position: relative;
+    cursor: pointer;
+}
+
+.week-cell:hover {
+    background-color: var(--bg-light);
+}
+
+.week-cell.selecting {
+    background-color: var(--primary-light) !important;
+    border-color: var(--primary) !important;
+}
+
+/* Select elementlari */
+.week-select {
+    width: 100%;
+    height: 100%;
+    min-height: 53px;
+    border: 1px solid var(--border);
+    background: var(--white);
+    cursor: pointer;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    border-radius: 6px;
+    padding: 10px 4px;
+    transition: all 0.2s ease;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b7280' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: calc(100% - 8px) center;
+    background-size: 10px;
+}
+
+.week-select:hover {
+    border-color: var(--primary);
+    background-color: var(--white);
+}
+
+.week-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+/* Tanlangan katakcha */
+.week-cell.selected {
+    background-color: var(--selected-bg) !important;
+}
+
+.week-cell.selected .week-select {
+    border-color: var(--primary);
+    background-color: var(--selected-bg);
+    font-weight: 600;
+}
+
+/* Bayram/Ta'til katakchasi */
+.week-cell.holiday {
+    background-color: var(--holiday-bg) !important;
+}
+
+.week-cell.holiday .week-select {
+    border-color: #fca5a5;
+    background-color: var(--holiday-bg);
+}
+
+/* Amaliyot katakchasi */
+.week-cell.practice {
+    background-color: var(--practice-bg) !important;
+}
+
+.week-cell.practice .week-select {
+    border-color: #93c5fd;
+    background-color: var(--practice-bg);
+}
+
+/* Nazariy ta'lim katakchasi */
+.week-cell.theory {
+    background-color: var(--theory-bg) !important;
+}
+
+.week-cell.theory .week-select {
+    border-color: #86efac;
+    background-color: var(--theory-bg);
+}
+
+/* Kontrol paneli */
+.controls-panel {
+    background: var(--white);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.year-display {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    margin: 16px 0;
+    padding: 16px;
+    background: var(--bg-light);
+    border-radius: 8px;
+    border-left: 4px solid var(--primary);
+}
+
+.year-item {
+    display: inline-block;
+    background: var(--white);
+    padding: 8px 16px;
+    margin: 4px 8px 4px 0;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-light);
+}
+
+/* Quick selection toolbar */
+.quick-toolbar {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.quick-btn {
+    padding: 10px 18px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.quick-btn:hover {
+    border-color: var(--primary);
+    background: var(--bg-light);
+}
+
+.quick-btn.active {
+    background: var(--primary);
+    color: var(--white);
+    border-color: var(--primary);
+}
+
+/* Bulk select control */
+.bulk-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.bulk-select {
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--white);
+    color: var(--text);
+    min-width: 150px;
+}
+
+.bulk-apply {
+    padding: 9px 16px;
+    background: var(--primary);
+    color: var(--white);
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.bulk-apply:hover {
+    background: var(--primary-dark);
+}
+
+/* Range selection modal */
+.range-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.range-modal-content {
+    background: var(--white);
+    padding: 20px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 350px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    position: relative;
+}
+
+.range-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.range-header h3 {
+    margin: 0;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.close-modal {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 4px;
+}
+
+.range-options {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.range-option {
+    padding: 10px 12px;
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 13px;
+}
+
+.range-option:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+}
+
+.range-option.selected {
+    background: var(--primary-light);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+    font-weight: 600;
+}
+
+.range-apply {
+    background: var(--primary);
+    color: var(--white);
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 15px;
+    transition: all 0.2s ease;
+}
+
+.range-apply:hover {
+    background: var(--primary-dark);
+}
+
+/* Scrollbar */
+.academic-calendar::-webkit-scrollbar {
+    height: 8px;
+}
+
+.academic-calendar::-webkit-scrollbar-track {
+    background: var(--bg-light);
+    border-radius: 4px;
+}
+
+.academic-calendar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.academic-calendar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Status indicator */
+.selection-status {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--white);
+    padding: 12px 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    display: none;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--border);
+    z-index: 100;
+}
+
+.status-count {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.status-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.status-btn {
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: none;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.status-btn.apply {
+    background: var(--primary);
+    color: var(--white);
+}
+
+.status-btn.cancel {
+    background: var(--bg-light);
+    color: var(--text);
+}

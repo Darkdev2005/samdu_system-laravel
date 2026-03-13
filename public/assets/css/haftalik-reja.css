@@ -1,0 +1,420 @@
+
+.filter-panel {
+    background-color: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+}
+
+.filter-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.filter-group label {
+    font-weight: 600;
+    color: var(--dark-color);
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.filter-group label i {
+    color: var(--primary-color);
+    font-size: 0.9rem;
+}
+
+.current-week {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--primary-light);
+    padding: 8px 15px;
+    border-radius: 8px;
+    color: var(--primary-dark);
+    font-weight: 600;
+}
+
+.current-week i {
+    font-size: 1.1rem;
+}
+
+/* Dars turi badge */
+.dars-turi-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: white;
+    text-align: center;
+    min-width: 80px;
+}
+
+/* Holat badge */
+.holat-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.holat-rejalashtirilgan {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.holat-bajarilgan {
+    background-color: #d5f5e3;
+    color: #27ae60;
+}
+
+.holat-kechiktirilgan {
+    background-color: #fff3e0;
+    color: #f57c00;
+}
+
+.holat-bekor {
+    background-color: #ffebee;
+    color: #e53935;
+}
+
+/* Hafta navigatsiyasi */
+.week-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+    margin: 25px 0;
+}
+
+.week-nav {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.week-nav:hover {
+    background-color: var(--primary-dark);
+    transform: scale(1.1);
+}
+
+.week-display {
+    text-align: center;
+}
+
+.week-display h4 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--dark-color);
+    margin-bottom: 5px;
+}
+
+.week-dates {
+    color: var(--gray-color);
+    font-size: 0.9rem;
+}
+
+/* Grid ko'rinishi */
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+@media (min-width: 1200px) {
+    .grid-container {
+        grid-template-columns: repeat(7, 1fr);
+    }
+}
+
+.grid-column {
+    background-color: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.grid-day-header {
+    background-color: var(--primary-light);
+    padding: 15px;
+    text-align: center;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.grid-day-header h5 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--primary-dark);
+    font-weight: 600;
+}
+
+.grid-day-header small {
+    color: var(--gray-color);
+    font-size: 0.85rem;
+}
+
+.grid-items {
+    padding: 15px;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.grid-item {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    border-left: 4px solid var(--primary-color);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.grid-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+    background-color: white;
+}
+
+.grid-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.grid-item-type {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.grid-item-time {
+    font-size: 0.8rem;
+    color: var(--gray-color);
+    font-weight: 500;
+}
+
+.grid-item-body h6 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--dark-color);
+    margin: 0 0 5px 0;
+    line-height: 1.3;
+}
+
+.grid-item-yonalish {
+    font-size: 0.8rem;
+    color: var(--gray-color);
+    display: block;
+}
+
+.grid-item-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
+.grid-item-kurs {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.grid-item-status {
+    font-size: 0.9rem;
+}
+
+.grid-empty {
+    text-align: center;
+    padding: 30px 15px;
+    color: var(--gray-color);
+    font-size: 0.9rem;
+}
+
+.empty-grid {
+    text-align: center;
+    padding: 40px 20px;
+    background-color: white;
+    border-radius: 12px;
+    border: 2px dashed var(--border-color);
+}
+
+.empty-grid i {
+    font-size: 3rem;
+    color: var(--gray-light);
+    margin-bottom: 15px;
+}
+
+.empty-grid h5 {
+    color: var(--dark-color);
+    margin-bottom: 10px;
+}
+
+.empty-grid p {
+    color: var(--gray-color);
+    margin-bottom: 20px;
+}
+
+/* Legenda */
+.legend {
+    background-color: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.legend h6 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--dark-color);
+    margin-bottom: 15px;
+}
+
+.legend-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+}
+
+.legend-item span:last-child {
+    font-size: 0.9rem;
+    color: var(--dark-color);
+}
+
+/* Reja detallari modal */
+.reja-detail {
+    padding: 10px;
+}
+
+.reja-header {
+    border-bottom: 2px solid var(--primary-light);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.reja-name {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--dark-color);
+    margin-bottom: 10px;
+}
+
+.reja-meta {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.reja-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.reja-description {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+}
+
+.reja-description h5 {
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    color: var(--dark-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.description-content {
+    line-height: 1.8;
+    color: var(--dark-color);
+}
+
+.description-content p {
+    margin-bottom: 10px;
+}
+
+.reja-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* Eksport tugmasi */
+#exportBtn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+}
+
+/* Mobil moslashtirish */
+@media (max-width: 768px) {
+    .filter-controls {
+        grid-template-columns: 1fr;
+    }
+    
+    .grid-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .legend-items {
+        flex-direction: column;
+    }
+    
+    .week-selector {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .table-actions {
+        flex-direction: column;
+        gap: 10px;
+    }
+}

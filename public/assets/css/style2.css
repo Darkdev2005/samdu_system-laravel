@@ -1,0 +1,249 @@
+/* Dasturlar sahifasi uchun qo'shimcha stillar */
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.filter-select {
+    padding: 8px 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    background-color: white;
+}
+
+.dastur-code {
+    font-size: 0.85rem;
+    color: var(--gray-color);
+    margin-top: 2px;
+}
+
+.btn-view {
+    background-color: #e3f2fd;
+    color: var(--info-color);
+    border: 1px solid #bbdefb;
+}
+
+.btn-view:hover {
+    background-color: #bbdefb;
+}
+
+.modal-lg {
+    max-width: 700px;
+}
+
+.dastur-detail {
+    padding: 10px;
+}
+
+.dastur-header {
+    border-bottom: 2px solid var(--primary-light);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.dastur-name {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--dark-color);
+    margin-bottom: 10px;
+}
+
+.dastur-meta {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.badge-primary {
+    background-color: var(--primary-light);
+    color: var(--primary-dark);
+}
+
+.badge-success {
+    background-color: #d5f5e3;
+    color: #27ae60;
+}
+
+.dastur-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.info-card {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.info-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background-color: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.info-icon i {
+    color: var(--primary-color);
+    font-size: 1.2rem;
+}
+
+.info-content h6 {
+    font-size: 0.85rem;
+    color: var(--gray-color);
+    margin-bottom: 5px;
+}
+
+.info-content p {
+    font-weight: 600;
+    color: var(--dark-color);
+    margin: 0;
+}
+
+.dastur-description {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+}
+
+.dastur-description h5 {
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    color: var(--dark-color);
+}
+
+.description-content {
+    line-height: 1.8;
+    color: var(--dark-color);
+}
+
+.description-content p {
+    margin-bottom: 10px;
+}
+
+.dastur-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* Kichik statistik kartalar */
+.stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.stat-card-small {
+    background-color: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    transition: var(--transition);
+}
+
+.stat-card-small:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.stat-small-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+}
+
+.stat-small-header h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--dark-color);
+    margin: 0;
+}
+
+.stat-small-body {
+    margin-bottom: 15px;
+}
+
+.stat-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: var(--gray-color);
+    margin-top: 5px;
+}
+
+.stat-progress {
+    height: 6px;
+    background-color: var(--gray-light);
+    border-radius: 3px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: var(--primary-color);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.stat-small-footer {
+    font-size: 0.85rem;
+    color: var(--gray-color);
+}
+
+.empty-stats {
+    text-align: center;
+    padding: 30px;
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+}
+
+.empty-stats p {
+    color: var(--gray-color);
+    margin-top: 10px;
+}
+
+/* Mobil moslashtirish */
+@media (max-width: 768px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .dastur-info-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .table-actions {
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+    }
+    
+    .search-box input,
+    .filter-select {
+        width: 100%;
+    }
+}
+
