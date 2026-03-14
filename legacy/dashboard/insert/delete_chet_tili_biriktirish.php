@@ -8,6 +8,11 @@
     $fanId = (int) ($_POST['fan_id'] ?? 0);
     $semestrId = (int) ($_POST['semestr_id'] ?? 0);
     $semestrNum = (int) ($_POST['semestr_num'] ?? 0);
+    $fanCode = '';
+    if ($fanId > 0) {
+        $fanRow = $db->get_data_by_table('fanlar', ['id' => $fanId]);
+        $fanCode = trim((string)($fanRow['fan_code'] ?? ''));
+    }
 
     $joinSql = '';
     $whereSql = '';
@@ -15,9 +20,23 @@
     if ($rowId > 0) {
         $whereSql = "ct.id = $rowId";
     } elseif ($fanId > 0 && $semestrNum > 0) {
-        // Izoh: Fan + semestr raqami bo'yicha guruhni o'chirish.
-        $joinSql = "JOIN semestrlar s ON s.id = ct.semestr_id";
-        $whereSql = "ct.fan_id = $fanId AND s.semestr = $semestrNum";
+        // Izoh: Fan kodi + semestr raqami bo'yicha guruhni o'chirish (eski dublikatlarni ham qamrab oladi).
+        if ($fanCode !== '') {
+            $safeFanCode = addslashes($fanCode);
+            $joinSql = "
+                JOIN semestrlar s ON s.id = ct.semestr_id
+                JOIN fanlar bf ON bf.id = ct.fan_id
+            ";
+            $whereSql = "
+                s.semestr = $semestrNum
+                AND bf.tanlov_fan = 3
+                AND (bf.kafedra_id = 0 OR bf.kafedra_id IS NULL OR bf.kafedra_id = '')
+                AND bf.fan_code = '$safeFanCode'
+            ";
+        } else {
+            $joinSql = "JOIN semestrlar s ON s.id = ct.semestr_id";
+            $whereSql = "ct.fan_id = $fanId AND s.semestr = $semestrNum";
+        }
     } elseif ($fanId > 0 && $semestrId > 0) {
         // Izoh: Eski format uchun fallback.
         $whereSql = "ct.fan_id = $fanId AND ct.semestr_id = $semestrId";
@@ -68,6 +87,52 @@
             DELETE FROM chet_tili_talablar
             WHERE semestr_id IN ($semestrSql) AND fan_id IN ($fanSql)
         ");
+
+        // Izoh: Til bo'yicha hosil qilingan o'quv guruhlarini ham tozalaymiz.
+        $semestrNums = [];
+        $numRes = $db->query("
+            SELECT DISTINCT semestr
+            FROM semestrlar
+            WHERE id IN ($semestrSql)
+        ");
+        if ($numRes) {
+            while ($numRow = mysqli_fetch_assoc($numRes)) {
+                $num = (int)($numRow['semestr'] ?? 0);
+                if ($num > 0) {
+                    $semestrNums[$num] = true;
+                }
+            }
+        }
+
+        if (count($semestrNums) > 0) {
+            $numSql = implode(',', array_map('intval', array_keys($semestrNums)));
+            $oldGroupIds = [];
+            $oldRes = $db->query("
+                SELECT id
+                FROM chet_tili_oquv_guruhlar
+                WHERE semestr_num IN ($numSql) AND fan_id IN ($fanSql)
+            ");
+            if ($oldRes) {
+                while ($oldRow = mysqli_fetch_assoc($oldRes)) {
+                    $oid = (int)($oldRow['id'] ?? 0);
+                    if ($oid > 0) {
+                        $oldGroupIds[] = $oid;
+                    }
+                }
+            }
+
+            if (count($oldGroupIds) > 0) {
+                $oldIdsSql = implode(',', array_map('intval', $oldGroupIds));
+                $db->query("
+                    DELETE FROM chet_tili_oquv_guruh_items
+                    WHERE oquv_guruh_id IN ($oldIdsSql)
+                ");
+                $db->query("
+                    DELETE FROM chet_tili_oquv_guruhlar
+                    WHERE id IN ($oldIdsSql)
+                ");
+            }
+        }
     }
 
     echo json_encode(['success' => true, 'message' => 'Chet tili biriktirishlari o\'chirildi']);

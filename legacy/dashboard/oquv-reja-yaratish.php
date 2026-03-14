@@ -5,9 +5,21 @@
     include_once 'config.php';
     $db = new Database();
     $semestrlar = $db->get_semestrlar();
+    $fakultetlar = $db->get_data_by_table_all('fakultetlar');
     $dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     // Izoh: Majburiy/Birlashtiriladigan fanlar selectdan olinmaydi, shuning uchun fanlar ro'yxati kerak emas.
+
+    $semestrFakultetMap = [];
+    $semestrMapRes = $db->query("SELECT id, fakultet_id FROM semestrlar");
+    if ($semestrMapRes) {
+        while ($row = mysqli_fetch_assoc($semestrMapRes)) {
+            $sid = (int)($row['id'] ?? 0);
+            if ($sid > 0) {
+                $semestrFakultetMap[$sid] = (int)($row['fakultet_id'] ?? 0);
+            }
+        }
+    }
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -16,6 +28,26 @@
     <title>O'quv reja yaratish</title>
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .created-list-note {
+            color: #64748b;
+            font-size: 13px;
+            margin-top: 6px;
+        }
+        .compact-list {
+            margin: 0;
+            padding-left: 18px;
+            color: #334155;
+            font-size: 13px;
+        }
+        .compact-list li {
+            margin: 2px 0;
+        }
+        .table-actions {
+            display: flex;
+            gap: 8px;
+        }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -29,6 +61,15 @@
                 <form id="oquvRejaForm" class="card">
                     <h3 class="section-title">Umumiy ma'lumot</h3>
                     <div class="form-grid-2">
+                        <div class="form-group">
+                            <label>Fakultet filtri</label>
+                            <select class="form-control" id="fakultetFilter">
+                                <option value="">Barcha fakultetlar</option>
+                                <?php foreach ($fakultetlar as $f): ?>
+                                    <option value="<?= (int)$f['id'] ?>"><?= htmlspecialchars($f['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                         <div class="form-group">
                             <label>Semestr</label>
                             <select class="form-control" name="semestr_id" id="semestrSelect" required>
@@ -46,8 +87,9 @@
                                         } elseif (strpos($daraja, 'bakalavr') !== false) {
                                             $darajaPrefix = 'B ';
                                         }
+                                        $fakultetId = (int)($semestrFakultetMap[(int)$s['id']] ?? 0);
                                     ?>
-                                    <option value="<?= $s['id'] ?>">
+                                    <option value="<?= $s['id'] ?>" data-fakultet-id="<?= $fakultetId ?>">
                                         <?= $darajaPrefix . $short . '_' . $s['kirish_yili'] . ' - ' . $s['semestr'] . '-semestr'; ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -157,6 +199,43 @@
                         </button>
                     </div>
                 </form>
+
+                <div class="card mt-4">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <h3>Yaratilgan fanlar ro'yxati</h3>
+                            <span class="badge" id="createdRejaCount">0 ta</span>
+                        </div>
+                        <div class="table-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="refreshCreatedRejaBtn">
+                                <i class="fas fa-rotate"></i> Yangilash
+                            </button>
+                        </div>
+                    </div>
+                    <div class="created-list-note">
+                        Ro'yxat yuqoridagi fakultet va semestr filtriga ko'ra ko'rsatiladi. "Tahrirlash" orqali dars soatlarini yangilang.
+                    </div>
+                    <div class="table-responsive mt-2">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fan kodi</th>
+                                    <th>Fan nomi</th>
+                                    <th>Fan turi</th>
+                                    <th>Kafedra</th>
+                                    <th>Dars soatlari</th>
+                                    <th>Semestr</th>
+                                    <th>Harakat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="createdRejaTableBody">
+                                <tr>
+                                    <td colspan="7">Yuklanmoqda...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -168,8 +247,25 @@
 
     <script>
         let fanIndex = 0;
+        let allSemestrOptions = [];
+        let createdRowsById = {};
+        const darsTurlariListDefault = <?php echo json_encode($dars_soat_turlari, JSON_UNESCAPED_UNICODE); ?>;
+        const kafedralarList = <?php echo json_encode($kafedralar, JSON_UNESCAPED_UNICODE); ?>;
+        const fanTypeLabels = {
+            0: "Majburiy",
+            1: "Tanlov",
+            2: "Birlashtiriladigan",
+            3: "Chet tili",
+        };
 
         $(document).ready(function() {
+            cacheSemestrOptions();
+
+            $('#fakultetFilter').select2({
+                placeholder: "Fakultetni tanlang",
+                allowClear: true,
+                width: '100%',
+            });
             $('#semestrSelect').select2({
                 placeholder: "Semestrni tanlang",
                 allowClear: true,
@@ -177,6 +273,22 @@
             });
             
             initializeSelect2($('.reja-card:first'));
+
+            $('#fakultetFilter').on('change', function() {
+                filterSemestrByFakultet();
+                loadCreatedRejaList();
+            });
+
+            $('#semestrSelect').on('change', function() {
+                loadCreatedRejaList();
+            });
+
+            $('#refreshCreatedRejaBtn').on('click', function() {
+                loadCreatedRejaList();
+            });
+
+            filterSemestrByFakultet();
+            loadCreatedRejaList();
         });
 
         $(document).on('click', '.fanTypeToggle', function() {
@@ -366,6 +478,47 @@
             card.html(electiveHtml);
         }
 
+        function cacheSemestrOptions() {
+            allSemestrOptions = [];
+            $('#semestrSelect option').each(function() {
+                const val = String($(this).attr('value') || '');
+                if (val === '') return;
+                allSemestrOptions.push({
+                    id: val,
+                    text: $(this).text(),
+                    fakultetId: String($(this).data('fakultet-id') || ''),
+                });
+            });
+        }
+
+        function rebuildSemestrOptions(selectedValue = '') {
+            const selectedFakultet = String($('#fakultetFilter').val() || '');
+            const select = $('#semestrSelect');
+            let html = '<option value="">Tanlang</option>';
+
+            allSemestrOptions.forEach(item => {
+                if (selectedFakultet !== '' && String(item.fakultetId) !== selectedFakultet) {
+                    return;
+                }
+                const selected = String(item.id) === String(selectedValue) ? ' selected' : '';
+                const dataAttr = item.fakultetId !== '' ? ` data-fakultet-id="${item.fakultetId}"` : '';
+                html += `<option value="${item.id}"${dataAttr}${selected}>${escapeHtml(item.text)}</option>`;
+            });
+
+            select.html(html);
+        }
+
+        function filterSemestrByFakultet() {
+            const currentSemestr = String($('#semestrSelect').val() || '');
+            rebuildSemestrOptions(currentSemestr);
+            const hasCurrent = $('#semestrSelect option[value="' + currentSemestr + '"]').length > 0;
+            if (!hasCurrent) {
+                $('#semestrSelect').val('').trigger('change.select2');
+                return;
+            }
+            $('#semestrSelect').val(currentSemestr).trigger('change.select2');
+        }
+
         $(document).on('click', '.addReja', function() {
             const card = $(this).closest('.reja-card');
             const fanType = parseInt(card.find('.tanlov-input').val() || 0);
@@ -502,10 +655,231 @@
             timerProgressBar: true
         });
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function renderDarsSummary(row, darsTurlari) {
+            const dars = row.dars || {};
+            const parts = [];
+            (darsTurlari || []).forEach(tur => {
+                const tid = String(tur.id || '');
+                const soat = parseInt(dars[tid] || 0, 10) || 0;
+                if (soat > 0) {
+                    parts.push(`${tur.name}: ${soat}`);
+                }
+            });
+
+            if (!parts.length) return '-';
+            return `<ul class="compact-list">${parts.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>`;
+        }
+
+        function renderCreatedRejaTable(rows, darsTurlari) {
+            const tbody = $('#createdRejaTableBody');
+            const countBadge = $('#createdRejaCount');
+            countBadge.text(`${rows.length} ta`);
+
+            if (!rows.length) {
+                tbody.html('<tr><td colspan="7">Tanlangan filter bo‘yicha fan topilmadi</td></tr>');
+                return;
+            }
+
+            let html = '';
+            rows.forEach(row => {
+                const fanTypeLabel = fanTypeLabels[parseInt(row.tanlov_fan || 0, 10)] || 'Noma\'lum';
+                const semestrLabel = `${row.yonalish_name || '-'} - ${row.kirish_yili || '-'} / ${row.semestr_num || '-'}`;
+
+                html += `
+                    <tr>
+                        <td>${escapeHtml(row.fan_code || '-')}</td>
+                        <td>${escapeHtml(row.fan_name || '-')}</td>
+                        <td>${escapeHtml(fanTypeLabel)}</td>
+                        <td>${escapeHtml(row.kafedra_name || '-')}</td>
+                        <td>${renderDarsSummary(row, darsTurlari)}</td>
+                        <td>${escapeHtml(semestrLabel)}</td>
+                        <td>
+                            <button type="button" class="btn btn-outline btn-sm editCreatedRejaBtn" data-fan-id="${row.fan_id}">
+                                <i class="fas fa-pen"></i> Tahrirlash
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.html(html);
+        }
+
+        function loadCreatedRejaList() {
+            const fakultetId = $('#fakultetFilter').val() || '';
+            const semestrId = $('#semestrSelect').val() || '';
+            const url = `api/get_oquv_reja_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&semestr_id=${encodeURIComponent(semestrId)}`;
+
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    if (!data || !data.success) {
+                        $('#createdRejaTableBody').html('<tr><td colspan="7">Ro\'yxatni yuklab bo\'lmadi</td></tr>');
+                        $('#createdRejaCount').text('0 ta');
+                        return;
+                    }
+
+                    const rows = Array.isArray(data.rows) ? data.rows : [];
+                    const darsTurlari = Array.isArray(data.dars_turlari) && data.dars_turlari.length
+                        ? data.dars_turlari
+                        : darsTurlariListDefault;
+
+                    createdRowsById = {};
+                    rows.forEach(r => {
+                        const fid = parseInt(r.fan_id || 0, 10);
+                        if (fid > 0) {
+                            createdRowsById[String(fid)] = r;
+                        }
+                    });
+
+                    renderCreatedRejaTable(rows, darsTurlari);
+                })
+                .catch(() => {
+                    $('#createdRejaTableBody').html('<tr><td colspan="7">Server bilan bog\'lanib bo\'lmadi</td></tr>');
+                    $('#createdRejaCount').text('0 ta');
+                });
+        }
+
+        function buildKafedraOptions(selectedId, lockKafedra) {
+            const selected = String(selectedId || '');
+            let html = '<option value="">Tanlang</option>';
+            kafedralarList.forEach(k => {
+                const id = String(k.id || '');
+                const sel = selected === id ? ' selected' : '';
+                html += `<option value="${id}"${sel}>${escapeHtml(k.name || '')}</option>`;
+            });
+            return `<select class="swal2-input" id="editKafedraId" ${lockKafedra ? 'disabled' : ''}>${html}</select>`;
+        }
+
+        function buildEditModalHtml(row, darsTurlari) {
+            const dars = row.dars || {};
+            let darsRows = '';
+            (darsTurlari || darsTurlariListDefault).forEach(tur => {
+                const tid = String(tur.id || '');
+                const soat = parseInt(dars[tid] || 0, 10) || 0;
+                darsRows += `
+                    <div style="display:flex;gap:8px;align-items:center;margin:6px 0;">
+                        <label style="flex:1;text-align:left;">${escapeHtml(tur.name || '')}</label>
+                        <input type="number" min="0" step="1" class="swal2-input edit-dars-input" data-dars-tur-id="${tid}" value="${soat}" style="width:120px;margin:0;">
+                    </div>
+                `;
+            });
+
+            const lockKafedra = parseInt(row.kafedra_lock || 0, 10) === 1;
+            return `
+                <input type="text" id="editFanCode" class="swal2-input" placeholder="Fan kodi" value="${escapeHtml(row.fan_code || '')}">
+                <input type="text" id="editFanName" class="swal2-input" placeholder="Fan nomi" value="${escapeHtml(row.fan_name || '')}">
+                <div style="text-align:left;margin:8px 0 4px 0;font-size:13px;color:#64748b;">Kafedra</div>
+                ${buildKafedraOptions(row.kafedra_id || '', lockKafedra)}
+                <div style="text-align:left;margin:10px 0 4px 0;font-size:13px;color:#64748b;">Dars soatlari</div>
+                <div style="max-height:220px;overflow:auto;padding-right:4px;">${darsRows}</div>
+                <textarea id="editIzoh" class="swal2-textarea" placeholder="Izoh">${escapeHtml(row.izoh || '')}</textarea>
+                ${lockKafedra ? '<div style="text-align:left;font-size:12px;color:#64748b;">Tanlov/Chet tili bazaviy fanida kafedra o\'zgartirilmaydi.</div>' : ''}
+            `;
+        }
+
+        $(document).on('click', '.editCreatedRejaBtn', function() {
+            const fanId = String($(this).data('fan-id') || '');
+            const row = createdRowsById[fanId];
+            if (!row) return;
+
+            const darsTurlari = darsTurlariListDefault;
+            Swal.fire({
+                title: "O'quv reja tahrirlash",
+                width: 860,
+                html: buildEditModalHtml(row, darsTurlari),
+                showCancelButton: true,
+                confirmButtonText: "Saqlash",
+                cancelButtonText: "Bekor qilish",
+                focusConfirm: false,
+                preConfirm: () => {
+                    const fanCode = String($('#editFanCode').val() || '').trim();
+                    const fanName = String($('#editFanName').val() || '').trim();
+                    const kafedraVal = String($('#editKafedraId').val() || '').trim();
+                    const izoh = String($('#editIzoh').val() || '').trim();
+
+                    if (fanCode === '' || fanName === '') {
+                        Swal.showValidationMessage("Fan kodi va fan nomi to'ldirilishi shart");
+                        return false;
+                    }
+
+                    const lockKafedra = parseInt(row.kafedra_lock || 0, 10) === 1;
+                    const kafedraId = lockKafedra ? parseInt(row.kafedra_id || 0, 10) : parseInt(kafedraVal || 0, 10);
+                    if (!lockKafedra && kafedraId <= 0) {
+                        Swal.showValidationMessage("Kafedrani tanlang");
+                        return false;
+                    }
+
+                    const dars = {};
+                    let hasPositive = false;
+                    $('.edit-dars-input').each(function() {
+                        const darsTurId = String($(this).data('dars-tur-id') || '');
+                        let value = parseInt($(this).val() || 0, 10);
+                        if (Number.isNaN(value) || value < 0) value = 0;
+                        dars[darsTurId] = value;
+                        if (value > 0) hasPositive = true;
+                    });
+
+                    if (!hasPositive) {
+                        Swal.showValidationMessage("Kamida bitta dars soati 0 dan katta bo'lishi kerak");
+                        return false;
+                    }
+
+                    return {
+                        fan_id: parseInt(row.fan_id || 0, 10),
+                        fan_code: fanCode,
+                        fan_name: fanName,
+                        kafedra_id: kafedraId,
+                        izoh: izoh,
+                        dars: dars,
+                    };
+                }
+            }).then((result) => {
+                if (!result.isConfirmed || !result.value) return;
+                const payload = result.value;
+
+                const formData = new FormData();
+                formData.append('fan_id', String(payload.fan_id));
+                formData.append('fan_code', payload.fan_code);
+                formData.append('fan_name', payload.fan_name);
+                formData.append('kafedra_id', String(payload.kafedra_id));
+                formData.append('izoh', payload.izoh);
+                formData.append('dars_json', JSON.stringify(payload.dars));
+
+                fetch('insert/update_oquv_reja_item.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success) {
+                        Toast.fire({ icon: 'success', title: data.message || "Yangilandi" });
+                        loadCreatedRejaList();
+                    } else {
+                        Toast.fire({ icon: 'error', title: (data && data.message) || "Yangilashda xatolik" });
+                    }
+                })
+                .catch(() => {
+                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+                });
+            });
+        });
+
         $('#oquvRejaForm').on('submit', function(e) {
             e.preventDefault();
             
             const formData = new FormData(this);
+            const selectedFakultet = $('#fakultetFilter').val() || '';
+            const selectedSemestr = $('#semestrSelect').val() || '';
             
             fetch('insert/add_oquv_reja.php', {
                 method: 'POST',
@@ -520,7 +894,9 @@
                     });
 
                     this.reset();
-                    $('#semestrSelect').val(null).trigger('change');
+                    $('#fakultetFilter').val(selectedFakultet).trigger('change.select2');
+                    filterSemestrByFakultet();
+                    $('#semestrSelect').val(selectedSemestr).trigger('change.select2');
                     
                     $('.reja-card:gt(0)').each(function() {
                         $(this).find('select').each(function() {
@@ -537,6 +913,7 @@
                     firstCard.data('index', 0);
                     switchToMandatory(firstCard, 0, 0);
                     initializeSelect2(firstCard);
+                    loadCreatedRejaList();
                     
                 } else {
                     Toast.fire({

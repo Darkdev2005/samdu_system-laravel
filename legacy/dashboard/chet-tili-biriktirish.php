@@ -42,7 +42,7 @@
             $yonalishLabel = trim($row['yonalish_name'] ?? '');
             $yonalishYili = trim($row['yonalish_yili'] ?? '');
             if ($yonalishLabel !== '') {
-                $label .= ' — ' . $yonalishLabel;
+                $label .= ' - ' . $yonalishLabel;
                 if ($yonalishYili !== '') {
                     $label .= ' - ' . $yonalishYili;
                 }
@@ -127,24 +127,24 @@
         $yonalishlarMap[(int)$y['id']] = $label;
     }
 
-    // Izoh: Biriktirilgan chet tili fanlari ro'yxati (UI uchun birlashtiriladi: fan_id + semestr raqami).
+    // Izoh: Biriktirilgan chet tili fanlari ro'yxati (UI uchun birlashtiriladi: fan_code + semestr raqami).
     $guruhRows = [];
     $guruhResult = $db->query("
         SELECT
-            ct.fan_id,
+            MAX(ct.fan_id) AS fan_id,
             f.fan_code,
-            f.fan_name,
-            km.name AS kafedra_name,
+            MAX(f.fan_name) AS fan_name,
+            MAX(km.name) AS kafedra_name,
             s.semestr AS semestr_num,
             GROUP_CONCAT(DISTINCT ct.yonalish_id ORDER BY ct.yonalish_id SEPARATOR ',') AS yonalish_ids,
             GROUP_CONCAT(DISTINCT ct.semestr_id ORDER BY ct.semestr_id SEPARATOR ',') AS semestr_ids,
             GROUP_CONCAT(DISTINCT ct.source_fan_ids ORDER BY ct.source_fan_ids SEPARATOR ',') AS source_fan_ids,
-            MIN(ct.create_at) AS create_at
+            MAX(ct.create_at) AS create_at
         FROM chet_tili_guruhlar ct
         JOIN fanlar f ON f.id = ct.fan_id
         LEFT JOIN kafedralar km ON km.id = f.kafedra_id
         JOIN semestrlar s ON s.id = ct.semestr_id
-        GROUP BY ct.fan_id, s.semestr
+        GROUP BY f.fan_code, s.semestr
         ORDER BY create_at DESC
     ");
     if ($guruhResult) {
@@ -267,6 +267,62 @@
         }
     }
 
+    // Izoh: Fallback - agar ishchi_oquv_reja_variants bo'sh bo'lsa ham, bir xil fan_code+semestrdagi variantlarni olamiz.
+    foreach ($baseFanMeta as $baseFanId => $baseMeta) {
+        $baseFanId = (int)$baseFanId;
+        $semestrId = (int)($baseMeta['semestr_id'] ?? 0);
+        $baseCode = trim((string)($baseMeta['fan_code'] ?? ''));
+        if ($baseFanId <= 0 || $semestrId <= 0 || $baseCode === '') {
+            continue;
+        }
+
+        $safeCode = addslashes($baseCode);
+        $fallbackRes = $db->query("
+            SELECT
+                vf.id AS fan_id,
+                vf.fan_name,
+                k.name AS kafedra_name
+            FROM fanlar vf
+            LEFT JOIN kafedralar k ON k.id = vf.kafedra_id
+            WHERE vf.tanlov_fan = 3
+              AND vf.semestr_id = $semestrId
+              AND vf.fan_code = '$safeCode'
+              AND vf.kafedra_id > 0
+              AND vf.id <> $baseFanId
+            ORDER BY vf.fan_name, vf.id
+        ");
+        if (!$fallbackRes) {
+            continue;
+        }
+
+        $seenIds = [];
+        if (isset($variantFansByBase[$baseFanId])) {
+            foreach ($variantFansByBase[$baseFanId] as $item) {
+                $seenIds[(int)($item['id'] ?? 0)] = true;
+            }
+        } else {
+            $variantFansByBase[$baseFanId] = [];
+        }
+
+        while ($row = mysqli_fetch_assoc($fallbackRes)) {
+            $fanId = (int)($row['fan_id'] ?? 0);
+            if ($fanId <= 0 || isset($seenIds[$fanId])) {
+                continue;
+            }
+            $seenIds[$fanId] = true;
+
+            $label = trim((string)($row['fan_name'] ?? ''));
+            $kafedraName = trim((string)($row['kafedra_name'] ?? ''));
+            if ($kafedraName !== '') {
+                $label .= ' (' . $kafedraName . ')';
+            }
+            $variantFansByBase[$baseFanId][] = [
+                'id' => $fanId,
+                'label' => $label,
+            ];
+        }
+    }
+
     // Izoh: Semestr -> yo'nalish va guruhlar xaritasi (2-tabda ko'p yo'nalish tanlash uchun).
     $semestrOptionsByNum = [];
     $groupsBySemestr = [];
@@ -312,6 +368,7 @@
                     'id' => $semestrId,
                     'label' => $semestrLabel,
                     'yonalish_id' => $yonalishId,
+                    'semestr_num' => $semestrNum,
                 ];
             }
 
@@ -351,6 +408,187 @@
             }
             $talabValues[$semestrId][$guruhId][$fanId] = (int)($row['talabalar_soni'] ?? 0);
         }
+    }
+
+    // Izoh: Biriktirish jadvali uchun batafsil ma'lumotlar (variantlar + guruhlar kesimida taqsimot).
+    foreach ($guruhRows as $rowIndex => $row) {
+        $semestrIds = [];
+        $semestrRaw = trim((string)($row['semestr_ids'] ?? ''));
+        if ($semestrRaw !== '') {
+            foreach (explode(',', $semestrRaw) as $part) {
+                $sid = (int)trim($part);
+                if ($sid > 0) {
+                    $semestrIds[$sid] = true;
+                }
+            }
+        }
+        $semestrIds = array_map('intval', array_keys($semestrIds));
+        if (count($semestrIds) === 0) {
+            $guruhRows[$rowIndex]['detail_variant_lines'] = [];
+            $guruhRows[$rowIndex]['detail_group_lines'] = [];
+            $guruhRows[$rowIndex]['detail_group_count'] = 0;
+            $guruhRows[$rowIndex]['detail_total_students'] = 0;
+            continue;
+        }
+
+        $sourceFanIds = [];
+        $sourceRaw = trim((string)($row['source_fan_ids'] ?? ''));
+        if ($sourceRaw !== '') {
+            foreach (explode(',', $sourceRaw) as $part) {
+                $fid = (int)trim($part);
+                if ($fid > 0) {
+                    $sourceFanIds[$fid] = true;
+                }
+            }
+        }
+
+        // Izoh: source_fan_ids bo'sh bo'lsa ham fan_code + semestr bo'yicha variantlarni topamiz.
+        if (count($sourceFanIds) === 0) {
+            $safeCode = addslashes((string)($row['fan_code'] ?? ''));
+            $semestrSql = implode(',', $semestrIds);
+            if ($safeCode !== '' && $semestrSql !== '') {
+                $fallbackVariantRes = $db->query("
+                    SELECT id
+                    FROM fanlar
+                    WHERE tanlov_fan = 3
+                      AND kafedra_id > 0
+                      AND fan_code = '$safeCode'
+                      AND semestr_id IN ($semestrSql)
+                ");
+                if ($fallbackVariantRes) {
+                    while ($variantRow = mysqli_fetch_assoc($fallbackVariantRes)) {
+                        $fid = (int)($variantRow['id'] ?? 0);
+                        if ($fid > 0) {
+                            $sourceFanIds[$fid] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        $fanIds = array_map('intval', array_keys($sourceFanIds));
+        if (count($fanIds) === 0) {
+            $guruhRows[$rowIndex]['detail_variant_lines'] = [];
+            $guruhRows[$rowIndex]['detail_group_lines'] = [];
+            $guruhRows[$rowIndex]['detail_group_count'] = 0;
+            $guruhRows[$rowIndex]['detail_total_students'] = 0;
+            continue;
+        }
+
+        $fanSql = implode(',', $fanIds);
+        $semestrSql = implode(',', $semestrIds);
+
+        $fanLabelById = [];
+        $fanRes = $db->query("
+            SELECT f.id, f.fan_name, k.name AS kafedra_name
+            FROM fanlar f
+            LEFT JOIN kafedralar k ON k.id = f.kafedra_id
+            WHERE f.id IN ($fanSql)
+            ORDER BY f.fan_name, f.id
+        ");
+        if ($fanRes) {
+            while ($fanRow = mysqli_fetch_assoc($fanRes)) {
+                $fanId = (int)($fanRow['id'] ?? 0);
+                if ($fanId <= 0) {
+                    continue;
+                }
+                $label = trim((string)($fanRow['fan_name'] ?? ''));
+                $kafedraName = trim((string)($fanRow['kafedra_name'] ?? ''));
+                if ($kafedraName !== '') {
+                    $label .= ' (' . $kafedraName . ')';
+                }
+                $fanLabelById[$fanId] = $label;
+            }
+        }
+
+        $variantTotalByFan = [];
+        $variantTotalRes = $db->query("
+            SELECT fan_id, SUM(talabalar_soni) AS total
+            FROM chet_tili_talablar
+            WHERE semestr_id IN ($semestrSql)
+              AND fan_id IN ($fanSql)
+            GROUP BY fan_id
+        ");
+        if ($variantTotalRes) {
+            while ($totalRow = mysqli_fetch_assoc($variantTotalRes)) {
+                $fanId = (int)($totalRow['fan_id'] ?? 0);
+                if ($fanId <= 0) {
+                    continue;
+                }
+                $variantTotalByFan[$fanId] = (int)($totalRow['total'] ?? 0);
+            }
+        }
+
+        $variantLines = [];
+        $detailTotalStudents = 0;
+        foreach ($fanIds as $fanId) {
+            $label = $fanLabelById[$fanId] ?? ('Fan #' . $fanId);
+            $total = (int)($variantTotalByFan[$fanId] ?? 0);
+            $detailTotalStudents += $total;
+            $variantLines[] = $label . ' - ' . $total . ' ta';
+        }
+
+        $groupMap = [];
+        $groupRes = $db->query("
+            SELECT
+                t.guruh_id,
+                g.guruh_nomer,
+                g.soni AS guruh_jami,
+                y.name AS yonalish_name,
+                y.kirish_yili,
+                t.fan_id,
+                SUM(t.talabalar_soni) AS total
+            FROM chet_tili_talablar t
+            JOIN guruhlar g ON g.id = t.guruh_id
+            JOIN yonalishlar y ON y.id = g.yonalish_id
+            WHERE t.semestr_id IN ($semestrSql)
+              AND t.fan_id IN ($fanSql)
+            GROUP BY
+                t.guruh_id, g.guruh_nomer, g.soni,
+                y.name, y.kirish_yili, t.fan_id
+            ORDER BY y.name, y.kirish_yili, g.guruh_nomer, t.fan_id
+        ");
+        if ($groupRes) {
+            while ($groupRow = mysqli_fetch_assoc($groupRes)) {
+                $guruhId = (int)($groupRow['guruh_id'] ?? 0);
+                $fanId = (int)($groupRow['fan_id'] ?? 0);
+                if ($guruhId <= 0 || $fanId <= 0) {
+                    continue;
+                }
+
+                if (!isset($groupMap[$guruhId])) {
+                    $yonalishLabel = trim((string)($groupRow['yonalish_name'] ?? ''));
+                    $yil = trim((string)($groupRow['kirish_yili'] ?? ''));
+                    if ($yil !== '') {
+                        $yonalishLabel .= ' - ' . $yil;
+                    }
+
+                    $groupMap[$guruhId] = [
+                        'title' => $yonalishLabel . ' / ' . trim((string)($groupRow['guruh_nomer'] ?? '-')),
+                        'size' => (int)($groupRow['guruh_jami'] ?? 0),
+                        'sum' => 0,
+                        'parts' => [],
+                    ];
+                }
+
+                $count = (int)($groupRow['total'] ?? 0);
+                $groupMap[$guruhId]['sum'] += $count;
+                $groupMap[$guruhId]['parts'][] = ($fanLabelById[$fanId] ?? ('Fan #' . $fanId)) . ': ' . $count;
+            }
+        }
+
+        $groupLines = [];
+        foreach ($groupMap as $groupData) {
+            $groupLines[] = $groupData['title']
+                . ' - '
+                . implode(', ', $groupData['parts'])
+                . ' (yig\'indi: ' . (int)$groupData['sum'] . ' / ' . (int)$groupData['size'] . ')';
+        }
+
+        $guruhRows[$rowIndex]['detail_variant_lines'] = $variantLines;
+        $guruhRows[$rowIndex]['detail_group_lines'] = $groupLines;
+        $guruhRows[$rowIndex]['detail_group_count'] = count($groupMap);
+        $guruhRows[$rowIndex]['detail_total_students'] = $detailTotalStudents;
     }
 
 ?>
@@ -419,6 +657,39 @@
         .taqsimot-summary.err {
             color: #dc2626;
             font-weight: 600;
+        }
+        .detail-list {
+            margin: 0;
+            padding-left: 18px;
+        }
+        .detail-list li {
+            margin: 2px 0;
+            color: #334155;
+            font-size: 13px;
+        }
+        .detail-meta {
+            color: #64748b;
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+        .detail-toggle {
+            margin-top: 4px;
+        }
+        .detail-toggle > summary {
+            cursor: pointer;
+            color: #0f766e;
+            font-size: 12px;
+            user-select: none;
+            list-style: none;
+        }
+        .detail-toggle > summary::-webkit-details-marker {
+            display: none;
+        }
+        .detail-scroll {
+            max-height: 180px;
+            overflow: auto;
+            margin-top: 6px;
+            padding-right: 6px;
         }
     </style>
 </head>
@@ -583,12 +854,6 @@
                         <h3 class="section-title">Chet tilini guruhlar kesimida biriktirish</h3>
                         <div class="form-grid-2">
                             <div class="form-group">
-                                <label>Bazaviy chet tili fan</label>
-                                <select class="form-control" id="biriktirishBaseFanSelect" required>
-                                    <?php echo $baseFanOptions; ?>
-                                </select>
-                            </div>
-                            <div class="form-group">
                                 <label>Yo'nalish + semestr</label>
                                 <div id="semestrRowWrapper"></div>
                                 <div class="dars-soat-actions mt-2">
@@ -596,6 +861,12 @@
                                         <i class="fas fa-plus"></i> Yana yo'nalish
                                     </button>
                                 </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Bazaviy chet tili fan</label>
+                                <select class="form-control" id="biriktirishBaseFanSelect" required>
+                                    <option value="">Avval yo'nalish+semestr tanlang</option>
+                                </select>
                             </div>
                         </div>
 
@@ -626,6 +897,8 @@
                                         <th>Fan nomi</th>
                                         <th>Yo'nalishlar</th>
                                         <th>Semestr</th>
+                                        <th>Variantlar (jami)</th>
+                                        <th>Guruhlar kesimi</th>
                                         <th>Yaratilgan sana</th>
                                         <th>Harakatlar</th>
                                     </tr>
@@ -633,7 +906,7 @@
                                 <tbody>
                                     <?php if (count($guruhRows) === 0): ?>
                                         <tr>
-                                            <td colspan="6">Biriktirilgan fanlar topilmadi</td>
+                                            <td colspan="8">Biriktirilgan fanlar topilmadi</td>
                                         </tr>
                                     <?php else: ?>
                                         <?php foreach ($guruhRows as $row): ?>
@@ -648,6 +921,50 @@
                                                 ?>
                                             </td>
                                             <td><?php echo htmlspecialchars($row['semestr_num']); ?></td>
+                                            <td>
+                                                <?php
+                                                    $variantLines = $row['detail_variant_lines'] ?? [];
+                                                    if (count($variantLines) === 0):
+                                                ?>
+                                                    <span class="detail-meta">Variant topilmadi</span>
+                                                <?php else: ?>
+                                                    <div class="detail-meta">
+                                                        Jami talaba: <?php echo (int)($row['detail_total_students'] ?? 0); ?> ta
+                                                    </div>
+                                                    <details class="detail-toggle">
+                                                        <summary>Variantlarni ko'rish</summary>
+                                                        <div class="detail-scroll">
+                                                            <ul class="detail-list">
+                                                                <?php foreach ($variantLines as $line): ?>
+                                                                    <li><?php echo htmlspecialchars($line); ?></li>
+                                                                <?php endforeach; ?>
+                                                            </ul>
+                                                        </div>
+                                                    </details>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php
+                                                    $groupLines = $row['detail_group_lines'] ?? [];
+                                                    if (count($groupLines) === 0):
+                                                ?>
+                                                    <span class="detail-meta">Guruh taqsimoti yo'q</span>
+                                                <?php else: ?>
+                                                    <div class="detail-meta">
+                                                        Guruhlar soni: <?php echo (int)($row['detail_group_count'] ?? 0); ?> ta
+                                                    </div>
+                                                    <details class="detail-toggle">
+                                                        <summary>Guruhlar taqsimotini ko'rish</summary>
+                                                        <div class="detail-scroll">
+                                                            <ul class="detail-list">
+                                                                <?php foreach ($groupLines as $line): ?>
+                                                                    <li><?php echo htmlspecialchars($line); ?></li>
+                                                                <?php endforeach; ?>
+                                                            </ul>
+                                                        </div>
+                                                    </details>
+                                                <?php endif; ?>
+                                            </td>
                                             <td><?php echo htmlspecialchars($row['create_at']); ?></td>
                                             <td>
                                                 <button
@@ -700,13 +1017,52 @@
             return baseFanMeta[baseFanId] || null;
         }
 
-        function buildSemestrOptions(selectedValue = '') {
-            const info = getBaseFanInfo();
-            const semestrNum = String(info?.semestr_num || '');
-            const options = semestrOptionsByNum[semestrNum] || [];
+        function normalizeVariants(list) {
+            const seen = {};
+            const out = [];
+            (list || []).forEach(item => {
+                const id = parseInt((item && item.id) || 0, 10);
+                if (id <= 0 || seen[id]) {
+                    return;
+                }
+                seen[id] = true;
+                out.push({
+                    id,
+                    label: String((item && item.label) || '').trim() || `Variant #${id}`,
+                });
+            });
 
+            out.sort((a, b) => String(a.label).localeCompare(String(b.label)));
+            return out;
+        }
+
+        function getBaseVariants(info) {
+            const id = String((info && info.id) || '');
+            return normalizeVariants(variantFansByBase[id] || []);
+        }
+
+        const allSemestrOptions = [];
+        const semestrNumById = {};
+        Object.keys(semestrOptionsByNum).forEach(numKey => {
+            const rows = semestrOptionsByNum[numKey] || [];
+            rows.forEach(item => {
+                const semestrNum = parseInt(item.semestr_num || numKey || 0, 10);
+                allSemestrOptions.push({
+                    id: parseInt(item.id || 0, 10),
+                    label: item.label || '',
+                    semestr_num: semestrNum,
+                });
+                semestrNumById[String(item.id)] = semestrNum;
+            });
+        });
+        allSemestrOptions.sort((a, b) => {
+            if (a.semestr_num !== b.semestr_num) return a.semestr_num - b.semestr_num;
+            return String(a.label).localeCompare(String(b.label));
+        });
+
+        function buildSemestrOptions(selectedValue = '') {
             let html = '<option value="">Tanlang</option>';
-            options.forEach(item => {
+            allSemestrOptions.forEach(item => {
                 const selected = String(item.id) === String(selectedValue) ? ' selected' : '';
                 html += `<option value="${item.id}"${selected}>${escapeHtml(item.label)}</option>`;
             });
@@ -746,19 +1102,6 @@
             }
         }
 
-        function refreshSemestrRows() {
-            $('#semestrRowWrapper .biriktirish-semestr-select').each(function() {
-                const current = String($(this).val() || '');
-                $(this).html(buildSemestrOptions(current));
-                if (current !== '') {
-                    $(this).val(current);
-                } else {
-                    $(this).val(null);
-                }
-                $(this).trigger('change.select2');
-            });
-        }
-
         function getSelectedSemestrIds() {
             const ids = [];
             $('#semestrRowWrapper .biriktirish-semestr-select').each(function() {
@@ -768,6 +1111,94 @@
                 }
             });
             return ids;
+        }
+
+        function getSemestrConstraint() {
+            const semestrIds = getSelectedSemestrIds();
+            if (!semestrIds.length) {
+                return {
+                    ok: false,
+                    reason: 'empty',
+                    semestrIds: [],
+                    semestrNum: 0,
+                    message: "Avval kamida bitta yo'nalish+semestr tanlang",
+                };
+            }
+
+            let semestrNum = 0;
+            for (const semestrId of semestrIds) {
+                const num = parseInt(semestrNumById[String(semestrId)] || 0, 10);
+                if (num <= 0) {
+                    return {
+                        ok: false,
+                        reason: 'invalid',
+                        semestrIds,
+                        semestrNum: 0,
+                        message: "Semestr ma'lumoti topilmadi",
+                    };
+                }
+                if (semestrNum === 0) {
+                    semestrNum = num;
+                } else if (semestrNum !== num) {
+                    return {
+                        ok: false,
+                        reason: 'mixed',
+                        semestrIds,
+                        semestrNum: 0,
+                        message: "Tanlangan yo'nalishlar bir xil semestrda bo'lishi shart",
+                    };
+                }
+            }
+
+            return {
+                ok: true,
+                reason: 'ok',
+                semestrIds,
+                semestrNum,
+                message: '',
+            };
+        }
+
+        function refreshBaseFanSelect() {
+            const select = $('#biriktirishBaseFanSelect');
+            if (!select.length) return;
+
+            const current = String(select.val() || '');
+            const semestrCheck = getSemestrConstraint();
+
+            select.empty();
+
+            if (!semestrCheck.ok) {
+                const placeholder = semestrCheck.reason === 'mixed'
+                    ? "Bir xil semestrni tanlang"
+                    : "Avval yo'nalish+semestr tanlang";
+                select.append(new Option(placeholder, '', false, false));
+                select.prop('disabled', true).val('').trigger('change.select2');
+                return;
+            }
+
+            const semestrNum = semestrCheck.semestrNum;
+            const fanList = Object.values(baseFanMeta)
+                .filter(item => parseInt(item.semestr_num || 0, 10) === semestrNum)
+                .sort((a, b) => String(a.label || '').localeCompare(String(b.label || '')));
+
+            if (!fanList.length) {
+                select.append(new Option(`${semestrNum}-semestr uchun bazaviy fan topilmadi`, '', false, false));
+                select.prop('disabled', true).val('').trigger('change.select2');
+                return;
+            }
+
+            select.append(new Option('Tanlang', '', false, false));
+            fanList.forEach(item => {
+                select.append(new Option(item.label, item.id, false, false));
+            });
+
+            select.prop('disabled', false);
+            if (current && fanList.some(item => String(item.id) === current)) {
+                select.val(current).trigger('change.select2');
+            } else {
+                select.val('').trigger('change.select2');
+            }
         }
 
         function collectSelectedGroups() {
@@ -789,23 +1220,70 @@
             return rows;
         }
 
+        function renderGroupsPreview(groups) {
+            let total = 0;
+            let html = `
+                <div class="matrix-help">Guruhlar va talaba soni aniqlandi. Endi bazaviy chet tili fanini tanlang.</div>
+                <table class="data-table mt-2">
+                    <thead>
+                        <tr>
+                            <th>Yo'nalish</th>
+                            <th>Guruh</th>
+                            <th>Talaba soni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            groups.forEach(group => {
+                total += group.size;
+                html += `
+                    <tr>
+                        <td>${escapeHtml(group.yonalish_label)}</td>
+                        <td>${escapeHtml(group.name)}</td>
+                        <td>${group.size}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    <tr>
+                        <td colspan="2"><strong>Jami</strong></td>
+                        <td><strong>${total}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+            `;
+            return html;
+        }
+
         function renderTaqsimotMatrix() {
             const wrapper = $('#taqsimotMatrixWrapper');
-            const info = getBaseFanInfo();
-            if (!info) {
-                wrapper.html('<div class="guruh-list-empty">Avval bazaviy fan tanlang.</div>');
-                return;
-            }
-
-            const variants = variantFansByBase[String(info.id)] || [];
-            if (!variants.length) {
-                wrapper.html('<div class="guruh-list-empty">Tanlangan bazaviy fan uchun variant fanlar topilmadi.</div>');
+            const semestrCheck = getSemestrConstraint();
+            if (!semestrCheck.ok) {
+                wrapper.html(`<div class="guruh-list-empty">${escapeHtml(semestrCheck.message)}</div>`);
                 return;
             }
 
             const groups = collectSelectedGroups();
             if (!groups.length) {
-                wrapper.html('<div class="guruh-list-empty">Avval kamida bitta yo\'nalish+semestr tanlang.</div>');
+                wrapper.html('<div class="guruh-list-empty">Tanlangan yo\'nalishlarda guruh topilmadi.</div>');
+                return;
+            }
+
+            const info = getBaseFanInfo();
+            if (!info) {
+                wrapper.html(renderGroupsPreview(groups));
+                return;
+            }
+            if (parseInt(info.semestr_num || 0, 10) !== semestrCheck.semestrNum) {
+                wrapper.html('<div class="guruh-list-empty">Tanlangan bazaviy fan semestri yo\'nalish semestri bilan mos emas.</div>');
+                return;
+            }
+
+            const variants = getBaseVariants(info);
+            if (!variants.length) {
+                wrapper.html('<div class="guruh-list-empty">Tanlangan bazaviy fan uchun variant fanlar topilmadi.</div>');
                 return;
             }
 
@@ -889,20 +1367,25 @@
         }
 
         function collectBiriktirishPayload() {
+            const semestrCheck = getSemestrConstraint();
+            if (!semestrCheck.ok) {
+                return { ok: false, message: semestrCheck.message };
+            }
+
             const info = getBaseFanInfo();
             if (!info) {
                 return { ok: false, message: "Bazaviy fan tanlanmagan" };
             }
+            if (parseInt(info.semestr_num || 0, 10) !== semestrCheck.semestrNum) {
+                return { ok: false, message: "Bazaviy fan semestri tanlangan yo'nalish semestri bilan mos emas" };
+            }
 
-            const variants = variantFansByBase[String(info.id)] || [];
+            const variants = getBaseVariants(info);
             if (!variants.length) {
                 return { ok: false, message: "Variant fanlar topilmadi" };
             }
 
-            const semestrIds = getSelectedSemestrIds();
-            if (!semestrIds.length) {
-                return { ok: false, message: "Kamida bitta yo'nalish+semestr tanlang" };
-            }
+            const semestrIds = semestrCheck.semestrIds;
 
             const groups = collectSelectedGroups();
             if (!groups.length) {
@@ -983,8 +1466,10 @@
                 allowClear: true,
                 width: '100%',
             });
+            $('#biriktirishBaseFanSelect').prop('disabled', true);
 
             addSemestrRow();
+            refreshBaseFanSelect();
             renderTaqsimotMatrix();
         });
 
@@ -997,12 +1482,12 @@
         });
 
         $('#biriktirishBaseFanSelect').on('change', function() {
-            refreshSemestrRows();
             renderTaqsimotMatrix();
         });
 
         $('#addSemestrRowBtn').on('click', function() {
             addSemestrRow();
+            refreshBaseFanSelect();
             renderTaqsimotMatrix();
         });
 
@@ -1017,10 +1502,12 @@
                 select.select2('destroy');
             }
             row.remove();
+            refreshBaseFanSelect();
             renderTaqsimotMatrix();
         });
 
         $(document).on('change', '.biriktirish-semestr-select', function() {
+            refreshBaseFanSelect();
             renderTaqsimotMatrix();
         });
 

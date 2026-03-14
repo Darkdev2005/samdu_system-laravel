@@ -27,6 +27,18 @@
         return;
     }
 
+    $semestrIds = [];
+    foreach ($semestrIdsRaw as $idRaw) {
+        $id = (int)$idRaw;
+        if ($id > 0 && !in_array($id, $semestrIds, true)) {
+            $semestrIds[] = $id;
+        }
+    }
+    if (count($semestrIds) === 0) {
+        echo json_encode(['success' => false, 'message' => "Kamida bitta yo'nalish+semestr tanlang"]);
+        return;
+    }
+
     $variantIds = [];
     $variantRes = $db->query("
         SELECT iv.fan_id
@@ -44,20 +56,32 @@
         }
     }
 
-    if (count($variantIds) === 0) {
-        echo json_encode(['success' => false, 'message' => "Bazaviy fan uchun variant fanlar topilmadi"]);
-        return;
-    }
-
-    $semestrIds = [];
-    foreach ($semestrIdsRaw as $idRaw) {
-        $id = (int)$idRaw;
-        if ($id > 0 && !in_array($id, $semestrIds, true)) {
-            $semestrIds[] = $id;
+    // Izoh: Fallback - ishchi_oquv_reja_variants bo'sh bo'lsa ham fan_code+semestr bo'yicha variantlarni topamiz.
+    $baseCode = trim((string)($baseFan['fan_code'] ?? ''));
+    if ($baseCode !== '' && $baseSemestrId > 0) {
+        $safeCode = addslashes($baseCode);
+        $fallbackVariantRes = $db->query("
+            SELECT vf.id AS fan_id
+            FROM fanlar vf
+            WHERE vf.tanlov_fan = 3
+              AND vf.semestr_id = $baseSemestrId
+              AND vf.fan_code = '$safeCode'
+              AND vf.kafedra_id > 0
+              AND vf.id <> $baseFanId
+            ORDER BY vf.id
+        ");
+        if ($fallbackVariantRes) {
+            while ($row = mysqli_fetch_assoc($fallbackVariantRes)) {
+                $fanId = (int)($row['fan_id'] ?? 0);
+                if ($fanId > 0 && !in_array($fanId, $variantIds, true)) {
+                    $variantIds[] = $fanId;
+                }
+            }
         }
     }
-    if (count($semestrIds) === 0) {
-        echo json_encode(['success' => false, 'message' => "Kamida bitta yo'nalish+semestr tanlang"]);
+
+    if (count($variantIds) === 0) {
+        echo json_encode(['success' => false, 'message' => "Bazaviy fan uchun variant fanlar topilmadi"]);
         return;
     }
 
@@ -156,14 +180,74 @@
     $semestrSql = implode(',', array_map('intval', array_keys($semestrMap)));
     $yonalishSql = implode(',', array_map('intval', array_keys($yonalishIds)));
     $sourceFanIds = implode(',', array_map('intval', $variantIds));
+    $safeBaseCode = addslashes($baseCode);
+
+    // Izoh: Shu fan_code + semestr bo'yicha oldingi biriktirish variantlarini ham tozalash uchun yig'amiz.
+    $cleanupFanIdMap = [];
+    foreach ($variantIds as $fanId) {
+        $cleanupFanIdMap[(int)$fanId] = true;
+    }
+    if ($semestrSql !== '' && $safeBaseCode !== '') {
+        $legacyRes = $db->query("
+            SELECT ct.source_fan_ids
+            FROM chet_tili_guruhlar ct
+            JOIN semestrlar s ON s.id = ct.semestr_id
+            JOIN fanlar bf ON bf.id = ct.fan_id
+            WHERE ct.semestr_id IN ($semestrSql)
+              AND s.semestr = $baseSemestrNum
+              AND bf.tanlov_fan = 3
+              AND (bf.kafedra_id = 0 OR bf.kafedra_id IS NULL OR bf.kafedra_id = '')
+              AND bf.fan_code = '$safeBaseCode'
+        ");
+        if ($legacyRes) {
+            while ($legacyRow = mysqli_fetch_assoc($legacyRes)) {
+                $raw = trim((string)($legacyRow['source_fan_ids'] ?? ''));
+                if ($raw === '') {
+                    continue;
+                }
+                $parts = explode(',', $raw);
+                foreach ($parts as $part) {
+                    $oldFanId = (int)trim($part);
+                    if ($oldFanId > 0) {
+                        $cleanupFanIdMap[$oldFanId] = true;
+                    }
+                }
+            }
+        }
+    }
+    $cleanupVariantIds = array_map('intval', array_keys($cleanupFanIdMap));
+    $cleanupVariantSql = implode(',', $cleanupVariantIds);
+
+    // Izoh: Har bir til (variant fan) bo'yicha yakuniy bitta o'quv guruh hosil qilish uchun agregatlar.
+    $variantTotals = [];
+    $variantItems = [];
+    foreach ($variantIds as $fanId) {
+        $variantTotals[$fanId] = 0;
+        $variantItems[$fanId] = [];
+    }
+    foreach ($rowsToInsert as $row) {
+        $fanId = (int)$row['fan_id'];
+        $cnt = (int)$row['talabalar_soni'];
+        if (!isset($variantTotals[$fanId])) {
+            $variantTotals[$fanId] = 0;
+            $variantItems[$fanId] = [];
+        }
+        $variantTotals[$fanId] += $cnt;
+        $variantItems[$fanId][] = [
+            'semestr_id' => (int)$row['semestr_id'],
+            'yonalish_id' => (int)$row['yonalish_id'],
+            'guruh_id' => (int)$row['guruh_id'],
+            'talabalar_soni' => $cnt,
+        ];
+    }
 
     $db->query("START TRANSACTION");
     $ok = true;
 
-    if ($semestrSql !== '' && $variantSql !== '') {
+    if ($semestrSql !== '' && $cleanupVariantSql !== '') {
         $ok = $ok && $db->query("
             DELETE FROM chet_tili_talablar
-            WHERE semestr_id IN ($semestrSql) AND fan_id IN ($variantSql)
+            WHERE semestr_id IN ($semestrSql) AND fan_id IN ($cleanupVariantSql)
         ");
     }
 
@@ -189,7 +273,12 @@
         $ok = $ok && $db->query("
             DELETE ct FROM chet_tili_guruhlar ct
             JOIN semestrlar s ON s.id = ct.semestr_id
-            WHERE ct.fan_id = $baseFanId AND s.semestr = $baseSemestrNum
+            JOIN fanlar bf ON bf.id = ct.fan_id
+            WHERE ct.semestr_id IN ($semestrSql)
+              AND s.semestr = $baseSemestrNum
+              AND bf.tanlov_fan = 3
+              AND (bf.kafedra_id = 0 OR bf.kafedra_id IS NULL OR bf.kafedra_id = '')
+              AND bf.fan_code = '$safeBaseCode'
         ");
     }
 
@@ -213,11 +302,88 @@
         }
     }
 
+    // Izoh: Eski avtomatik o'quv guruhlarini tozalab, har til uchun bitta guruh qayta yaratamiz.
+    if ($ok && $cleanupVariantSql !== '') {
+        $oldOquvGroupIds = [];
+        $oldRes = $db->query("
+            SELECT id
+            FROM chet_tili_oquv_guruhlar
+            WHERE semestr_num = $baseSemestrNum AND fan_id IN ($cleanupVariantSql)
+        ");
+        if ($oldRes) {
+            while ($oldRow = mysqli_fetch_assoc($oldRes)) {
+                $oid = (int)($oldRow['id'] ?? 0);
+                if ($oid > 0) {
+                    $oldOquvGroupIds[] = $oid;
+                }
+            }
+        }
+
+        if (count($oldOquvGroupIds) > 0) {
+            $oldIdsSql = implode(',', array_map('intval', $oldOquvGroupIds));
+            $ok = $ok && $db->query("
+                DELETE FROM chet_tili_oquv_guruh_items
+                WHERE oquv_guruh_id IN ($oldIdsSql)
+            ");
+            $ok = $ok && $db->query("
+                DELETE FROM chet_tili_oquv_guruhlar
+                WHERE id IN ($oldIdsSql)
+            ");
+        }
+    }
+
+    if ($ok) {
+        foreach ($variantIds as $fanId) {
+            $fanId = (int)$fanId;
+            $total = (int)($variantTotals[$fanId] ?? 0);
+            if ($total <= 0) {
+                continue;
+            }
+
+            $oquvGuruhId = (int)$db->insert('chet_tili_oquv_guruhlar', [
+                'semestr_num' => $baseSemestrNum,
+                'fan_id' => $fanId,
+                'guruh_no' => 1,
+                'jami_talaba' => $total,
+                'status' => 'ready',
+            ]);
+            if ($oquvGuruhId <= 0) {
+                $ok = false;
+                break;
+            }
+
+            $items = $variantItems[$fanId] ?? [];
+            foreach ($items as $item) {
+                $ok = $ok && $db->query("
+                    INSERT INTO chet_tili_oquv_guruh_items
+                        (oquv_guruh_id, semestr_id, yonalish_id, guruh_id, source_fan_id, talabalar_soni)
+                    VALUES (
+                        $oquvGuruhId,
+                        " . (int)$item['semestr_id'] . ",
+                        " . (int)$item['yonalish_id'] . ",
+                        " . (int)$item['guruh_id'] . ",
+                        $fanId,
+                        " . (int)$item['talabalar_soni'] . "
+                    )
+                ");
+                if (!$ok) {
+                    break 2;
+                }
+            }
+        }
+    }
+
     if ($ok) {
         $db->query("COMMIT");
+        $createdGroups = 0;
+        foreach ($variantTotals as $sum) {
+            if ((int)$sum > 0) {
+                $createdGroups++;
+            }
+        }
         echo json_encode([
             'success' => true,
-            'message' => "Biriktirish saqlandi (" . count($rowsToInsert) . " ta qator)"
+            'message' => "Biriktirish saqlandi (" . count($rowsToInsert) . " ta qator, {$createdGroups} ta til guruhi)"
         ]);
     } else {
         $db->query("ROLLBACK");
