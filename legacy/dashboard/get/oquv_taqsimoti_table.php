@@ -223,7 +223,7 @@ if (!empty($allYonalishIds)) {
                     <!-- 🔥 LAB -->
                     <td class="soat-cell <?= getCellClass($taqsimlangan_lab['jami_soat'], $row['amalda_laboratoriya']) ?>"
                         data-type="A"
-                        data-yuklama-id="<?= $row['laboratoriya_reja_id'] ?>"
+                        data-yuklama-id="<?= $row['laboratoriya_reja_id'] ?: 0 ?>"
                         data-soat-turi="amalda_laboratoriya"
                         data-max-soat="<?= $row['amalda_laboratoriya'] ?: 0 ?>">
                         <?= $row['amalda_laboratoriya'] ?: '' ?>
@@ -232,7 +232,7 @@ if (!empty($allYonalishIds)) {
                     <!-- 🔥 SEMINAR -->
                     <td class="soat-cell <?= getCellClass($taqsimlangan_seminar['jami_soat'], $row['amalda_seminar']) ?>"
                         data-type="A"
-                        data-yuklama-id="<?= $row['seminar_reja_id'] ?>"
+                        data-yuklama-id="<?= $row['seminar_reja_id'] ?: 0 ?>"
                         data-soat-turi="amalda_seminar"
                         data-max-soat="<?= $row['amalda_seminar'] ?: 0 ?>">
                         <?= $row['amalda_seminar'] ?: '' ?>
@@ -393,3 +393,5 @@ if (!empty($allYonalishIds)) {
         </table>
     </div>
 </div>
+
+

@@ -294,7 +294,7 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                     return;
                 }
                 
-                const yuklamaId = $cell.data('yuklama-id');
+                const yuklamaId = parseInt($cell.data('yuklama-id'), 10) || 0;
                 const soatTuri = $cell.data('soat-turi');
                 const fanNomi = $cell.closest('tr').find('.fan-nomi').text();
                 const maxSoat = parseFloat($cell.data('max-soat')) || 0;
@@ -303,6 +303,15 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                 
                 // Agar soat mavjud bo'lmasa yoki to'liq taqsimlangan bo'lsa
                 if (maxSoat <= 0 || text === "" || text === "0") {
+                    return;
+                }
+
+                if (yuklamaId <= 0) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Taqsimot ochilmadi',
+                        text: 'Bu soat uchun o‘quv reja ID topilmadi. Shu sabab o‘qituvchi biriktirish oynasi to‘liq ochilmadi.'
+                    });
                     return;
                 }
                 
@@ -332,6 +341,7 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
             currentSoatTuri = soatTuri;
             currentFanNomi = fanNomi;
             currentType = type;
+            currentMaxSoat = parseFloat(maxSoat) || 0;
 
             teacherRows = [];
             teacherRowCounter = 0;
@@ -339,10 +349,13 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
 
             $('#modalFanNomi').text(fanNomi);
             $('#modalSoatTuri').text(getSoatTuriName(soatTuri));
+            $('#modalMaxSoat').text(currentMaxSoat.toFixed(1));
+            $('#maxHoursTotal').text(currentMaxSoat.toFixed(1));
 
             $('#teachersTableBody').empty();
-            $('#taqsimotList').empty();
+            $('#taqsimotList').html('<div style="padding:6px;color:#6c757d;">Mavjud taqsimotlar yuklanmoqda...</div>');
             $('#oquvRejaInfo').hide();
+            updateHoursControl(0);
 
             $.ajax({
                 url: 'api/get_oquv_reja_by_yuklama.php',
@@ -350,8 +363,11 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                 data: { yuklama_id: yuklamaId, type: type },
                 success: function(response) {
                     try {
-                        const result = JSON.parse(response);
-                        if (!(result.success && result.data)) return;
+                        const result = (typeof response === 'string') ? JSON.parse(response) : response;
+                        if (!(result.success && result.data)) {
+                            $('#taqsimotList').html('<div style="padding:8px;color:#dc3545;">' + (result.message || "O\'quv reja ma\'lumoti topilmadi") + '</div>');
+                            return;
+                        }
 
                         const data = result.data;
                         const taqsimotlar = result.taqsimotlar || [];
@@ -366,6 +382,7 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                         $('#infoTalabalar').text(data.talabalar_soni ? data.talabalar_soni + ' ta' : '-');
                         $('#infoGuruhlarSoni').text(data.guruhlar_soni || '-');
 
+                        $('#taqsimotList').empty();
                         taqsimotlar.forEach(t => {
                             const soat = parseFloat(t.soat_soni || 0);
                             existingAssignedHours += soat;
@@ -377,7 +394,11 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                             `);
                         });
 
-                        currentMaxSoat = maxSoat - existingAssignedHours;
+                        if (taqsimotlar.length === 0) {
+                            $('#taqsimotList').html('<div style="padding:6px;color:#6c757d;">Hozircha taqsimot mavjud emas</div>');
+                        }
+
+                        currentMaxSoat = Math.max(0, (parseFloat(maxSoat) || 0) - existingAssignedHours);
                         $('#modalMaxSoat').text(currentMaxSoat.toFixed(1));
                         updateHoursControl(0);
 
@@ -395,7 +416,11 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
 
                     } catch (e) {
                         console.error('JSON xato:', e);
+                        $('#taqsimotList').html('<div style="padding:8px;color:#dc3545;">Serverdan kelgan javobni o‘qib bo‘lmadi</div>');
                     }
+                },
+                error: function() {
+                    $('#taqsimotList').html('<div style="padding:8px;color:#dc3545;">Taqsimot ma\'lumotlarini yuklashda xatolik yuz berdi</div>');
                 }
             });
 
@@ -849,3 +874,5 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
     </script>
 </body>
 </html>
+
+

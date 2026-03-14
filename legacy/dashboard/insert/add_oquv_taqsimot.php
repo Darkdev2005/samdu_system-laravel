@@ -1,5 +1,5 @@
 <?php
-include_once '../config.php';
+include_once __DIR__ . '/../config.php';
 $db = new Database();
 header('Content-Type: application/json');
 
@@ -72,4 +72,5 @@ echo json_encode([
     'success' => $success,
     'message' => $success ? 'Taqsimot saqlandi' : 'Saqlashda xatolik'
 ]);
+
 

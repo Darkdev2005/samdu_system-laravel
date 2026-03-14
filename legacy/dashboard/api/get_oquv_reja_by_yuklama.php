@@ -1,5 +1,5 @@
 <?php
-    include_once '../config.php';
+    include_once __DIR__ . '/../config.php';
     $db = new Database();
     $yuklama_id = isset($_POST['yuklama_id']) ? (int)$_POST['yuklama_id'] : 0;
     $type = isset($_POST['type']) ? trim($_POST['type']) : '';
