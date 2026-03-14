@@ -10,6 +10,24 @@ class Database{
 
     private function readEnv(string $key, string $default = ''): string
     {
+        if (function_exists('config')) {
+            $configKey = match ($key) {
+                'DB_HOST' => 'database.connections.mysql.host',
+                'DB_PORT' => 'database.connections.mysql.port',
+                'DB_DATABASE' => 'database.connections.mysql.database',
+                'DB_USERNAME' => 'database.connections.mysql.username',
+                'DB_PASSWORD' => 'database.connections.mysql.password',
+                default => null,
+            };
+
+            if ($configKey !== null) {
+                $value = config($configKey);
+                if ($value !== null && $value !== '') {
+                    return (string)$value;
+                }
+            }
+        }
+
         if (function_exists('env')) {
             $value = env($key);
             if ($value !== null && $value !== '') {
@@ -647,7 +665,8 @@ class Database{
 
     public function get_oquv_yuklamalar($filters = []){
         // Izoh: Filtrlar uchun SQL bo'laklari (kafedra va semestr).
-        $filterKafedra = '';
+        $filterKafedraBase = '';
+        $filterKafedraMerged = '';
         $filterYonalish = '';
         $filterSemestr = '';
         $filterSemestrLecture = '';
@@ -658,7 +677,17 @@ class Database{
         $filterOquvYil = '';
         $filterOquvYilLecture = '';
         if (!empty($filters['kafedra_id'])) {
-            $filterKafedra = " AND k.id = " . (int)$filters['kafedra_id'];
+            $kid = (int)$filters['kafedra_id'];
+            $filterKafedraBase = " AND (
+                fr.kafedra_id = {$kid}
+                OR EXISTS (
+                    SELECT 1
+                    FROM ishchi_variant_dept ivd
+                    WHERE ivd.base_fan_id = fr.fan_id
+                      AND ivd.variant_kafedra_id = {$kid}
+                )
+            )";
+            $filterKafedraMerged = " AND k.id = {$kid}";
         }
         if (!empty($filters['yonalish_id'])) {
             $filterYonalish = " AND y.id = " . (int)$filters['yonalish_id'];
@@ -741,6 +770,34 @@ class Database{
                     SUM(soni) AS talabalar_soni
                 FROM guruhlar
                 GROUP BY yonalish_id
+            ),
+            ishchi_variant_info AS (
+                SELECT
+                    ior.base_fan_id,
+                    GROUP_CONCAT(
+                        DISTINCT CONCAT(
+                            fv.fan_name,
+                            IF(kv.name IS NOT NULL AND kv.name <> '', CONCAT(' (', kv.name, ')'), '')
+                        )
+                        ORDER BY fv.fan_name
+                        SEPARATOR ' | '
+                    ) AS variant_names,
+                    GROUP_CONCAT(DISTINCT kv.name ORDER BY kv.name SEPARATOR ' | ') AS kafedra_names
+                FROM ishchi_oquv_reja ior
+                JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ior.id
+                JOIN fanlar fv ON fv.id = iv.fan_id
+                LEFT JOIN kafedralar kv ON kv.id = fv.kafedra_id
+                GROUP BY ior.base_fan_id
+            ),
+            ishchi_variant_dept AS (
+                SELECT DISTINCT
+                    ior.base_fan_id,
+                    fv.kafedra_id AS variant_kafedra_id
+                FROM ishchi_oquv_reja ior
+                JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ior.id
+                JOIN fanlar fv ON fv.id = iv.fan_id
+                WHERE fv.kafedra_id IS NOT NULL
+                  AND fv.kafedra_id > 0
             ),
             umumtalim_birik AS (
                 SELECT
@@ -837,10 +894,10 @@ class Database{
             FROM (
                 -- Izoh: Oddiy fanlar (umumta'lim biriktirilmaganlar).
                 SELECT
-                    fr.fan_name,
+                    COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name) AS fan_name,
                     y.name AS talim_yonalishi,
                     y.code AS yonalish_code,
-                    k.name AS kafedra_nomi,
+                    COALESCE(NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
                     tsh.name AS oquv_shakli,
                     s.semestr,
                     FLOOR((s.semestr + 1)/2) AS kurs,
@@ -873,7 +930,8 @@ class Database{
                 JOIN semestrlar s ON s.id = fr.semestr_id
                 JOIN yonalishlar y ON y.id = s.yonalish_id
                 JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
-                JOIN kafedralar k ON k.id = fr.kafedra_id
+                LEFT JOIN kafedralar k ON k.id = fr.kafedra_id
+                LEFT JOIN ishchi_variant_info ivi ON ivi.base_fan_id = fr.fan_id
                 JOIN guruh_agg ga ON ga.yonalish_id = y.id
                 WHERE NOT EXISTS (
                     SELECT 1
@@ -891,7 +949,7 @@ class Database{
                             AND ub.kafedra_id = fr.kafedra_id
                        )
                 )
-                $filterKafedra
+                $filterKafedraBase
                 $filterSemestr
                 $filterYonalish
                 $filterCurrentSemestr
@@ -946,7 +1004,7 @@ class Database{
                    AND ubi.semestr = ul.semestr
                 JOIN kafedralar k ON k.id = ul.kafedra_id
                 WHERE 1=1
-                $filterKafedra
+                $filterKafedraMerged
                 $filterSemestrLecture
                 $filterSemestrTypeLecture
                 $filterOquvYilLecture
@@ -1095,7 +1153,12 @@ class Database{
         $whereMerged = [];
         if (!empty($filters['kafedra_id'])) {
             $kid = (int)$filters['kafedra_id'];
-            $whereBase[] = "k.id = {$kid}";
+            $whereBase[] = "(fr.kafedra_id = {$kid} OR EXISTS (
+                SELECT 1
+                FROM ishchi_variant_dept ivd
+                WHERE ivd.base_fan_id = fr.fan_id
+                  AND ivd.variant_kafedra_id = {$kid}
+            ))";
             $whereMerged[] = "k.id = {$kid}";
         }
         if (!empty($filters['semestr'])) {
@@ -1104,6 +1167,11 @@ class Database{
             $pairEnd = $pairStart + 1;
             $whereBase[] = "s.semestr IN ({$pairStart}, {$pairEnd})";
             $whereMerged[] = "ul.semestr IN ({$pairStart}, {$pairEnd})";
+        }
+        if (!empty($filters['oquv_reja_id'])) {
+            $rid = (int)$filters['oquv_reja_id'];
+            $whereBase[] = "({$rid} IN (fr.maruza_reja_id, fr.amaliy_reja_id, fr.laboratoriya_reja_id, fr.seminar_reja_id))";
+            $whereMerged[] = "({$rid} IN (ufs.maruza_reja_id, ufs.amaliy_reja_id, ufs.laboratoriya_reja_id, ufs.seminar_reja_id))";
         }
 
         $whereSQLBase = '';
@@ -1163,6 +1231,34 @@ class Database{
                     SUM(g.soni) AS talabalar_soni
                 FROM guruhlar g
                 GROUP BY g.yonalish_id
+            ),
+            ishchi_variant_info AS (
+                SELECT
+                    ior.base_fan_id,
+                    GROUP_CONCAT(
+                        DISTINCT CONCAT(
+                            fv.fan_name,
+                            IF(kv.name IS NOT NULL AND kv.name <> '', CONCAT(' (', kv.name, ')'), '')
+                        )
+                        ORDER BY fv.fan_name
+                        SEPARATOR ' | '
+                    ) AS variant_names,
+                    GROUP_CONCAT(DISTINCT kv.name ORDER BY kv.name SEPARATOR ' | ') AS kafedra_names
+                FROM ishchi_oquv_reja ior
+                JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ior.id
+                JOIN fanlar fv ON fv.id = iv.fan_id
+                LEFT JOIN kafedralar kv ON kv.id = fv.kafedra_id
+                GROUP BY ior.base_fan_id
+            ),
+            ishchi_variant_dept AS (
+                SELECT DISTINCT
+                    ior.base_fan_id,
+                    fv.kafedra_id AS variant_kafedra_id
+                FROM ishchi_oquv_reja ior
+                JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ior.id
+                JOIN fanlar fv ON fv.id = iv.fan_id
+                WHERE fv.kafedra_id IS NOT NULL
+                  AND fv.kafedra_id > 0
             ),
             umumtalim_birik AS (
                 SELECT
@@ -1250,10 +1346,10 @@ class Database{
                     fr.laboratoriya_reja_id,
                     fr.seminar_reja_id,
                     y.id AS yonalish_id,
-                    fr.fan_name AS fan_nomi,
+                    COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name) AS fan_nomi,
                     y.name AS talim_yonalishi,
                     y.code AS yonalish_code,
-                    k.name AS kafedra_nomi,
+                    COALESCE(NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
                     tsh.name AS oquv_shakli,
                     s.semestr,
                     FLOOR((s.semestr + 1) / 2) AS kurs,
@@ -1285,7 +1381,8 @@ class Database{
                 FROM fan_reja fr
                 JOIN semestrlar s ON s.id = fr.semestr_id
                 JOIN yonalishlar y ON y.id = s.yonalish_id
-                JOIN kafedralar k ON k.id = fr.kafedra_id
+                LEFT JOIN kafedralar k ON k.id = fr.kafedra_id
+                LEFT JOIN ishchi_variant_info ivi ON ivi.base_fan_id = fr.fan_id
                 JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
                 JOIN guruh_agg ga ON ga.yonalish_id = y.id
                 WHERE NOT EXISTS (
