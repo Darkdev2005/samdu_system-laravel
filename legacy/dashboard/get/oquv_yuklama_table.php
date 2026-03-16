@@ -121,7 +121,7 @@ $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
                     'ochiq' => 0, 'yadak' => 0, 'boshqa' => 0,
                     'jami' => 0
                 ];
-                if (!empty($oquv_yuklamalar)):
+                if (!empty($oquv_yuklamalar) || !empty($qoshimcha_yuklamalar)):
                     foreach ($oquv_yuklamalar as $row): 
                         $talaba = (int)($row['talabalar_soni'] ?? 0);
                         $auditoriyaSoat = (float)($row['maruza_soat'] ?? 0)

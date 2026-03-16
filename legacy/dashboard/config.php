@@ -753,14 +753,8 @@ class Database{
                 $filterSemestrTypeLecture = " AND MOD(ul.semestr, 2) = 0";
             }
         } else {
-            // Izoh: Semestr tanlanmasa, joriy yildagi joriy semestr bo'yicha filter.
-            $month = (int)date('n');
-            $year = (int)date('Y');
-            $isFall = ($month >= 9 || $month === 1);
-            $academicYearStart = ($month >= 9) ? $year : ($year - 1);
-            $parityAdd = $isFall ? 1 : 2; // kuzgi = toq, bahorgi = juft
-            $currentExpr = "GREATEST(1, LEAST(10, (({$academicYearStart} - y.kirish_yili) * 2) + {$parityAdd}))";
-            $filterCurrentSemestr = " AND s.semestr = {$currentExpr}";
+            // Izoh: Hech qanday semestr filtri berilmasa barcha semestrlar ko'rsatiladi.
+            // $filterCurrentSemestr bo'sh qoladi.
         }
 
         // Izoh: Umumta'lim biriktirishda ma'ruza bitta, qolgan darslar yo'nalish bo'yicha alohida chiqishi uchun UNION ishlatiladi.
@@ -1085,14 +1079,7 @@ class Database{
                 $where[] = "MOD(s.semestr, 2) = 0";
             }
         } else {
-            // Izoh: Semestr tanlanmasa, joriy yildagi joriy semestr bo'yicha filter.
-            $month = (int)date('n');
-            $year = (int)date('Y');
-            $isFall = ($month >= 9 || $month === 1);
-            $academicYearStart = ($month >= 9) ? $year : ($year - 1);
-            $parityAdd = $isFall ? 1 : 2;
-            $currentExpr = "GREATEST(1, LEAST(10, (({$academicYearStart} - y.kirish_yili) * 2) + {$parityAdd}))";
-            $where[] = "s.semestr = {$currentExpr}";
+            // Izoh: Hech qanday semestr filtri berilmasa barcha semestrlar ko'rsatiladi.
         }
         $whereSQL = '';
         if (!empty($where)) {
