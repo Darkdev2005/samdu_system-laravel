@@ -1,0 +1,1356 @@
+﻿<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O'quv Jarayoni Boshqaruvi - Foydalanuvchi Yo'riqnomasi</title>
+    <style>
+        :root {
+            --bg: #f3f6f4;
+            --paper: #ffffff;
+            --ink: #162126;
+            --muted: #59656c;
+            --line: #dce5df;
+            --accent: #0a9b52;
+            --accent-soft: #e8f7ef;
+            --danger-soft: #fff1ef;
+            --toc: #15382b;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: var(--ink);
+            background: linear-gradient(180deg, #edf4ef 0%, #f9fbfa 100%);
+            line-height: 1.65;
+        }
+
+        .shell {
+            display: grid;
+            grid-template-columns: 320px minmax(0, 1fr);
+            min-height: 100vh;
+        }
+
+        .toc {
+            position: sticky;
+            top: 0;
+            align-self: start;
+            height: 100vh;
+            overflow-y: auto;
+            background: var(--toc);
+            color: #f4fbf7;
+            padding: 28px 22px 38px;
+        }
+
+        .toc h1 {
+            margin: 0 0 8px;
+            font-size: 24px;
+            line-height: 1.15;
+        }
+
+        .toc p {
+            margin: 0 0 18px;
+            color: #d4e6db;
+            font-size: 14px;
+        }
+
+        .toc-card {
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.07);
+            border-radius: 16px;
+            padding: 14px 16px;
+            margin-bottom: 18px;
+            font-size: 13px;
+        }
+
+        .toc-card strong {
+            display: block;
+            color: white;
+            margin-bottom: 4px;
+        }
+
+        .toc-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .toc-list li {
+            margin: 8px 0;
+        }
+
+        .toc-level-1 {
+            margin-top: 14px;
+            font-weight: 700;
+        }
+
+        .toc-level-2 {
+            padding-left: 12px;
+        }
+
+        .toc-level-3 {
+            padding-left: 24px;
+            font-size: 14px;
+        }
+
+        .toc a {
+            color: #f4fbf7;
+            text-decoration: none;
+        }
+
+        .toc a:hover {
+            text-decoration: underline;
+        }
+
+        .page {
+            padding: 34px;
+        }
+
+        .paper {
+            max-width: 1120px;
+            margin: 0 auto;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 28px;
+            box-shadow: 0 26px 50px rgba(17, 45, 31, 0.08);
+            overflow: hidden;
+        }
+
+        .cover {
+            padding: 42px 46px 30px;
+            background: radial-gradient(circle at top left, #effbf3 0%, #ffffff 60%);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .cover .eyebrow {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-weight: 700;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+
+        .cover h1 {
+            margin: 0 0 10px;
+            font-size: 40px;
+            line-height: 1.08;
+        }
+
+        .cover p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 16px;
+            max-width: 880px;
+        }
+
+        .body {
+            padding: 32px 46px 54px;
+        }
+
+        h1, h2, h3 {
+            color: #102027;
+        }
+
+        h1 {
+            font-size: 34px;
+            margin-top: 0;
+        }
+
+        h2 {
+            margin-top: 38px;
+            font-size: 28px;
+            border-bottom: 2px solid #e5efe8;
+            padding-bottom: 10px;
+        }
+
+        h3 {
+            margin-top: 26px;
+            font-size: 21px;
+        }
+
+        p {
+            margin: 12px 0;
+        }
+
+        ul, ol {
+            margin: 12px 0 14px;
+            padding-left: 24px;
+        }
+
+        li {
+            margin: 6px 0;
+        }
+
+        hr {
+            border: 0;
+            border-top: 1px dashed #cdd9d1;
+            margin: 28px 0;
+        }
+
+        strong {
+            color: #0e1f24;
+        }
+
+        code {
+            background: #f1f6f3;
+            border: 1px solid #dbe7df;
+            border-radius: 6px;
+            padding: 2px 6px;
+            font-family: Consolas, monospace;
+            font-size: 0.95em;
+        }
+
+        blockquote {
+            margin: 16px 0;
+            padding: 14px 18px;
+            border-left: 5px solid var(--accent);
+            background: var(--accent-soft);
+            border-radius: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+
+        th, td {
+            border: 1px solid var(--line);
+            padding: 12px 14px;
+            vertical-align: top;
+            text-align: left;
+        }
+
+        th {
+            background: #eff8f2;
+        }
+
+        @media (max-width: 1200px) {
+            .shell {
+                grid-template-columns: 1fr;
+            }
+
+            .toc {
+                position: static;
+                height: auto;
+            }
+        }
+
+        @media (max-width: 760px) {
+            .page {
+                padding: 16px;
+            }
+
+            .cover,
+            .body {
+                padding-left: 20px;
+                padding-right: 20px;
+            }
+
+            .cover h1 {
+                font-size: 30px;
+            }
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .shell {
+                display: block;
+            }
+
+            .toc {
+                display: none;
+            }
+
+            .page {
+                padding: 0;
+            }
+
+            .paper {
+                border: none;
+                box-shadow: none;
+            }
+
+            h2 {
+                page-break-before: always;
+            }
+
+            h2:first-of-type {
+                page-break-before: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <aside class="toc">
+            <h1>Foydalanuvchi yo'riqnomasi</h1>
+            <p>Word va PDF ga chiqarishga tayyor HTML hujjat</p>
+
+            <div class="toc-card">
+                <strong>Tizim</strong>
+                O'quv Jarayoni Boshqaruvi
+            </div>
+
+            <div class="toc-card">
+                <strong>Qamrov</strong>
+                Login, sozlamalar, o'quv reja, yuklama, taqsimot va acceptance checklist
+            </div>
+
+            <ul class="toc-list">
+<li class="toc-level-1"><a href="#oquv-jarayoni-boshqaruvi">O&#39;quv Jarayoni Boshqaruvi</a></li>
+<li class="toc-level-2"><a href="#foydalanuvchi-yoriqnomasi">Foydalanuvchi yo&#39;riqnomasi</a></li>
+<li class="toc-level-2"><a href="#hujjatdan-foydalanish-tartibi">Hujjatdan foydalanish tartibi</a></li>
+<li class="toc-level-2"><a href="#terminlar-va-qisqartmalar">Terminlar va qisqartmalar</a></li>
+<li class="toc-level-2"><a href="#tavsiya-etilgan-ish-ketma-ketligi">Tavsiya etilgan ish ketma-ketligi</a></li>
+<li class="toc-level-2"><a href="#1-tizimga-kirish-va-sessiya-boshqaruvi">1. Tizimga kirish va sessiya boshqaruvi</a></li>
+<li class="toc-level-3"><a href="#11-login-sahifasi">1.1. Login sahifasi</a></li>
+<li class="toc-level-3"><a href="#12-chiqish">1.2. Chiqish</a></li>
+<li class="toc-level-3"><a href="#13-sessiya-bilan-ishlash-boyicha-eslatma">1.3. Sessiya bilan ishlash bo&#39;yicha eslatma</a></li>
+<li class="toc-level-2"><a href="#2-dashboard">2. Dashboard</a></li>
+<li class="toc-level-2"><a href="#3-sozlamalar-bolimi">3. Sozlamalar bo&#39;limi</a></li>
+<li class="toc-level-3"><a href="#31-fakultetlar">3.1. Fakultetlar</a></li>
+<li class="toc-level-3"><a href="#32-akademik-darajalar">3.2. Akademik darajalar</a></li>
+<li class="toc-level-3"><a href="#33-talim-shakllari">3.3. Ta&#39;lim shakllari</a></li>
+<li class="toc-level-3"><a href="#34-yonalishlar">3.4. Yo&#39;nalishlar</a></li>
+<li class="toc-level-3"><a href="#35-kafedralar">3.5. Kafedralar</a></li>
+<li class="toc-level-3"><a href="#36-oquv-shakllar">3.6. O&#39;quv shakllar</a></li>
+<li class="toc-level-3"><a href="#37-dars-soat-turlari">3.7. Dars soat turlari</a></li>
+<li class="toc-level-3"><a href="#38-semestrlar">3.8. Semestrlar</a></li>
+<li class="toc-level-3"><a href="#39-guruhlar">3.9. Guruhlar</a></li>
+<li class="toc-level-3"><a href="#310-oquv-haftaligi-turlari">3.10. O&#39;quv haftaligi turlari</a></li>
+<li class="toc-level-3"><a href="#311-qoshimcha-dars-turlari">3.11. Qo&#39;shimcha dars turlari</a></li>
+<li class="toc-level-3"><a href="#312-oqituvchilar">3.12. O&#39;qituvchilar</a></li>
+<li class="toc-level-2"><a href="#4-oquv-reja-bolimi">4. O&#39;quv reja bo&#39;limi</a></li>
+<li class="toc-level-3"><a href="#41-oquv-reja-yaratish">4.1. O&#39;quv reja yaratish</a></li>
+<li class="toc-level-3"><a href="#42-tanlov-fan-yaratish">4.2. Tanlov fan yaratish</a></li>
+<li class="toc-level-3"><a href="#43-birlashtiriladigan-fanlarni-biriktirish">4.3. Birlashtiriladigan fanlarni biriktirish</a></li>
+<li class="toc-level-3"><a href="#44-chet-tilini-biriktirish">4.4. Chet tilini biriktirish</a></li>
+<li class="toc-level-3"><a href="#45-qoshimcha-oquv-reja-yaratish">4.5. Qo&#39;shimcha o&#39;quv reja yaratish</a></li>
+<li class="toc-level-3"><a href="#46-barcha-oquv-rejalar">4.6. Barcha o&#39;quv rejalar</a></li>
+<li class="toc-level-3"><a href="#47-barcha-ishchi-oquv-rejalar">4.7. Barcha ishchi o&#39;quv rejalar</a></li>
+<li class="toc-level-3"><a href="#48-oquv-haftaligini-yaratish">4.8. O&#39;quv haftaligini yaratish</a></li>
+<li class="toc-level-3"><a href="#49-barcha-oquv-haftaliklar">4.9. Barcha o&#39;quv haftaliklar</a></li>
+<li class="toc-level-2"><a href="#5-oquv-yuklama">5. O&#39;quv yuklama</a></li>
+<li class="toc-level-3"><a href="#51-barcha-oquv-yuklamalar">5.1. Barcha o&#39;quv yuklamalar</a></li>
+<li class="toc-level-2"><a href="#6-oquv-taqsimot">6. O&#39;quv taqsimot</a></li>
+<li class="toc-level-3"><a href="#61-barcha-oquv-taqsimotlar">6.1. Barcha o&#39;quv taqsimotlar</a></li>
+<li class="toc-level-3"><a href="#62-oqituvchilar-soat-taqsimoti">6.2. O&#39;qituvchilar soat taqsimoti</a></li>
+<li class="toc-level-3"><a href="#63-oqituvchilar-bildirgisi">6.3. O&#39;qituvchilar bildirgisi</a></li>
+<li class="toc-level-2"><a href="#7-boshidan-oxirigacha-ishchi-ssenariy">7. Boshidan oxirigacha ishchi ssenariy</a></li>
+<li class="toc-level-3"><a href="#71-minimal-ishchi-ssenariy">7.1. Minimal ishchi ssenariy</a></li>
+<li class="toc-level-3"><a href="#72-chet-tili-boyicha-kengaytirilgan-ssenariy">7.2. Chet tili bo&#39;yicha kengaytirilgan ssenariy</a></li>
+<li class="toc-level-3"><a href="#73-tanlov-fan-boyicha-kengaytirilgan-ssenariy">7.3. Tanlov fan bo&#39;yicha kengaytirilgan ssenariy</a></li>
+<li class="toc-level-2"><a href="#8-kengaytirilgan-test-rejasi">8. Kengaytirilgan test rejasi</a></li>
+<li class="toc-level-3"><a href="#81-katalog-testlari">8.1. Katalog testlari</a></li>
+<li class="toc-level-3"><a href="#82-oquv-reja-testlari">8.2. O&#39;quv reja testlari</a></li>
+<li class="toc-level-3"><a href="#83-tanlov-fan-testlari">8.3. Tanlov fan testlari</a></li>
+<li class="toc-level-3"><a href="#84-chet-tili-testlari">8.4. Chet tili testlari</a></li>
+<li class="toc-level-3"><a href="#85-yuklama-testlari">8.5. Yuklama testlari</a></li>
+<li class="toc-level-3"><a href="#86-taqsimot-testlari">8.6. Taqsimot testlari</a></li>
+<li class="toc-level-2"><a href="#9-kop-uchraydigan-xatolar-va-yechimlar">9. Ko&#39;p uchraydigan xatolar va yechimlar</a></li>
+<li class="toc-level-3"><a href="#91-select-bosh-chiqyapti">9.1. Select bo&#39;sh chiqyapti</a></li>
+<li class="toc-level-3"><a href="#92-chet-tili-saqlanmayapti">9.2. Chet tili saqlanmayapti</a></li>
+<li class="toc-level-3"><a href="#93-yuklama-bosh-chiqyapti">9.3. Yuklama bo&#39;sh chiqyapti</a></li>
+<li class="toc-level-3"><a href="#94-taqsimotda-oqituvchi-chiqmayapti">9.4. Taqsimotda o&#39;qituvchi chiqmayapti</a></li>
+<li class="toc-level-2"><a href="#10-yakuniy-acceptance-checklist">10. Yakuniy acceptance checklist</a></li>
+<li class="toc-level-2"><a href="#11-hujjatni-word-va-pdf-ga-tayyorlash">11. Hujjatni Word va PDF ga tayyorlash</a></li>
+</ul>
+        </aside>
+
+        <main class="page">
+            <article class="paper">
+                <header class="cover">
+                    <div class="eyebrow">To'liq HTML hujjat</div>
+                    <h1>O'quv Jarayoni Boshqaruvi</h1>
+                    <p>Ushbu hujjat tizimning bo'limlari bo'yicha foydalanuvchi yo'riqnomasi hisoblanadi. Hujjat to'g'ridan-to'g'ri brauzerda o'qish, Word ga ko'chirish yoki print orqali PDF olish uchun tayyorlangan.</p>
+                </header>
+
+                <div class="body">
+                    <h1 id="oquv-jarayoni-boshqaruvi">O&#39;quv Jarayoni Boshqaruvi</h1>
+<h2 id="foydalanuvchi-yoriqnomasi">Foydalanuvchi yo&#39;riqnomasi</h2>
+<p>Ushbu hujjat <code>O&#39;quv Jarayoni Boshqaruvi</code> tizimi uchun amaliy foydalanuvchi yo&#39;riqnomasi hisoblanadi. Hujjat administrator, metodist, dekanat xodimi, kafedra mas&#39;uli va o&#39;quv yuklama bilan ishlovchi foydalanuvchilar uchun yozilgan. Maqsad faqat menyularni sanab o&#39;tish emas, balki tizimdagi ish jarayonini boshidan oxirigacha yagona standart bo&#39;yicha yuritishdir.</p>
+<p>Hujjat quyidagi vazifalarni bajaradi:</p>
+<ol>
+<li>Har bir bo&#39;limning vazifasini tushuntiradi.</li>
+<li>Har bir sahifadagi maydon, tugma va natijani izohlaydi.</li>
+<li>Ish ketma-ketligini noto&#39;g&#39;ri buzmaslik uchun bog&#39;liqliklarni ko&#39;rsatadi.</li>
+<li>Validatsiya va biznes qoidalarni ochib beradi.</li>
+<li>Qo&#39;lda bajariladigan test ssenariylarini beradi.</li>
+<li>Word va PDF tayyorlash uchun manba sifatida xizmat qiladi.</li>
+</ol>
+<h2 id="hujjatdan-foydalanish-tartibi">Hujjatdan foydalanish tartibi</h2>
+<ol>
+<li>Avval <code>Tavsiya etilgan ish ketma-ketligi</code> bo&#39;limini o&#39;qing.</li>
+<li>Keyin aynan ishlayotgan modul bo&#39;limiga o&#39;ting.</li>
+<li><code>Oldindan tayyor bo&#39;lishi kerak</code> qismiga e&#39;tibor bering.</li>
+<li>Ma&#39;lumot kiritgandan keyin <code>Test ssenariylari</code> bo&#39;yicha natijani tasdiqlang.</li>
+<li>Yangi xodimlarni o&#39;qitishda shu hujjatdan chek-list sifatida foydalaning.</li>
+</ol>
+<h2 id="terminlar-va-qisqartmalar">Terminlar va qisqartmalar</h2>
+<ul>
+<li><code>Yo&#39;nalish</code> - ta&#39;lim yo&#39;nalishi.</li>
+<li><code>Semestr</code> - yo&#39;nalishning aniq semestri.</li>
+<li><code>Fan</code> - o&#39;quv rejadagi akademik fan.</li>
+<li><code>Bazaviy fan</code> - keyingi variant yoki biriktirish uchun asos bo&#39;ladigan fan.</li>
+<li><code>Variant fan</code> - bazaviy fanning alohida ko&#39;rinishi.</li>
+<li><code>Ishchi reja</code> - bazaviy fan bilan unga bog&#39;langan variant fanlar to&#39;plami.</li>
+<li><code>Qo&#39;shimcha reja</code> - qo&#39;shimcha dars yoki maxsus hisob-kitoblar bloki.</li>
+<li><code>O&#39;quv haftaligi</code> - haftalar kesimidagi akademik kalendar.</li>
+<li><code>Yuklama</code> - fan, guruh, semestr va dars turi bo&#39;yicha shakllangan ish hajmi.</li>
+<li><code>Taqsimot</code> - yuklamani o&#39;qituvchilarga taqsimlash jarayoni.</li>
+</ul>
+<h2 id="tavsiya-etilgan-ish-ketma-ketligi">Tavsiya etilgan ish ketma-ketligi</h2>
+<ol>
+<li>Login orqali tizimga kiring.</li>
+<li><code>Sozlamalar</code> bo&#39;limidagi kataloglarni to&#39;ldiring.</li>
+<li><code>Yo&#39;nalishlar</code> yaratilgach <code>Semestrlar</code>ni avtomatik yarating.</li>
+<li><code>Guruhlar</code> va <code>O&#39;qituvchilar</code>ni kiriting.</li>
+<li><code>O&#39;quv reja yaratish</code> orqali bazaviy fanlarni yarating.</li>
+<li>Zarur bo&#39;lsa <code>Tanlov fan</code>, <code>Birlashtiriladigan fan</code>, <code>Chet tili</code>, <code>Qo&#39;shimcha reja</code> modullarini to&#39;ldiring.</li>
+<li><code>O&#39;quv haftaligini yaratish</code> orqali akademik kalendarni belgilang.</li>
+<li><code>O&#39;quv yuklama</code> bo&#39;limida hisoblangan natijalarni tekshiring.</li>
+<li><code>O&#39;quv taqsimot</code> bo&#39;limida yuklamani o&#39;qituvchilarga taqsimlang.</li>
+<li><code>O&#39;qituvchilar soat taqsimoti</code> va <code>O&#39;qituvchilar bildirgisi</code> orqali yakuniy nazoratni bajaring.</li>
+</ol>
+<hr>
+<h2 id="1-tizimga-kirish-va-sessiya-boshqaruvi">1. Tizimga kirish va sessiya boshqaruvi</h2>
+<h3 id="11-login-sahifasi">1.1. Login sahifasi</h3>
+<p><strong>Menyu yoki URL:</strong> <code>/login</code> <strong>Maqsad:</strong> tizimga autentifikatsiyadan o&#39;tib kirish.</p>
+<p><strong>Sahifada nimalar bor</strong></p>
+<ul>
+<li><code>Username</code> maydoni.</li>
+<li><code>Password</code> maydoni.</li>
+<li><code>Remember me</code> belgisi.</li>
+<li><code>Log in</code> tugmasi.</li>
+<li>Parolni unutgan foydalanuvchi uchun havola.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Brauzerda login sahifasini oching.</li>
+<li>Username ni kiriting.</li>
+<li>Password ni kiriting.</li>
+<li>Zarur bo&#39;lsa <code>Remember me</code> ni belgilang.</li>
+<li><code>Log in</code> tugmasini bosing.</li>
+<li>Tizim foydalanuvchini dashboardga o&#39;tkazishi kerak.</li>
+</ol>
+<p><strong>Validatsiya va qoidalar</strong></p>
+<ul>
+<li>Username bo&#39;sh bo&#39;lmasligi kerak.</li>
+<li>Password bo&#39;sh bo&#39;lmasligi kerak.</li>
+<li>Noto&#39;g&#39;ri ma&#39;lumotda foydalanuvchi himoyalangan bo&#39;limga kirmasligi kerak.</li>
+<li>Eskirgan formani yuborishda <code>419 Page Expired</code> chiqishi mumkin; bunday holatda sahifani yangilab qayta yuborish kerak.</li>
+</ul>
+<p><strong>Kutiladigan natija</strong></p>
+<ul>
+<li>To&#39;g&#39;ri login/parol bilan foydalanuvchi ichki bo&#39;limlarga kiradi.</li>
+<li>Noto&#39;g&#39;ri login/parolda xatolik xabari ko&#39;rsatiladi.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>To&#39;g&#39;ri login va parol bilan kirib ko&#39;ring. Natija: dashboard ochilishi kerak.</li>
+<li>Noto&#39;g&#39;ri parol bilan kirib ko&#39;ring. Natija: xatolik xabari chiqishi kerak.</li>
+<li>Login sahifasini uzoq vaqt ochiq qoldirib formani yuboring. Natija: eskirgan token holati aniqlanishi mumkin.</li>
+<li>Incognito oynada alohida login oqimini tekshiring.</li>
+</ol>
+<h3 id="12-chiqish">1.2. Chiqish</h3>
+<p><strong>Menyu:</strong> sidebar pastidagi <code>Chiqish</code> <strong>Maqsad:</strong> foydalanuvchi sessiyasini yakunlash.</p>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Sidebar pastiga o&#39;ting.</li>
+<li><code>Chiqish</code> tugmasini bosing.</li>
+<li>Tizim foydalanuvchini login sahifasiga qaytarishi kerak.</li>
+</ol>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Chiqishdan keyin <code>dashboard/index.php</code> ni ochib ko&#39;ring. Natija: qayta login talab qilinishi kerak.</li>
+<li>Brauzer <code>Back</code> tugmasi orqali protected sahifaga qaytib ko&#39;ring. Natija: to&#39;g&#39;ridan-to&#39;g&#39;ri ishlamasligi kerak.</li>
+</ol>
+<h3 id="13-sessiya-bilan-ishlash-boyicha-eslatma">1.3. Sessiya bilan ishlash bo&#39;yicha eslatma</h3>
+<ul>
+<li>Eski cookie yoki eski tab bilan ishlaganda <code>419</code> holati chiqishi mumkin.</li>
+<li>Brauzerda juda ko&#39;p eski ochiq tab bo&#39;lsa, yangi konfiguratsiyadan keyin login sahifasini yangilash kerak.</li>
+<li>Protected URL lar login bo&#39;lmagan foydalanuvchini avtomatik <code>/login</code> sahifasiga qaytaradi.</li>
+</ul>
+<hr>
+<h2 id="2-dashboard">2. Dashboard</h2>
+<p><strong>Menyu:</strong> <code>Dashboard</code> <strong>Maqsad:</strong> tizimning umumiy statistik ko&#39;rsatkichlari va tezkor navigatsiyasi.</p>
+<p><strong>Sahifada nimalar bor</strong></p>
+<ul>
+<li>Asosiy bo&#39;limlar bo&#39;yicha ko&#39;rsatkich kartalari.</li>
+<li>Umumiy sonlar.</li>
+<li>Sidebar orqali barcha modullarga tez o&#39;tish.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Login bo&#39;lgach dashboardni oching.</li>
+<li>Ko&#39;rsatkichlarni tekshiring.</li>
+<li>Zarur bo&#39;limga kartadan yoki sidebardan o&#39;ting.</li>
+<li>Sonlar kutilgan natijaga mos kelmasa tegishli modulni tekshiring.</li>
+</ol>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Dashboard barcha asosiy bo&#39;limlarga olib borishi kerak.</li>
+<li>Statistikadagi sonlar bazadagi yozuvlar bilan mos bo&#39;lishi kerak.</li>
+</ol>
+<hr>
+<h2 id="3-sozlamalar-bolimi">3. Sozlamalar bo&#39;limi</h2>
+<p><code>Sozlamalar</code> bo&#39;limi butun tizim uchun katalog bazasini tayyorlaydi. Bu yerda xato qilingan yozuv keyingi barcha modullarda takrorlanadi. Shuning uchun kataloglar bilan ishlashda nomlash standarti va bog&#39;liqliklar nazorat qilinadi.</p>
+<h3 id="31-fakultetlar">3.1. Fakultetlar</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Fakultetlar</code> <strong>Maqsad:</strong> fakultetlar katalogini yuritish.</p>
+<p><strong>Asosiy maydonlar</strong></p>
+<ul>
+<li><code>Fakultet nomi</code>.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Fakultetlar sahifasiga kiring.</li>
+<li>Fakultet nomini kiriting.</li>
+<li><code>Saqlash</code> tugmasini bosing.</li>
+<li>Jadvalda yozuv paydo bo&#39;lganini tekshiring.</li>
+<li>Zarur bo&#39;lsa tahrirlash yoki o&#39;chirish amallarini bajaring.</li>
+</ol>
+<p><strong>Validatsiya va qoidalar</strong></p>
+<ul>
+<li>Bo&#39;sh nom saqlanmasligi kerak.</li>
+<li>Takror yozuvlar nazorat qilinishi kerak.</li>
+<li>Bog&#39;langan obyektlar bo&#39;lsa o&#39;chirishdan oldin ehtiyot bo&#39;lish kerak.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Yangi fakultet yarating.</li>
+<li>Fakultet nomini tahrirlang.</li>
+<li>Fakultet select ishlatiladigan joylarda chiqishini tekshiring.</li>
+</ol>
+<h3 id="32-akademik-darajalar">3.2. Akademik darajalar</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Akademik darajalar</code> <strong>Maqsad:</strong> bakalavr, magistr kabi akademik darajalarni yuritish.</p>
+<p><strong>Asosiy maydonlar</strong></p>
+<ul>
+<li><code>Daraja nomi</code>.</li>
+<li><code>Qisqa nom</code> yoki tizimdagi ko&#39;rinish nomi.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Yangi daraja kiriting.</li>
+<li>Saqlang.</li>
+<li>Yo&#39;nalish yaratish formasida chiqishini tekshiring.</li>
+</ol>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Yangi daraja yarating.</li>
+<li>Tahrirlashni tekshiring.</li>
+<li>Selectlarda yangilanishini tekshiring.</li>
+</ol>
+<h3 id="33-talim-shakllari">3.3. Ta&#39;lim shakllari</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Ta&#39;lim shakllar</code> <strong>Maqsad:</strong> kunduzgi, sirtqi, kechki va boshqa shakllarni yuritish.</p>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Yangi ta&#39;lim shakli yarating.</li>
+<li>Yo&#39;nalish formasida chiqishini tekshiring.</li>
+<li>Tahrir va o&#39;chirishni tekshiring.</li>
+</ol>
+<h3 id="34-yonalishlar">3.4. Yo&#39;nalishlar</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Yo&#39;nalishlar</code> <strong>Maqsad:</strong> ta&#39;lim yo&#39;nalishlarini to&#39;liq parametrlar bilan yaratish va boshqarish.</p>
+<p><strong>Oldindan tayyor bo&#39;lishi kerak</strong></p>
+<ul>
+<li>Fakultetlar.</li>
+<li>Akademik darajalar.</li>
+<li>Ta&#39;lim shakllari.</li>
+</ul>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Yo&#39;nalish qo&#39;shish</code> tugmasi.</li>
+<li>Yo&#39;nalishlar jadvali.</li>
+<li>Qidiruv maydoni.</li>
+<li><code>Yo&#39;nalish tahrirlar tarixi</code> jadvali.</li>
+<li>Modal forma.</li>
+</ul>
+<p><strong>Asosiy maydonlar</strong></p>
+<ul>
+<li><code>Yo&#39;nalish nomi</code>.</li>
+<li><code>Yo&#39;nalish kodi</code>.</li>
+<li><code>Ta&#39;lim muddati (yil)</code>.</li>
+<li><code>Kirish yili</code>.</li>
+<li><code>Patok soni</code>.</li>
+<li><code>Katta guruh soni</code>.</li>
+<li><code>Kichik guruh soni</code>.</li>
+<li><code>Akademik daraja</code>.</li>
+<li><code>Ta&#39;lim shakli</code>.</li>
+<li><code>Kvalifikatsiya</code>.</li>
+<li><code>Fakultet</code>.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li><code>Yo&#39;nalish qo&#39;shish</code> tugmasini bosing.</li>
+<li>Barcha maydonlarni to&#39;ldiring.</li>
+<li><code>Patok</code>, <code>Katta guruh</code>, <code>Kichik guruh</code> sonlarini real o&#39;quv jarayoniga mos kiriting.</li>
+<li>Akademik daraja, ta&#39;lim shakli va fakultetni tanlang.</li>
+<li>Saqlang.</li>
+<li>Jadvalda yozuv chiqqanini tekshiring.</li>
+<li>Zarur bo&#39;lsa tahrir qiling va tarix jadvaliga qarang.</li>
+</ol>
+<p><strong>Validatsiya va qoidalar</strong></p>
+<ul>
+<li>Majburiy maydonlar bo&#39;sh bo&#39;lmasligi kerak.</li>
+<li><code>Kirish yili</code> va <code>Ta&#39;lim muddati</code> mantiqan to&#39;g&#39;ri bo&#39;lishi kerak.</li>
+<li>Patok va guruh sonlari <code>1</code> dan kichik bo&#39;lmasligi kerak.</li>
+<li>Tahrirlar tarixga yozilishi kerak.</li>
+</ul>
+<p><strong>Bog&#39;liqliklar</strong></p>
+<ul>
+<li>Semestr yaratish shu yozuvlarga tayanadi.</li>
+<li>Guruhlar shu yo&#39;nalish bilan bog&#39;lanadi.</li>
+<li>O&#39;quv reja va haftaliklar shu yo&#39;nalishdan foydalanadi.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Yangi yo&#39;nalish yarating.</li>
+<li>Yo&#39;nalishni tahrirlab tarix jadvalini tekshiring.</li>
+<li>Yaratilgan yo&#39;nalish keyingi modullarda chiqishini tekshiring.</li>
+</ol>
+<h3 id="35-kafedralar">3.5. Kafedralar</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Kafedralar</code> <strong>Maqsad:</strong> fan va o&#39;qituvchilarni bog&#39;lash uchun kafedralar katalogini yuritish.</p>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Yangi kafedra qo&#39;shing.</li>
+<li>Saqlang.</li>
+<li>Fan yaratish va o&#39;qituvchi formalarida selectga tushishini tekshiring.</li>
+</ol>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Kafedra qo&#39;shing.</li>
+<li>Kafedra nomini tahrirlang.</li>
+<li>Bog&#39;liq fanlar bo&#39;lsa o&#39;chirish holatini tekshiring.</li>
+</ol>
+<h3 id="36-oquv-shakllar">3.6. O&#39;quv shakllar</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; O&#39;quv shakllar</code> <strong>Maqsad:</strong> ichki o&#39;quv shakli kataloglarini yuritish.</p>
+<p><strong>Amaliy tavsiya</strong></p>
+<ul>
+<li>Nomlash bir xil standartda bo&#39;lsin.</li>
+<li>Keyingi modullarda ishlatiladigan qiymatlarni tartibli yuriting.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Yozuv qo&#39;shing.</li>
+<li>Select ishlatiladigan joylarda chiqishini tekshiring.</li>
+<li>Tahrir va o&#39;chirishni tekshiring.</li>
+</ol>
+<h3 id="37-dars-soat-turlari">3.7. Dars soat turlari</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Dars soat turlar</code> <strong>Maqsad:</strong> ma&#39;ruza, amaliyot, laboratoriya kabi soat turlarini yuritish.</p>
+<p><strong>Nega bu bo&#39;lim muhim</strong></p>
+<ul>
+<li>O&#39;quv reja yaratishda har bir fan uchun shu katalogdan dars turi tanlanadi.</li>
+<li>Qo&#39;shimcha reja va yuklama hisoblari shu qiymatlarga tayanadi.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li><code>Ma&#39;ruza</code>, <code>Amaliyot</code>, <code>Laboratoriya</code> kabi yozuvlar yarating.</li>
+<li>O&#39;quv reja yaratish formasida selectda chiqishini tekshiring.</li>
+</ol>
+<h3 id="38-semestrlar">3.8. Semestrlar</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Semestrlar</code> <strong>Maqsad:</strong> yo&#39;nalishlar asosida semestrlarni avtomatik yaratish va boshqarish.</p>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Semestrlarni avtomatik yaratish</code> tugmasi.</li>
+<li>Semestrlar jadvali.</li>
+<li>Qidiruv maydoni.</li>
+<li>Tahrirlash va o&#39;chirish amallari.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Yo&#39;nalishlar tayyor bo&#39;lgach semestrlar sahifasiga kiring.</li>
+<li><code>Semestrlarni avtomatik yaratish</code> tugmasini bosing.</li>
+<li>Tizim ta&#39;lim muddati asosida semestrlarni hosil qiladi.</li>
+<li>Jadvalda fakultet, yo&#39;nalish va semestrlar to&#39;g&#39;riligini tekshiring.</li>
+<li>Zarur bo&#39;lsa semestr raqamini tahrirlang.</li>
+</ol>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Yangi yo&#39;nalishdan keyin avtomatik yaratishni ishlating.</li>
+<li>Tahrirlash va qidiruvni tekshiring.</li>
+</ol>
+<h3 id="39-guruhlar">3.9. Guruhlar</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Guruhlar</code> <strong>Maqsad:</strong> yo&#39;nalishlarga bog&#39;langan guruhlar va ulardagi talaba sonini yuritish.</p>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Guruh qo&#39;shish</code> tugmasi.</li>
+<li>Guruhlar jadvali.</li>
+<li>Qidiruv maydoni.</li>
+<li><code>Guruh tahrirlar tarixi</code> jadvali.</li>
+<li>Modal forma.</li>
+</ul>
+<p><strong>Asosiy maydonlar</strong></p>
+<ul>
+<li><code>Yo&#39;nalish</code>.</li>
+<li><code>Guruh nomeri</code>.</li>
+<li><code>Talaba soni</code>.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li><code>Guruh qo&#39;shish</code> ni bosing.</li>
+<li>Yo&#39;nalishni tanlang.</li>
+<li>Guruh nomini kiriting.</li>
+<li>Talaba sonini kiriting.</li>
+<li>Saqlang.</li>
+<li>Jadval va tarixni tekshiring.</li>
+</ol>
+<p><strong>Nima uchun muhim</strong></p>
+<ul>
+<li>Chet tili taqsimoti guruhlar kesimida ishlaydi.</li>
+<li>Yuklama hisoblari guruh soni va talabalar soniga tayanadi.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Bitta yo&#39;nalish uchun bir nechta guruh yarating.</li>
+<li>Turli talaba sonlari bilan yozuv kiriting.</li>
+<li>Tahrir qiling va tarix yozuvini tekshiring.</li>
+</ol>
+<h3 id="310-oquv-haftaligi-turlari">3.10. O&#39;quv haftaligi turlari</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; O&#39;quv haftalik turlar</code> <strong>Maqsad:</strong> akademik kalendarda ishlatiladigan hafta turlari katalogini yuritish.</p>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Qisqa nom va to&#39;liq nom bilan hafta turi yarating.</li>
+<li>O&#39;quv haftaligi yaratish sahifasidagi select va legendada chiqishini tekshiring.</li>
+</ol>
+<h3 id="311-qoshimcha-dars-turlari">3.11. Qo&#39;shimcha dars turlari</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; Qo&#39;shimcha dars turlar</code> <strong>Maqsad:</strong> qo&#39;shimcha reja hisoblarida ishlatiladigan dars turlarini va koeffitsientlarni yuritish.</p>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Qo&#39;shimcha dars turi yarating.</li>
+<li>Koeffitsient bilan saqlang.</li>
+<li>Qo&#39;shimcha o&#39;quv reja yaratish sahifasida ta&#39;sirini tekshiring.</li>
+</ol>
+<h3 id="312-oqituvchilar">3.12. O&#39;qituvchilar</h3>
+<p><strong>Menyu:</strong> <code>Sozlamalar -&gt; O&#39;qituvchilar</code> <strong>Maqsad:</strong> o&#39;qituvchilar katalogi va shtat parametrlarini yuritish.</p>
+<p><strong>Oldindan tayyor bo&#39;lishi kerak</strong></p>
+<ul>
+<li>Fakultetlar.</li>
+<li>Kafedralar.</li>
+<li>Ilmiy unvonlar.</li>
+<li>Ilmiy darajalar.</li>
+<li>Ish turlari.</li>
+</ul>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Fakultet</code> va <code>Kafedra</code> filterlari.</li>
+<li>Qidiruv maydoni.</li>
+<li>O&#39;qituvchilar jadvali.</li>
+<li>Modal forma.</li>
+</ul>
+<p><strong>Asosiy maydonlar</strong></p>
+<ul>
+<li><code>Fakultet</code>.</li>
+<li><code>Kafedra</code>.</li>
+<li><code>F.I.O</code>.</li>
+<li><code>Lavozim</code>.</li>
+<li><code>Shtat birligi</code>.</li>
+<li><code>Shtat turi</code>.</li>
+<li><code>Ilmiy unvon</code>.</li>
+<li><code>Ilmiy daraja</code>.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li><code>O&#39;qituvchi qo&#39;shish</code> tugmasini bosing.</li>
+<li>Fakultet va kafedrani tanlang.</li>
+<li>F.I.O va lavozimni kiriting.</li>
+<li>Shtat birligi va shtat turini tanlang.</li>
+<li>Ilmiy unvon va darajani tanlang.</li>
+<li>Saqlang.</li>
+</ol>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>O&#39;qituvchi yarating.</li>
+<li>Filterlar ishlashini tekshiring.</li>
+<li>Keyin taqsimot modalida shu o&#39;qituvchi chiqishini tekshiring.</li>
+</ol>
+<hr>
+<h2 id="4-oquv-reja-bolimi">4. O&#39;quv reja bo&#39;limi</h2>
+<p>Bu bo&#39;lim tizimning markaziy qismi. Fanlar, variant fanlar, birlashtirishlar, chet tili taqsimoti va haftaliklar shu yerda tayyorlanadi. Ketma-ketlik buzilsa keyingi <code>Yuklama</code> va <code>Taqsimot</code> modullari bo&#39;sh yoki noto&#39;g&#39;ri chiqadi.</p>
+<h3 id="41-oquv-reja-yaratish">4.1. O&#39;quv reja yaratish</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; O&#39;quv reja yaratish</code> <strong>Maqsad:</strong> semestr bo&#39;yicha bazaviy fanlarni yaratish va dars soatlarini belgilash.</p>
+<p><strong>Oldindan tayyor bo&#39;lishi kerak</strong></p>
+<ul>
+<li>Fakultetlar.</li>
+<li>Semestrlar.</li>
+<li>Kafedralar.</li>
+<li>Dars soat turlari.</li>
+</ul>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Fakultet filtri</code>.</li>
+<li><code>Semestr</code> selecti.</li>
+<li>Fan kartalari.</li>
+<li>Fan turi tugmalari: <code>Majburiy fan</code>, <code>Tanlov fan</code>, <code>Chet tili</code>, <code>Birlashtiriladigan fan</code>.</li>
+<li><code>Fan kodi</code>.</li>
+<li><code>Fan nomi</code>.</li>
+<li><code>Kafedra</code>.</li>
+<li><code>Dars turi</code>.</li>
+<li><code>Dars soati</code>.</li>
+<li><code>Yana fan</code> va <code>O&#39;chirish</code>.</li>
+<li><code>Izoh</code>.</li>
+<li><code>Saqlash</code>.</li>
+<li><code>Yaratilgan fanlar ro&#39;yxati</code>.</li>
+<li>Ro&#39;yxatda <code>Yangilash</code> va <code>Tahrirlash</code>.</li>
+</ul>
+<p><strong>Fan turi mantig&#39;i</strong></p>
+<ul>
+<li><code>Majburiy fan</code> - oddiy bazaviy fan.</li>
+<li><code>Tanlov fan</code> - keyin variant fanlar yaratiladigan baza.</li>
+<li><code>Chet tili</code> - keyin guruhlar kesimida tillarga bo&#39;linadigan baza.</li>
+<li><code>Birlashtiriladigan fan</code> - turli yo&#39;nalish/semestrlar uchun umumiy birlashtirish bazasi.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Fakultet filtrini tanlang.</li>
+<li>Kerakli semestrni tanlang.</li>
+<li>Fan turi tugmasidan mos turini belgilang.</li>
+<li><code>Fan kodi</code> va <code>Fan nomi</code>ni kiriting.</li>
+<li>Kafedrani tanlang.</li>
+<li>Kamida bitta <code>Dars turi + Dars soati</code> qatorini kiriting.</li>
+<li>Zarur bo&#39;lsa <code>Yana fan</code> bilan qo&#39;shimcha kartalar qo&#39;shing.</li>
+<li><code>Saqlash</code> tugmasini bosing.</li>
+<li>Pastdagi ro&#39;yxatda yozuvni tekshiring.</li>
+<li>Tahrir kerak bo&#39;lsa ro&#39;yxatdan <code>Tahrirlash</code>ni ishlating.</li>
+</ol>
+<p><strong>Validatsiya va qoidalar</strong></p>
+<ul>
+<li>Semestr tanlanishi shart.</li>
+<li>Fan kodi va fan nomi bo&#39;sh bo&#39;lmasligi kerak.</li>
+<li>Kamida bitta dars turi bo&#39;lishi kerak.</li>
+<li>Dars soati manfiy bo&#39;lmasligi kerak.</li>
+<li>Kamida bitta soat <code>0</code> dan katta bo&#39;lishi kerak.</li>
+</ul>
+<p><strong>Natija</strong></p>
+<ul>
+<li>Fan katalogga yoziladi.</li>
+<li>Dars soatlari o&#39;quv reja yozuvlari sifatida saqlanadi.</li>
+<li>Keyingi modullar shu bazaviy fanlardan foydalanadi.</li>
+</ul>
+<p><strong>Qo&#39;lda test ssenariylari</strong></p>
+<ol>
+<li>Bitta majburiy fan yarating.</li>
+<li>Shu semestrda bitta <code>Tanlov fan</code> bazasi yarating.</li>
+<li><code>Chet tili</code> bazasini yarating.</li>
+<li>Bitta fan uchun ikki xil dars turi kiriting.</li>
+<li>Fakultet filtri ishlashini tekshiring.</li>
+</ol>
+<h3 id="42-tanlov-fan-yaratish">4.2. Tanlov fan yaratish</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; Tanlov fan yaratish</code> <strong>Maqsad:</strong> bazaviy tanlov faniga variant fanlarni bog&#39;lash.</p>
+<p><strong>Oldindan tayyor bo&#39;lishi kerak</strong></p>
+<ul>
+<li><code>O&#39;quv reja yaratish</code> da <code>Tanlov fan</code> bazasi yaratilgan bo&#39;lishi kerak.</li>
+<li>Kafedralar va dars soat turlari tayyor bo&#39;lishi kerak.</li>
+</ul>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Semestr</code>.</li>
+<li><code>Tanlov fan (kod + nomi)</code> selecti.</li>
+<li>Har variant uchun <code>Tanlov fan nomi</code>.</li>
+<li><code>Kafedra</code>.</li>
+<li><code>Dars turi</code>.</li>
+<li><code>Dars soati</code>.</li>
+<li><code>Yana tanlov varianti</code>.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Semestrni tanlang.</li>
+<li>Shu semestrdagi bazaviy tanlov fanni selectdan tanlang.</li>
+<li>Har variant uchun nom kiriting.</li>
+<li>Har variantga kafedra tanlang.</li>
+<li>Dars turi va soatini kiriting.</li>
+<li>Zarur bo&#39;lsa qo&#39;shimcha variant qo&#39;shing.</li>
+<li>Saqlang.</li>
+</ol>
+<p><strong>Validatsiya va qoidalar</strong></p>
+<ul>
+<li>Bazaviy tanlov fan tanlanishi kerak.</li>
+<li>Variant fan nomi bo&#39;sh bo&#39;lmasligi kerak.</li>
+<li>Kafedra tanlanishi kerak.</li>
+<li>Dars soatlari mantiqan to&#39;g&#39;ri bo&#39;lishi kerak.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Bitta bazaviy fan uchun 2 ta variant yarating.</li>
+<li><code>Barcha ishchi o&#39;quv rejalar</code> sahifasida natijani tekshiring.</li>
+<li>Variantlardan birini boshqa kafedraga bog&#39;lab ko&#39;ring.</li>
+</ol>
+<h3 id="43-birlashtiriladigan-fanlarni-biriktirish">4.3. Birlashtiriladigan fanlarni biriktirish</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; Birlashtiriladigan fanlarni biriktirish</code> <strong>Maqsad:</strong> turli yo&#39;nalish yoki semestrlardagi mos fanlarni bitta umumiy fan sifatida biriktirish.</p>
+<p><strong>Oldindan tayyor bo&#39;lishi kerak</strong></p>
+<ul>
+<li><code>Birlashtiriladigan fan</code> turida bazaviy fanlar yaratilgan bo&#39;lishi kerak.</li>
+</ul>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Yo&#39;nalish + semestr</code> selecti.</li>
+<li><code>Fan</code> selecti.</li>
+<li>Qo&#39;shimcha qator qo&#39;shish tugmalari.</li>
+<li><code>Birlashtirish</code> tugmasi.</li>
+<li>Pastda biriktirilgan fanlar ro&#39;yxati.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Birinchi qatorda yo&#39;nalish + semestrni tanlang.</li>
+<li>Shu qatorda fanni tanlang.</li>
+<li>Zarur bo&#39;lsa yana qator qo&#39;shing.</li>
+<li><code>Birlashtirish</code> tugmasini bosing.</li>
+<li>Pastdagi jadvalda biriktirishlar ustunini tekshiring.</li>
+</ol>
+<p><strong>Validatsiya va qoidalar</strong></p>
+<ul>
+<li>Har qator to&#39;liq bo&#39;lishi kerak.</li>
+<li>Dublikat biriktirishlar ko&#39;payib ketmasligi kerak.</li>
+<li>Birlashtiriladigan fan selecti semestrga mos fanlardan to&#39;lishi kerak.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Ikki xil yo&#39;nalishdagi bir xil mazmundagi fanlarni birlashtiring.</li>
+<li>Jadvalda bitta umumiy fan va uning biriktirishlari ko&#39;rinishini tekshiring.</li>
+<li>Tahrirlash va o&#39;chirishni tekshiring.</li>
+</ol>
+<h3 id="44-chet-tilini-biriktirish">4.4. Chet tilini biriktirish</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; Chet tilini biriktirish</code> <strong>Maqsad:</strong> bazaviy chet tili fanini yaratish, variant tillarni bog&#39;lash va guruhlar kesimida talabalarni tillar bo&#39;yicha taqsimlash.</p>
+<p><strong>Biznes mantig&#39;i</strong></p>
+<ol>
+<li>Avval bazaviy chet tili fan yaratiladi.</li>
+<li>Shu bazaviy fan uchun variant tillar yaratiladi.</li>
+<li>Keyin <code>Yo&#39;nalish + semestr</code> tanlanadi.</li>
+<li>Tizim shu yo&#39;nalishga tegishli guruhlar va talaba sonini olib chiqadi.</li>
+<li>Har guruh bo&#39;yicha talabalar variant tillarga bo&#39;linadi.</li>
+<li>Har guruh kesimida yig&#39;indi guruhdagi jami talaba soniga teng bo&#39;lishi shart.</li>
+</ol>
+<p><strong>Sahifaning asosiy qismlari</strong></p>
+<ul>
+<li>1-tab: bazaviy chet tili fanini yaratish.</li>
+<li>2-tab: guruhlar kesimida chet tilini biriktirish.</li>
+<li><code>Yo&#39;nalish + semestr</code>.</li>
+<li><code>Bazaviy chet tili fan</code>.</li>
+<li>Guruhlar va talaba soni jadvali.</li>
+<li>Variant tillar ustunlari.</li>
+<li><code>Yana yo&#39;nalish</code>.</li>
+<li><code>Biriktirishni saqlash</code>.</li>
+<li><code>Biriktirilgan chet tili fanlari</code> batafsil jadvali.</li>
+</ul>
+<p><strong>1-tab bo&#39;yicha foydalanish tartibi</strong></p>
+<ol>
+<li>Semestrni tanlang.</li>
+<li>Bazaviy chet tili fan kodi va nomini yarating.</li>
+<li>Variant til nomlarini kiriting.</li>
+<li>Har variantga kafedra biriktiring.</li>
+<li>Dars turi va dars soatini kiriting.</li>
+<li>Saqlang.</li>
+</ol>
+<p><strong>2-tab bo&#39;yicha foydalanish tartibi</strong></p>
+<ol>
+<li><code>Yo&#39;nalish + semestr</code> ni tanlang.</li>
+<li><code>Bazaviy chet tili fan</code> ni tanlang.</li>
+<li>Tizim guruhlar va talaba sonini chiqarsin.</li>
+<li>Har guruh bo&#39;yicha variant tillar ustuniga son kiriting.</li>
+<li>Har qator <code>Yig&#39;indi</code>si guruhdagi jami talaba soniga teng ekanini tekshiring.</li>
+<li>Zarur bo&#39;lsa <code>Yana yo&#39;nalish</code> bilan qo&#39;shimcha yo&#39;nalish qo&#39;shing.</li>
+<li><code>Biriktirishni saqlash</code> tugmasini bosing.</li>
+<li>Pastdagi batafsil jadvalda natijani tekshiring.</li>
+</ol>
+<p><strong>Qattiq validatsiya qoidalari</strong></p>
+<ul>
+<li>Har bir son <code>0</code> yoki undan katta bo&#39;lishi kerak.</li>
+<li>Har bir guruh bo&#39;yicha variantlar yig&#39;indisi guruh talabalar soniga teng bo&#39;lishi shart.</li>
+<li>Bazaviy fanga variant fanlar bog&#39;lanmagan bo&#39;lsa taqsimot jadvali ma&#39;nosiz bo&#39;ladi.</li>
+<li>Bazaviy fanga bog&#39;liq bo&#39;lmagan fanlar bu selectda chiqmasligi kerak.</li>
+</ul>
+<p><strong>Amaliy misol</strong></p>
+<ul>
+<li><code>DI-01 (30)</code> -&gt; Ingliz <code>13</code>, Fransuz <code>7</code>, Nemis <code>10</code></li>
+<li><code>DI-02 (30)</code> -&gt; Ingliz <code>25</code>, Fransuz <code>2</code>, Nemis <code>3</code></li>
+<li><code>DI-03 (28)</code> -&gt; Ingliz <code>17</code>, Fransuz <code>3</code>, Nemis <code>8</code></li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Bazaviy chet tili fan yarating.</li>
+<li>Kamida 3 ta variant til yarating.</li>
+<li>3 ta guruhli yo&#39;nalish tanlang.</li>
+<li>Guruhlar kesimida son kiriting.</li>
+<li>Bir qator yig&#39;indisini noto&#39;g&#39;ri kiriting. Natija: saqlash bloklanishi kerak.</li>
+<li>To&#39;g&#39;ri yig&#39;indi bilan saqlang. Natija: batafsil jadvalda yozuv chiqishi kerak.</li>
+</ol>
+<h3 id="45-qoshimcha-oquv-reja-yaratish">4.5. Qo&#39;shimcha o&#39;quv reja yaratish</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; Qo&#39;shimcha reja yaratish</code> <strong>Maqsad:</strong> mavjud fanlar uchun qo&#39;shimcha yuklama va maxsus hisob-kitoblarni yuritish.</p>
+<p><strong>Oldindan tayyor bo&#39;lishi kerak</strong></p>
+<ul>
+<li>Semestrlar.</li>
+<li>Fanlar.</li>
+<li>Qo&#39;shimcha dars turlari.</li>
+<li>Kafedralar.</li>
+</ul>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Semestr</code>.</li>
+<li><code>Fan (kod + nomi)</code>.</li>
+<li><code>Qo&#39;shimcha dars turi</code>.</li>
+<li><code>Hisoblangan fan soati</code>.</li>
+<li>Qo&#39;shimcha parametrlar: <code>Hafta soni</code>, <code>Texnik yo&#39;nalish</code>, <code>Yakuniy test</code>, <code>YADAK turi</code>, <code>YADAK o&#39;qituvchi soni</code>, <code>YADAK fan soni</code>, <code>Ochiq dars soni</code>.</li>
+<li>Kafedra bo&#39;yicha soat taqsimlash qatori.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Semestrni tanlang.</li>
+<li>Fanni tanlang.</li>
+<li>Qo&#39;shimcha dars turini tanlang.</li>
+<li>Tizim chiqargan qo&#39;shimcha parametrlarni to&#39;ldiring.</li>
+<li>Hisoblangan soatni tekshiring.</li>
+<li>Zarur bo&#39;lsa soatni bir nechta kafedra orasida bo&#39;ling.</li>
+<li>Saqlang.</li>
+</ol>
+<p><strong>Validatsiya va qoidalar</strong></p>
+<ul>
+<li>Fan tanlanishi kerak.</li>
+<li>Qo&#39;shimcha dars turi tanlanishi kerak.</li>
+<li>Hisoblangan soat manfiy bo&#39;lmasligi kerak.</li>
+<li>Kafedralar bo&#39;yicha bo&#39;lingan soatlar umumiy soatga teng bo&#39;lishi kerak.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Oddiy qo&#39;shimcha dars yozuvi yarating.</li>
+<li><code>YADAK</code> yoki maxsus tipdagi qo&#39;shimcha maydonlarni tekshiring.</li>
+<li>Bir nechta kafedra bilan saqlab ko&#39;ring.</li>
+</ol>
+<h3 id="46-barcha-oquv-rejalar">4.6. Barcha o&#39;quv rejalar</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; Barcha o&#39;quv rejalar</code> <strong>Maqsad:</strong> yaratilgan bazaviy fan va reja yozuvlarini ko&#39;rish hamda nazorat qilish.</p>
+<p><strong>Amaliy foydalanish</strong></p>
+<ul>
+<li>Fan kodi, fan nomi, semestr va kafedra mosligini tekshirish.</li>
+<li>Noto&#39;g&#39;ri yozuvlarni topish.</li>
+<li>Nazorat uchun umumiy ro&#39;yxatdan foydalanish.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Yangi yaratilgan fanlar ro&#39;yxatda chiqishini tekshiring.</li>
+<li>Tahrirlash yoki o&#39;chirish ishlashini tekshiring.</li>
+</ol>
+<h3 id="47-barcha-ishchi-oquv-rejalar">4.7. Barcha ishchi o&#39;quv rejalar</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; Barcha ishchi o&#39;quv rejalar</code> <strong>Maqsad:</strong> bazaviy fan va variant fanlar orasidagi bog&#39;lanishni nazorat qilish.</p>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Tanlov fan variantlari chiqishini tekshiring.</li>
+<li>Chet tili variantlari chiqishini tekshiring.</li>
+<li>Noto&#39;g&#39;ri yoki dublikat bog&#39;lanish yo&#39;qligini nazorat qiling.</li>
+</ol>
+<h3 id="48-oquv-haftaligini-yaratish">4.8. O&#39;quv haftaligini yaratish</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; O&#39;quv haftaligini yaratish</code> <strong>Maqsad:</strong> yo&#39;nalish bo&#39;yicha kurslar va haftalar kesimida akademik kalendarni yaratish.</p>
+<p><strong>Oldindan tayyor bo&#39;lishi kerak</strong></p>
+<ul>
+<li>Yo&#39;nalishlar.</li>
+<li>O&#39;quv haftaligi turlari.</li>
+</ul>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Yo&#39;nalish</code>.</li>
+<li><code>So&#39;ra tanlash</code>.</li>
+<li><code>Hammasini tozalash</code>.</li>
+<li><code>Hammasi uchun tanlash</code>.</li>
+<li>Kurslar bo&#39;yicha kalendar jadvali.</li>
+<li><code>Saqlash</code>.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Yo&#39;nalishni tanlang.</li>
+<li>Tizim kurslar va haftalarni ko&#39;rsatsin.</li>
+<li>Har haftaga tegishli hafta turini tanlang.</li>
+<li>Katta bloklar uchun <code>So&#39;ra tanlash</code> yoki bulk tanlashdan foydalaning.</li>
+<li>Saqlang.</li>
+</ol>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>4 yillik yo&#39;nalishda 4 kurs chiqishini tekshiring.</li>
+<li>Range tanlashni sinab ko&#39;ring.</li>
+<li>Saqlagandan keyin <code>Barcha o&#39;quv haftaliklar</code> sahifasida natijani tekshiring.</li>
+</ol>
+<h3 id="49-barcha-oquv-haftaliklar">4.9. Barcha o&#39;quv haftaliklar</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv reja -&gt; Barcha o&#39;quv haftaliklar</code> <strong>Maqsad:</strong> yaratilgan haftaliklarni ko&#39;rish va filtrlash.</p>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Yo&#39;nalish bo&#39;yicha filtrlash</code>.</li>
+<li>Tezkor filter tugmalari.</li>
+<li>Hafta turlari legendasi.</li>
+<li>Har bir yo&#39;nalish uchun kalendar ko&#39;rinishi.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li><code>Barchasi</code> filterida barcha haftaliklar chiqishi kerak.</li>
+<li>Bitta yo&#39;nalish filterida faqat shu yo&#39;nalish qolishi kerak.</li>
+<li>Legendadagi qisqa nomlar kalendardagi ranglar bilan mos bo&#39;lishi kerak.</li>
+</ol>
+<hr>
+<h2 id="5-oquv-yuklama">5. O&#39;quv yuklama</h2>
+<h3 id="51-barcha-oquv-yuklamalar">5.1. Barcha o&#39;quv yuklamalar</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv yuklama -&gt; Barcha o&#39;quv yuklamalar</code> <strong>Maqsad:</strong> o&#39;quv reja va guruh ma&#39;lumotlari asosida hisoblangan yuklamani ko&#39;rish va nazorat qilish.</p>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Kafedra</code> filtri.</li>
+<li><code>Yo&#39;nalish</code> filtri.</li>
+<li><code>O&#39;quv yili</code> filtri.</li>
+<li><code>Semestr turi</code> filtri.</li>
+<li><code>Filtrlash</code>, <code>Tozalash</code>, <code>Chop etish</code>, <code>Excel</code>.</li>
+<li>Natija jadvali.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Kerakli filterlarni tanlang.</li>
+<li><code>Filtrlash</code> tugmasini bosing.</li>
+<li>Jadvalni tekshiring.</li>
+<li>Zarur bo&#39;lsa chop etish yoki Excel eksportini bajaring.</li>
+</ol>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Kafedra filtrini qo&#39;llang.</li>
+<li>Yo&#39;nalish va o&#39;quv yili filtrlari bilan kombinatsion tekshiruv qiling.</li>
+<li>Excel eksport va chop etishni ishlating.</li>
+</ol>
+<hr>
+<h2 id="6-oquv-taqsimot">6. O&#39;quv taqsimot</h2>
+<h3 id="61-barcha-oquv-taqsimotlar">6.1. Barcha o&#39;quv taqsimotlar</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv taqsimot -&gt; Barcha o&#39;quv taqsimotlar</code> <strong>Maqsad:</strong> yuklamani o&#39;qituvchilarga soat kesimida taqsimlash.</p>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Kafedra</code> filtri.</li>
+<li><code>Semestr</code> filtri.</li>
+<li>Taqsimot jadvali.</li>
+<li>O&#39;qituvchi biriktirish modali.</li>
+</ul>
+<p><strong>Modal tarkibi</strong></p>
+<ul>
+<li>Fan nomi.</li>
+<li>Soat turi.</li>
+<li>Maksimal soat.</li>
+<li>Yo&#39;nalish, kafedra, o&#39;quv shakli, kurs, guruh, semestr, talabalar soni kabi ma&#39;lumotlar.</li>
+<li>Oldingi taqsimotlar.</li>
+<li><code>Ajratilgan</code>, <code>Qolgan</code>, <code>Maksimal</code> ko&#39;rsatkichlar.</li>
+<li>Bir nechta o&#39;qituvchi qatori.</li>
+</ul>
+<p><strong>Foydalanish tartibi</strong></p>
+<ol>
+<li>Filterlarni tanlang.</li>
+<li>Tegishli satr bo&#39;yicha taqsimot modalini oching.</li>
+<li>O&#39;qituvchilarni tanlang.</li>
+<li>Har biriga soat kiriting.</li>
+<li>Jami soat maksimal qiymatdan oshmasligini tekshiring.</li>
+<li>Saqlang.</li>
+</ol>
+<p><strong>Validatsiya va qoidalar</strong></p>
+<ul>
+<li>Jami ajratilgan soat maksimal soatdan oshmasligi kerak.</li>
+<li>O&#39;qituvchi tanlanmasdan satr saqlanmasligi kerak.</li>
+<li>Soat manfiy bo&#39;lmasligi kerak.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Bitta fan soatini bitta o&#39;qituvchiga to&#39;liq bering.</li>
+<li>Shu soatni 2 o&#39;qituvchiga bo&#39;lib bering.</li>
+<li>Maksimaldan katta qiymat kiriting va bloklanishini tekshiring.</li>
+</ol>
+<h3 id="62-oqituvchilar-soat-taqsimoti">6.2. O&#39;qituvchilar soat taqsimoti</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv taqsimot -&gt; O&#39;qituvchilar soat taqsimoti</code> <strong>Maqsad:</strong> o&#39;qituvchi kesimida jami ajratilgan soatlarni ko&#39;rish.</p>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Kafedra</code>, <code>Semestr</code>, <code>O&#39;qituvchi</code>, <code>Shtat turi</code> filterlari.</li>
+<li><code>Filtrlash</code>, <code>Tozalash</code>, <code>Chop etish</code>, <code>Excel</code>.</li>
+<li>Natija jadvali.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Bitta kafedra bo&#39;yicha filtrlashni tekshiring.</li>
+<li>Bitta o&#39;qituvchi bo&#39;yicha filtrlashni tekshiring.</li>
+<li>Natijani taqsimot bilan solishtiring.</li>
+</ol>
+<h3 id="63-oqituvchilar-bildirgisi">6.3. O&#39;qituvchilar bildirgisi</h3>
+<p><strong>Menyu:</strong> <code>O&#39;quv taqsimot -&gt; O&#39;qituvchilar bildirgisi</code> <strong>Maqsad:</strong> o&#39;qituvchilar uchun yakuniy bildirgi ko&#39;rinishini olish.</p>
+<p><strong>Sahifa tarkibi</strong></p>
+<ul>
+<li><code>Kafedra</code>, <code>Semestr</code>, <code>O&#39;qituvchi</code>, <code>Shtat turi</code> filterlari.</li>
+<li><code>Filtrlash</code>, <code>Tozalash</code>, <code>Chop etish</code>, <code>Excel</code>.</li>
+<li>Hisobot jadvali.</li>
+</ul>
+<p><strong>Test ssenariylari</strong></p>
+<ol>
+<li>Bitta o&#39;qituvchi bo&#39;yicha bildirgi chiqaring.</li>
+<li>Olingan natijani <code>O&#39;qituvchilar soat taqsimoti</code> bilan solishtiring.</li>
+</ol>
+<hr>
+<h2 id="7-boshidan-oxirigacha-ishchi-ssenariy">7. Boshidan oxirigacha ishchi ssenariy</h2>
+<h3 id="71-minimal-ishchi-ssenariy">7.1. Minimal ishchi ssenariy</h3>
+<ol>
+<li>Fakultet yarating.</li>
+<li>Akademik daraja yarating.</li>
+<li>Ta&#39;lim shakli yarating.</li>
+<li>Kafedra yarating.</li>
+<li>Yo&#39;nalish yarating.</li>
+<li>Semestrlarni avtomatik yarating.</li>
+<li>Guruhlar yarating.</li>
+<li>Dars soat turlarini yarating.</li>
+<li>O&#39;qituvchilarni kiriting.</li>
+<li>O&#39;quv reja yaratishda bazaviy fanlarni yarating.</li>
+<li>O&#39;quv haftaligini yarating.</li>
+<li>O&#39;quv yuklamani tekshiring.</li>
+<li>O&#39;quv taqsimotda o&#39;qituvchilarga soat bering.</li>
+<li>O&#39;qituvchilar soat taqsimoti va bildirgisini tekshiring.</li>
+</ol>
+<h3 id="72-chet-tili-boyicha-kengaytirilgan-ssenariy">7.2. Chet tili bo&#39;yicha kengaytirilgan ssenariy</h3>
+<ol>
+<li><code>O&#39;quv reja yaratish</code> da <code>Chet tili</code> bazasini yarating.</li>
+<li><code>Chet tilini biriktirish</code> 1-tabida variant tillarni yarating.</li>
+<li><code>Guruhlar</code> modulida yo&#39;nalish guruhlarini tayyorlang.</li>
+<li><code>Chet tilini biriktirish</code> 2-tabida guruhlar kesimida talabalarni tillarga bo&#39;ling.</li>
+<li>Har qator yig&#39;indisini tekshirib saqlang.</li>
+<li>Batafsil jadvalda natijani tekshiring.</li>
+</ol>
+<h3 id="73-tanlov-fan-boyicha-kengaytirilgan-ssenariy">7.3. Tanlov fan bo&#39;yicha kengaytirilgan ssenariy</h3>
+<ol>
+<li><code>O&#39;quv reja yaratish</code> da <code>Tanlov fan</code> bazasini yarating.</li>
+<li><code>Tanlov fan yaratish</code> da kamida 2 ta variant yarating.</li>
+<li><code>Barcha ishchi o&#39;quv rejalar</code>da bog&#39;lanishni tekshiring.</li>
+<li>Yuklama hisobiga ta&#39;sirini tekshiring.</li>
+</ol>
+<hr>
+<h2 id="8-kengaytirilgan-test-rejasi">8. Kengaytirilgan test rejasi</h2>
+<h3 id="81-katalog-testlari">8.1. Katalog testlari</h3>
+<ol>
+<li>Har bir katalog modulida <code>Qo&#39;shish</code> ishlashi kerak.</li>
+<li><code>Tahrirlash</code> ishlashi kerak.</li>
+<li><code>O&#39;chirish</code> yoki bog&#39;liqlik nazorati ishlashi kerak.</li>
+<li>Qidiruv maydonlari ishlashi kerak.</li>
+</ol>
+<h3 id="82-oquv-reja-testlari">8.2. O&#39;quv reja testlari</h3>
+<ol>
+<li>Bazaviy fan yaratish ishlashi kerak.</li>
+<li>Dars turi va dars soati bir nechta qatorda saqlanishi kerak.</li>
+<li>Fakultet filtri ishlashi kerak.</li>
+<li>Yaratilgan fanlar ro&#39;yxati filtrga mos yangilanishi kerak.</li>
+<li>Tahrirlash ishlashi kerak.</li>
+</ol>
+<h3 id="83-tanlov-fan-testlari">8.3. Tanlov fan testlari</h3>
+<ol>
+<li>Bazaviy fan bo&#39;lmasa select bo&#39;sh bo&#39;lishi kerak.</li>
+<li>Bazaviy fan bo&#39;lsa variant qo&#39;shish ishlashi kerak.</li>
+<li>Variantlar bir necha dona bo&#39;lishi mumkin.</li>
+</ol>
+<h3 id="84-chet-tili-testlari">8.4. Chet tili testlari</h3>
+<ol>
+<li>Bazaviy fan bo&#39;lmasa taqsimot jadvali hosil bo&#39;lmasligi kerak.</li>
+<li>Guruhlar va talaba soni to&#39;g&#39;ri chiqishi kerak.</li>
+<li>Yig&#39;indi nazorati ishlashi kerak.</li>
+<li>Batafsil ro&#39;yxat to&#39;g&#39;ri ko&#39;rinishi kerak.</li>
+</ol>
+<h3 id="85-yuklama-testlari">8.5. Yuklama testlari</h3>
+<ol>
+<li>Filterlar jadvalni yangilashi kerak.</li>
+<li><code>Tozalash</code> filtrlari boshlang&#39;ich holatga qaytishi kerak.</li>
+<li><code>Excel</code> eksport ishlashi kerak.</li>
+<li><code>Chop etish</code> ishlashi kerak.</li>
+</ol>
+<h3 id="86-taqsimot-testlari">8.6. Taqsimot testlari</h3>
+<ol>
+<li>Modal ochilishi kerak.</li>
+<li>Bir nechta o&#39;qituvchi qatori qo&#39;shilishi kerak.</li>
+<li>Jami soat progress barda ko&#39;rinishi kerak.</li>
+<li>Maksimal soatdan oshganda saqlash bloklanishi kerak.</li>
+</ol>
+<hr>
+<h2 id="9-kop-uchraydigan-xatolar-va-yechimlar">9. Ko&#39;p uchraydigan xatolar va yechimlar</h2>
+<h3 id="91-select-bosh-chiqyapti">9.1. Select bo&#39;sh chiqyapti</h3>
+<p><strong>Sabablar</strong></p>
+<ul>
+<li>Oldingi kataloglar to&#39;ldirilmagan.</li>
+<li>Filtr juda tor qo&#39;yilgan.</li>
+<li>Bazaviy fan hali yaratilmagan.</li>
+</ul>
+<p><strong>Yechim</strong></p>
+<ol>
+<li>Oldingi modul ma&#39;lumotini tekshiring.</li>
+<li>Filterlarni tozalang.</li>
+<li>Bazaviy fan yaratilganini tasdiqlang.</li>
+</ol>
+<h3 id="92-chet-tili-saqlanmayapti">9.2. Chet tili saqlanmayapti</h3>
+<p><strong>Sabablar</strong></p>
+<ul>
+<li>Guruh bo&#39;yicha yig&#39;indi noto&#39;g&#39;ri.</li>
+<li>Bazaviy fanga variant fanlar bog&#39;lanmagan.</li>
+<li>Guruhlar va talaba soni tayyor emas.</li>
+</ul>
+<p><strong>Yechim</strong></p>
+<ol>
+<li>Har qator yig&#39;indisini tekshiring.</li>
+<li>1-tabdagi variant fanlarni tekshiring.</li>
+<li><code>Guruhlar</code> modulidagi ma&#39;lumotni tekshiring.</li>
+</ol>
+<h3 id="93-yuklama-bosh-chiqyapti">9.3. Yuklama bo&#39;sh chiqyapti</h3>
+<p><strong>Sabablar</strong></p>
+<ul>
+<li>O&#39;quv reja yaratilmagan.</li>
+<li>Guruhlar yoki semestrlar tayyor emas.</li>
+<li>Qo&#39;shimcha ma&#39;lumot yetarli emas.</li>
+</ul>
+<p><strong>Yechim</strong></p>
+<ol>
+<li>Bazaviy fanlar mavjudligini tekshiring.</li>
+<li>Semestr va guruh bog&#39;liqligini tekshiring.</li>
+<li>Filterlarni kengaytirib qayta ko&#39;ring.</li>
+</ol>
+<h3 id="94-taqsimotda-oqituvchi-chiqmayapti">9.4. Taqsimotda o&#39;qituvchi chiqmayapti</h3>
+<p><strong>Sabablar</strong></p>
+<ul>
+<li>O&#39;qituvchi katalogga kiritilmagan.</li>
+<li>Kafedra yoki fakultet bog&#39;lanishi noto&#39;g&#39;ri.</li>
+<li>Filterlar tor qo&#39;yilgan.</li>
+</ul>
+<p><strong>Yechim</strong></p>
+<ol>
+<li><code>O&#39;qituvchilar</code> modulini tekshiring.</li>
+<li>Filterlarni tozalang.</li>
+<li>O&#39;qituvchining fakultet va kafedra ma&#39;lumotini tekshiring.</li>
+</ol>
+<hr>
+<h2 id="10-yakuniy-acceptance-checklist">10. Yakuniy acceptance checklist</h2>
+<ol>
+<li>Login va logout oqimi ishlaydi.</li>
+<li>Dashboard statistikasi real ma&#39;lumotga mos.</li>
+<li>Fakultet, yo&#39;nalish, kafedra, semestr, guruh va o&#39;qituvchi kataloglari ishlaydi.</li>
+<li>Yo&#39;nalish va guruh tahrirlar tarixi yoziladi.</li>
+<li>O&#39;quv reja yaratish ishlaydi.</li>
+<li>Fakultet filtri va yaratilgan fanlar ro&#39;yxati ishlaydi.</li>
+<li>Tanlov fan variantlari yaratiladi.</li>
+<li>Birlashtiriladigan fanlarni biriktirish ishlaydi.</li>
+<li>Chet tili bazaviy fan yaratish va guruhlar kesimida taqsimlash ishlaydi.</li>
+<li>Qo&#39;shimcha o&#39;quv reja hisoblari ishlaydi.</li>
+<li>O&#39;quv haftaligini yaratish va ko&#39;rish ishlaydi.</li>
+<li>O&#39;quv yuklama filtrlari, chop etish va Excel eksport ishlaydi.</li>
+<li>O&#39;quv taqsimot modalida bir nechta o&#39;qituvchiga soat berish ishlaydi.</li>
+<li>O&#39;qituvchilar soat taqsimoti va bildirgisi to&#39;g&#39;ri natija beradi.</li>
+<li>Muhim modullardagi tahrirlash va o&#39;chirish amallari ishlaydi.</li>
+</ol>
+<h2 id="11-hujjatni-word-va-pdf-ga-tayyorlash">11. Hujjatni Word va PDF ga tayyorlash</h2>
+<ol>
+<li>Generatsiya qilingan HTML faylni brauzerda oching.</li>
+<li><code>Ctrl+P</code> orqali PDF ga chiqaring.</li>
+<li>Word uchun HTML matnini to&#39;g&#39;ridan-to&#39;g&#39;ri ko&#39;chirish yoki chop etish rejimidan foydalaning.</li>
+<li>Rasmiy topshirishdan oldin sarlavhalar, sahifa tartibi va modul nomlarini tekshirib chiqing.</li>
+</ol>
+                </div>
+            </article>
+        </main>
+    </div>
+</body>
+</html>
