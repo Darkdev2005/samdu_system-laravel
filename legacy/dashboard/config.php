@@ -492,8 +492,8 @@ class Database{
             COALESCE(SUM(g.soni), 0) AS jami_talabalar,
             COUNT(DISTINCT g.id) AS guruhlar_soni
         FROM semestrlar s
-        LEFT JOIN fakultetlar f ON f.id = y.fakultet_id
         LEFT JOIN yonalishlar y ON y.id = s.yonalish_id
+        LEFT JOIN fakultetlar f ON f.id = y.fakultet_id
         LEFT JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
         LEFT JOIN akademik_darajalar ad ON ad.id = y.akademik_daraja_id
         LEFT JOIN guruhlar g ON g.yonalish_id = y.id
