@@ -10,16 +10,6 @@
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     // Izoh: Majburiy/Birlashtiriladigan fanlar selectdan olinmaydi, shuning uchun fanlar ro'yxati kerak emas.
 
-    $semestrFakultetMap = [];
-    $semestrMapRes = $db->query("SELECT id, fakultet_id FROM semestrlar");
-    if ($semestrMapRes) {
-        while ($row = mysqli_fetch_assoc($semestrMapRes)) {
-            $sid = (int)($row['id'] ?? 0);
-            if ($sid > 0) {
-                $semestrFakultetMap[$sid] = (int)($row['fakultet_id'] ?? 0);
-            }
-        }
-    }
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -87,7 +77,7 @@
                                         } elseif (strpos($daraja, 'bakalavr') !== false) {
                                             $darajaPrefix = 'B ';
                                         }
-                                        $fakultetId = (int)($semestrFakultetMap[(int)$s['id']] ?? 0);
+                                        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
                                     ?>
                                     <option value="<?= $s['id'] ?>" data-fakultet-id="<?= $fakultetId ?>">
                                         <?= $darajaPrefix . $short . '_' . $s['kirish_yili'] . ' - ' . $s['semestr'] . '-semestr'; ?>
@@ -240,10 +230,10 @@
         </main>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="../assets/vendor/select2/css/select2.min.css" rel="stylesheet" />
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="../assets/vendor/jquery/jquery-3.6.0.min.js"></script>
+    <script src="../assets/vendor/select2/js/select2.min.js"></script>
 
     <script>
         let fanIndex = 0;

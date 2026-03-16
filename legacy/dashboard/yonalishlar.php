@@ -5,6 +5,8 @@
     $akademik_darajalar = $db->get_data_by_table_all('akademik_darajalar');
     $fakultetlar = $db->get_data_by_table_all('fakultetlar');
     $talim_shakllar = $db->get_data_by_table_all('talim_shakllar');
+    $yonalishlarForFilter = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name');
+    $initialYunalishlar = $db->get_yunalishlar_with_details();
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -15,6 +17,38 @@
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .filter-select {
+            min-width: 220px;
+            height: 44px;
+            border: 1px solid #d8e2eb;
+            border-radius: 12px;
+            padding: 0 12px;
+            font-size: 14px;
+            background: #fff;
+            color: #1f2937;
+        }
+        .filter-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .filter-btn {
+            height: 44px;
+            border: none;
+            border-radius: 10px;
+            padding: 0 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .filter-btn.apply {
+            background: #22c55e;
+            color: #fff;
+        }
+        .filter-btn.reset {
+            background: #eef2f7;
+            color: #334155;
+        }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -38,9 +72,27 @@
                     <div class="table-header">
                         <div class="table-title">
                             <h3>Barcha Yo'nalishlar</h3>
-                            <span class="badge" id="totalYonalishlar">0 ta</span>
+                            <span class="badge" id="totalYonalishlar"><?= count($initialYunalishlar) ?> ta</span>
                         </div>
                         <div class="table-actions">
+                            <select id="fakultetFilter" class="filter-select">
+                                <option value="">Barcha fakultetlar</option>
+                                <?php foreach ($fakultetlar as $fakultet): ?>
+                                    <option value="<?= (int)$fakultet['id'] ?>"><?= htmlspecialchars($fakultet['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <select id="yonalishFilter" class="filter-select">
+                                <option value="">Barcha yo'nalishlar</option>
+                                <?php foreach ($yonalishlarForFilter as $y): ?>
+                                    <option value="<?= (int)($y['id'] ?? 0) ?>">
+                                        <?= htmlspecialchars((string)($y['name'] ?? '')) ?><?= !empty($y['kirish_yili']) ? ' - '.htmlspecialchars((string)$y['kirish_yili']) : '' ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="filter-actions">
+                                <button type="button" class="filter-btn apply" id="applyFiltersBtn">Filtrlash</button>
+                                <button type="button" class="filter-btn reset" id="resetFiltersBtn">Tozalash</button>
+                            </div>
                             <div class="search-box">
                                 <i class="fas fa-search"></i>
                                 <input type="text" id="searchYonalish" placeholder="Qidirish...">
@@ -66,7 +118,37 @@
                                 </tr>
                             </thead>
                             <tbody id="yonalishlarTable">
-                                <!-- JavaScript orqali to'ldiriladi -->
+                                <?php foreach ($initialYunalishlar as $yunalish): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($yunalish['id']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['yonalish_nomi']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['yonalish_kodi']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['talim_muddati']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['kirish_yili']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['akademik_daraja']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['talim_shakli']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['kvalifikatsiya']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['fakultet']); ?></td>
+                                        <td><?php echo htmlspecialchars($yunalish['create_at']); ?></td>
+                                        <td>
+                                            <button
+                                                class="btn btn-sm btn-warning editYonalishBtn"
+                                                data-id="<?php echo $yunalish['id']; ?>"
+                                                onclick="openYonalishEdit(<?php echo (int)$yunalish['id']; ?>)"
+                                            >
+                                                <i class="fas fa-edit"></i> Tahrirlash
+                                            </button>
+                                            <button class="btn btn-sm btn-danger deleteYunalishBtn" data-id="<?php echo $yunalish['id']; ?>">
+                                                <i class="fas fa-trash-alt"></i> O'chirish
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                <?php if (empty($initialYunalishlar)): ?>
+                                    <tr>
+                                        <td colspan="11" style="text-align:center; color:#64748b;">Ma'lumot topilmadi</td>
+                                    </tr>
+                                <?php endif; ?>
                             </tbody>
                         </table>
                     </div>
@@ -226,25 +308,117 @@
 
     <script src="../assets/js/app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script id="yonalishFilterData" type="application/json"><?= json_encode(array_map(static fn($y) => [
+        'id' => (int)($y['id'] ?? 0),
+        'name' => (string)($y['name'] ?? ''),
+        'fakultet_id' => (int)($y['fakultet_id'] ?? 0),
+        'kirish_yili' => (string)($y['kirish_yili'] ?? ''),
+    ], $yonalishlarForFilter), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '[]' ?></script>
     <script>
+        const yonalishFilterDataEl = document.getElementById('yonalishFilterData');
+        let allYonalishFilterItems = [];
+        try {
+            allYonalishFilterItems = JSON.parse(yonalishFilterDataEl ? yonalishFilterDataEl.textContent : '[]');
+            if (!Array.isArray(allYonalishFilterItems)) {
+                allYonalishFilterItems = [];
+            }
+        } catch (e) {
+            allYonalishFilterItems = [];
+        }
+        const hasSwal = typeof window.Swal !== 'undefined';
+        const Toast = hasSwal
+            ? Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 2000,
+                timerProgressBar: true
+            })
+            : {
+                fire({ title }) {
+                    console.warn(title || 'Xabar');
+                }
+            };
+
         document.addEventListener('DOMContentLoaded', () => {
             setupModal();
             setupSearch();
-            loadYonalishlar();
+            setupFilters();
+            populateYonalishFilter();
             loadYonalishlarHistory();
         });
         function loadYonalishlar() {
-            fetch('get/yunalishlar_table.php')
+            const params = new URLSearchParams({
+                fakultet_id: document.getElementById('fakultetFilter')?.value || '',
+                yonalish_id: document.getElementById('yonalishFilter')?.value || ''
+            });
+            fetch(`get/yunalishlar_table.php?${params.toString()}`)
                 .then(res => res.text())
                 .then(html => {
+                    if (!/<tr[\s>]/i.test(html)) {
+                        throw new Error('Invalid table response');
+                    }
                     document.getElementById('yonalishlarTable').innerHTML = html;
-                    const total = document.getElementById('yonalishlarTable').children.length;
+                    const rows = Array.from(document.querySelectorAll('#yonalishlarTable tr'));
+                    const total = rows.filter((row) => {
+                        const text = (row.textContent || '').toLowerCase();
+                        return !text.includes("ma'lumot topilmadi");
+                    }).length;
                     document.getElementById('totalYonalishlar').textContent = total + ' ta';
                 })
-                .catch(() => {
-                    document.getElementById('yonalishlarTable').innerHTML =
-                        '<tr><td colspan="10">Xatolik yuz berdi</td></tr>';
+                .catch((err) => {
+                    console.error(err);
+                    Toast.fire({ icon: 'error', title: "Yo'nalishlar ro'yxatini yuklashda xatolik" });
                 });
+        }
+
+        function populateYonalishFilter() {
+            const fakultetId = document.getElementById('fakultetFilter')?.value || '';
+            const yonalishSelect = document.getElementById('yonalishFilter');
+            if (!yonalishSelect) return;
+
+            const currentValue = yonalishSelect.value;
+            let options = "<option value=\"\">Barcha yo'nalishlar</option>";
+            allYonalishFilterItems
+                .filter(item => !fakultetId || Number(item.fakultet_id) === Number(fakultetId))
+                .forEach(item => {
+                    const label = item.kirish_yili ? `${item.name} - ${item.kirish_yili}` : item.name;
+                    const selected = String(item.id) === String(currentValue) ? 'selected' : '';
+                    options += `<option value=\"${item.id}\" ${selected}>${label}</option>`;
+                });
+
+            yonalishSelect.innerHTML = options;
+        }
+
+        function setupFilters() {
+            const fakultetFilter = document.getElementById('fakultetFilter');
+            const yonalishFilter = document.getElementById('yonalishFilter');
+            const applyBtn = document.getElementById('applyFiltersBtn');
+            const resetBtn = document.getElementById('resetFiltersBtn');
+
+            if (fakultetFilter) {
+                fakultetFilter.addEventListener('change', () => {
+                    if (yonalishFilter) {
+                        yonalishFilter.value = '';
+                    }
+                    populateYonalishFilter();
+                });
+            }
+
+            if (applyBtn) {
+                applyBtn.addEventListener('click', () => {
+                    loadYonalishlar();
+                });
+            }
+
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    if (fakultetFilter) fakultetFilter.value = '';
+                    if (yonalishFilter) yonalishFilter.value = '';
+                    populateYonalishFilter();
+                    loadYonalishlar();
+                });
+            }
         }
 
         function loadYonalishlarHistory() {
@@ -346,22 +520,22 @@
         window.openYonalishEdit = openYonalishEdit;
 
         document.addEventListener('click', (e) => {
+            const editBtn = e.target.closest('.editYonalishBtn, .editYunalishBtn');
+            if (editBtn) {
+                const id = editBtn.dataset.id || '';
+                if (id) {
+                    openYonalishEdit(Number(id));
+                }
+                return;
+            }
+
             const deleteBtn = e.target.closest('.deleteYunalishBtn');
             if (!deleteBtn) return;
 
             const id = deleteBtn.dataset.id || '';
             if (!id) return;
 
-            Swal.fire({
-                title: "Ishonchingiz komilmi?",
-                text: "Yo'nalish o'chiriladi",
-                icon: "warning",
-                showCancelButton: true,
-                confirmButtonText: "Ha, o'chirilsin",
-                cancelButtonText: "Bekor qilish"
-            }).then((result) => {
-                if (!result.isConfirmed) return;
-
+            const doDelete = () => {
                 const formData = new FormData();
                 formData.append('id', id);
 
@@ -383,7 +557,23 @@
                 .catch(() => {
                     Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
                 });
-            });
+            };
+
+            if (hasSwal) {
+                Swal.fire({
+                    title: "Ishonchingiz komilmi?",
+                    text: "Yo'nalish o'chiriladi",
+                    icon: "warning",
+                    showCancelButton: true,
+                    confirmButtonText: "Ha, o'chirilsin",
+                    cancelButtonText: "Bekor qilish"
+                }).then((result) => {
+                    if (!result.isConfirmed) return;
+                    doDelete();
+                });
+            } else if (window.confirm("Yo'nalish o'chiriladi. Davom etilsinmi?")) {
+                doDelete();
+            }
         });
 
         function setupSearch() {
@@ -402,14 +592,6 @@
                 });
             });
         }
-
-        const Toast = Swal.mixin({
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 2000,
-            timerProgressBar: true
-        });
 
         let isSavingYonalish = false;
         document.getElementById('saveYonalishBtn').addEventListener('click', async () => {
@@ -450,25 +632,32 @@
             }
 
             if (editId) {
-                const syncDecision = await Swal.fire({
-                    title: "Sinxronlash holatini tanlang",
-                    text: "Bu tahrir sinxronlangan holatda saqlansinmi?",
-                    icon: "question",
-                    showCancelButton: true,
-                    showDenyButton: true,
-                    confirmButtonText: "Ha, sinxronlansin",
-                    denyButtonText: "Yo'q, sinxronlanmasin",
-                    cancelButtonText: "Bekor qilish"
-                });
+                if (hasSwal) {
+                    const syncDecision = await Swal.fire({
+                        title: "Sinxronlash holatini tanlang",
+                        text: "Bu tahrir sinxronlangan holatda saqlansinmi?",
+                        icon: "question",
+                        showCancelButton: true,
+                        showDenyButton: true,
+                        confirmButtonText: "Ha, sinxronlansin",
+                        denyButtonText: "Yo'q, sinxronlanmasin",
+                        cancelButtonText: "Bekor qilish"
+                    });
 
-                if (syncDecision.isDismissed) {
-                    isSavingYonalish = false;
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = oldBtnText;
-                    return;
+                    if (syncDecision.isDismissed) {
+                        isSavingYonalish = false;
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = oldBtnText;
+                        return;
+                    }
+
+                    formData.append('sync_mode', syncDecision.isConfirmed ? 'sync' : 'nosync');
+                } else {
+                    const syncMode = window.confirm("Tahrir sinxronlangan holatda saqlansinmi?")
+                        ? 'sync'
+                        : 'nosync';
+                    formData.append('sync_mode', syncMode);
                 }
-
-                formData.append('sync_mode', syncDecision.isConfirmed ? 'sync' : 'nosync');
             }
 
             const endpoint = editId ? 'insert/update_yonalish.php' : 'insert/add_yonalish.php';

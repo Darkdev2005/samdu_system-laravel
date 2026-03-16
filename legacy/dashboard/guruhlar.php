@@ -1,7 +1,7 @@
 <?php
 include_once 'config.php';
 $db = new Database();
-$yonalishlar = $db->get_data_by_table_all('yonalishlar');
+$yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_yili');
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -13,6 +13,25 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="../assets/vendor/select2/css/select2.min.css" rel="stylesheet">
+    <style>
+        #guruhModal .select2-container {
+            width: 100% !important;
+        }
+        #guruhModal .select2-container--default .select2-selection--single {
+            height: 44px;
+            border: 1px solid #d8e2eb;
+            border-radius: 10px;
+        }
+        #guruhModal .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 42px;
+            padding-left: 12px;
+        }
+        #guruhModal .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 42px;
+            right: 8px;
+        }
+    </style>
 </head>
 <body>
 
@@ -115,11 +134,11 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar');
                         <label>
                             <i class="fas fa-graduation-cap"></i> Yo‘nalish
                         </label>
-                        <select class="form-control" name="yonalish_id" required>
+                        <select class="form-control" id="yonalishSelect" name="yonalish_id" required>
                             <option value="">Tanlang</option>
                             <?php foreach ($yonalishlar as $y): ?>
                                 <option value="<?= $y['id'] ?>">
-                                    <?= htmlspecialchars($y['name']) ?>
+                                    <?= htmlspecialchars($y['name']) ?><?= !empty($y['kirish_yili']) ? ' - ' . htmlspecialchars((string)$y['kirish_yili']) : '' ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -150,6 +169,8 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="../assets/vendor/jquery/jquery-3.6.0.min.js"></script>
+    <script src="../assets/vendor/select2/js/select2.min.js"></script>
     <script src="../assets/js/app.js"></script>
 
     <script>
@@ -166,7 +187,26 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar');
             initGuruhSearch();
             loadGuruhlar();
             loadGuruhlarHistory();
+            initYonalishSelect();
         });
+
+        function initYonalishSelect() {
+            if (typeof window.jQuery === 'undefined') return;
+            const $select = $('#yonalishSelect');
+            const $modal = $('#guruhModal');
+            if (!$select.length || !$modal.length || typeof $select.select2 !== 'function') return;
+
+            if ($select.hasClass('select2-hidden-accessible')) {
+                $select.select2('destroy');
+            }
+
+            $select.select2({
+                placeholder: "Yo'nalishni qidiring...",
+                allowClear: true,
+                width: '100%',
+                dropdownParent: $modal,
+            });
+        }
 
         function loadGuruhlar() {
             fetch('get/guruhlar_table.php')
@@ -204,6 +244,9 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar');
                 document.getElementById('saveGuruhBtn').textContent = "Saqlash";
                 document.getElementById('guruhEditId').value = '';
                 document.getElementById('guruhForm').reset();
+                if (typeof window.jQuery !== 'undefined') {
+                    $('#yonalishSelect').val('').trigger('change.select2');
+                }
                 modal.classList.add('show');
             };
             document.getElementById('closeGuruhModal').onclick =
@@ -229,6 +272,9 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar');
                             const row = data.data;
                             document.getElementById('guruhEditId').value = row.id || '';
                             document.querySelector('select[name="yonalish_id"]').value = row.yonalish_id || '';
+                            if (typeof window.jQuery !== 'undefined') {
+                                $('#yonalishSelect').val(String(row.yonalish_id || '')).trigger('change.select2');
+                            }
                             document.querySelector('input[name="guruh_nomi"]').value = row.guruh_nomer || '';
                             document.querySelector('input[name="talaba_soni"]').value = row.soni || '';
 
@@ -354,6 +400,9 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar');
                 if (data.success) {
                     Toast.fire({ icon: 'success', title: data.message });
                     form.reset();
+                    if (typeof window.jQuery !== 'undefined') {
+                        $('#yonalishSelect').val('').trigger('change.select2');
+                    }
                     document.getElementById('guruhEditId').value = '';
                     document.getElementById('guruhModalTitle').textContent = "Guruh qo'shish";
                     document.getElementById('saveGuruhBtn').textContent = "Saqlash";

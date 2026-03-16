@@ -9,7 +9,7 @@ $semestrId = (int)($_GET['semestr_id'] ?? 0);
 
 $where = [];
 if ($fakultetId > 0) {
-    $where[] = "s.fakultet_id = $fakultetId";
+    $where[] = "y.fakultet_id = $fakultetId";
 }
 if ($semestrId > 0) {
     $where[] = "s.id = $semestrId";

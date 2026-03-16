@@ -1,7 +1,20 @@
 <?php
-    include_once '../config.php';
+    include_once __DIR__ . '/../config.php';
     $db = new Database();
-    $semsetrlar = $db->get_semestrlar();
+
+    $filters = [];
+    $request = array_merge($_GET ?? [], $_POST ?? []);
+    if (!empty($request['fakultet_id'])) {
+        $filters['fakultet_id'] = (int)$request['fakultet_id'];
+    }
+    if (!empty($request['yonalish_id'])) {
+        $filters['yonalish_id'] = (int)$request['yonalish_id'];
+    }
+    if (!empty($request['semestr'])) {
+        $filters['semestr'] = (int)$request['semestr'];
+    }
+
+    $semsetrlar = $db->get_semestrlar($filters);
 ?>
 <?php foreach ($semsetrlar as $semestr): ?>
     <tr>
@@ -24,3 +37,8 @@
         </td>
     </tr>
 <?php endforeach; ?>
+<?php if (empty($semsetrlar)): ?>
+    <tr>
+        <td colspan="6" style="text-align:center; color:#64748b;">Ma'lumot topilmadi</td>
+    </tr>
+<?php endif; ?>

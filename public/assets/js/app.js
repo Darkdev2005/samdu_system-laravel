@@ -1,5 +1,58 @@
 // Umumiy JavaScript funksiyalar
 
+// SweetAlert CDN yuklanmasa ham sahifalardagi edit/delete oqimi to'xtab qolmasligi uchun fallback.
+if (typeof window.Swal === 'undefined') {
+    window.Swal = {
+        mixin() {
+            return {
+                fire(options = {}) {
+                    const message = options.title || options.text || 'Xabar';
+                    window.alert(message);
+                    return Promise.resolve({
+                        isConfirmed: true,
+                        isDenied: false,
+                        isDismissed: false
+                    });
+                }
+            };
+        },
+        fire(...args) {
+            const options = (typeof args[0] === 'object' && args[0] !== null)
+                ? args[0]
+                : {
+                    title: args[0] || '',
+                    text: args[1] || '',
+                    icon: args[2] || ''
+                };
+
+            const text = options.text || options.title || 'Davom etilsinmi?';
+
+            if (options.showDenyButton) {
+                const answer = window.prompt(`${text}\nY - ha, N - yo'q, C - bekor`, 'Y');
+                if (answer === null) {
+                    return Promise.resolve({ isConfirmed: false, isDenied: false, isDismissed: true });
+                }
+                const norm = String(answer).trim().toLowerCase();
+                if (norm === 'n') {
+                    return Promise.resolve({ isConfirmed: false, isDenied: true, isDismissed: false });
+                }
+                if (norm === 'c') {
+                    return Promise.resolve({ isConfirmed: false, isDenied: false, isDismissed: true });
+                }
+                return Promise.resolve({ isConfirmed: true, isDenied: false, isDismissed: false });
+            }
+
+            if (options.showCancelButton) {
+                const ok = window.confirm(text);
+                return Promise.resolve({ isConfirmed: ok, isDenied: false, isDismissed: !ok });
+            }
+
+            window.alert(text);
+            return Promise.resolve({ isConfirmed: true, isDenied: false, isDismissed: false });
+        }
+    };
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Joriy sanani ko'rsatish
     updateCurrentDate();

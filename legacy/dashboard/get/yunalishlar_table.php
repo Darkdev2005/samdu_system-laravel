@@ -1,8 +1,16 @@
 <?php
-    include_once '../config.php';
+    include_once __DIR__ . '/../config.php';
     $db = new Database();
+    $request = array_merge($_GET ?? [], $_POST ?? []);
+    $filters = [];
+    if (!empty($request['fakultet_id'])) {
+        $filters['fakultet_id'] = (int)$request['fakultet_id'];
+    }
+    if (!empty($request['yonalish_id'])) {
+        $filters['yonalish_id'] = (int)$request['yonalish_id'];
+    }
 
-    $yunalishlar = $db->get_yunalishlar_with_details();
+    $yunalishlar = $db->get_yunalishlar_with_details($filters);
 ?>
 <?php foreach ($yunalishlar as $yunalish): ?>
     <tr>
@@ -30,3 +38,8 @@
         </td>
     </tr>
 <?php endforeach; ?>
+<?php if (empty($yunalishlar)): ?>
+    <tr>
+        <td colspan="11" style="text-align:center; color:#64748b;">Ma'lumot topilmadi</td>
+    </tr>
+<?php endif; ?>

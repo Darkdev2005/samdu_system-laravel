@@ -406,7 +406,19 @@ class Database{
         }
         return $this -> query($sql);
     }
-    public function get_yunalishlar_with_details(){
+    public function get_yunalishlar_with_details($filters = []){
+        $where = [];
+        if (!empty($filters['fakultet_id'])) {
+            $where[] = "y.fakultet_id = " . (int)$filters['fakultet_id'];
+        }
+        if (!empty($filters['yonalish_id'])) {
+            $where[] = "y.id = " . (int)$filters['yonalish_id'];
+        }
+        $whereSql = '';
+        if (!empty($where)) {
+            $whereSql = 'WHERE ' . implode(' AND ', $where);
+        }
+
         $sql = "SELECT 
             y.id,
             y.name            AS yonalish_nomi,
@@ -422,6 +434,7 @@ class Database{
         LEFT JOIN akademik_darajalar ad ON y.akademik_daraja_id = ad.id
         LEFT JOIN talim_shakllar ts    ON y.talim_shakli_id = ts.id
         LEFT JOIN fakultetlar f         ON y.fakultet_id = f.id
+        {$whereSql}
         ORDER BY y.id DESC;
         ";
         $result = $this->query($sql);
@@ -443,9 +456,28 @@ class Database{
         }
         return $data;
     }
-    public function get_semestrlar(){
+    public function get_semestrlar($filters = []){
+        $where = [
+            "y.id IS NOT NULL",
+            "(IFNULL(y.muddati, 0) = 0 OR s.semestr <= (IFNULL(y.muddati, 0) * 2))"
+        ];
+
+        if (!empty($filters['fakultet_id'])) {
+            $where[] = "y.fakultet_id = " . (int)$filters['fakultet_id'];
+        }
+        if (!empty($filters['yonalish_id'])) {
+            $where[] = "s.yonalish_id = " . (int)$filters['yonalish_id'];
+        }
+        if (!empty($filters['semestr'])) {
+            $where[] = "s.semestr = " . (int)$filters['semestr'];
+        }
+
+        $whereSql = 'WHERE ' . implode(' AND ', $where);
         $sql = "SELECT 
             s.id,
+            s.fakultet_id,
+            s.yonalish_id,
+            y.fakultet_id AS yonalish_fakultet_id,
             f.name AS fakultet_name,
             y.name AS yonalish_name,
             y.kirish_yili,
@@ -460,15 +492,17 @@ class Database{
             COALESCE(SUM(g.soni), 0) AS jami_talabalar,
             COUNT(DISTINCT g.id) AS guruhlar_soni
         FROM semestrlar s
-        LEFT JOIN fakultetlar f ON f.id = s.fakultet_id
+        LEFT JOIN fakultetlar f ON f.id = y.fakultet_id
         LEFT JOIN yonalishlar y ON y.id = s.yonalish_id
         LEFT JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
         LEFT JOIN akademik_darajalar ad ON ad.id = y.akademik_daraja_id
         LEFT JOIN guruhlar g ON g.yonalish_id = y.id
-        WHERE y.id IS NOT NULL
-          AND s.semestr <= (IFNULL(y.muddati, 0) * 2)
+        {$whereSql}
         GROUP BY
             s.id,
+            s.fakultet_id,
+            s.yonalish_id,
+            y.fakultet_id,
             f.name,
             y.name,
             y.kirish_yili,
@@ -479,7 +513,8 @@ class Database{
             y.kattaguruh_soni,
             y.kichikguruh_soni,
             s.semestr,
-            s.create_at;
+            s.create_at
+        ORDER BY f.name, y.name, s.semestr;
         ;";
         $result = $this->query($sql);
         $data = [];
