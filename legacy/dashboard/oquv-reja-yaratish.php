@@ -9,6 +9,38 @@
     $dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     // Izoh: Majburiy/Birlashtiriladigan fanlar selectdan olinmaydi, shuning uchun fanlar ro'yxati kerak emas.
+    $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $makeShortCode = static function (string $name): string {
+        $words = preg_split('/\s+/', trim($name)) ?: [];
+        $short = '';
+        foreach ($words as $word) {
+            $word = trim((string)$word);
+            if ($word === '') {
+                continue;
+            }
+            if (function_exists('mb_substr') && function_exists('mb_strtoupper')) {
+                $first = @mb_substr($word, 0, 1, 'UTF-8');
+                if ($first !== false && $first !== '') {
+                    $short .= (string)@mb_strtoupper($first, 'UTF-8');
+                    continue;
+                }
+            }
+            $short .= strtoupper((string)substr($word, 0, 1));
+        }
+        return $short;
+    };
+    $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+    if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+        $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+    }
+    $darsSoatTurlariJson = json_encode($dars_soat_turlari ?? [], $jsonFlags);
+    if ($darsSoatTurlariJson === false) {
+        $darsSoatTurlariJson = '[]';
+    }
+    $kafedralarJson = json_encode($kafedralar ?? [], $jsonFlags);
+    if ($kafedralarJson === false) {
+        $kafedralarJson = '[]';
+    }
 
 ?>
 <!DOCTYPE html>
@@ -56,7 +88,7 @@
                             <select class="form-control" id="fakultetFilter">
                                 <option value="">Barcha fakultetlar</option>
                                 <?php foreach ($fakultetlar as $f): ?>
-                                    <option value="<?= (int)$f['id'] ?>"><?= htmlspecialchars($f['name']) ?></option>
+                                    <option value="<?= (int)$f['id'] ?>"><?= $h($f['name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -65,12 +97,11 @@
                             <select class="form-control" name="semestr_id" id="semestrSelect" required>
                                 <option value="">Tanlang</option>
                                     <?php foreach ($semestrlar as $s): 
-                                        $short = '';
-                                        $words = preg_split('/\s+/u', trim($s['yonalish_name']));
-                                        foreach ($words as $w) {
-                                            $short .= mb_strtoupper(mb_substr($w, 0, 1, 'UTF-8'), 'UTF-8');
-                                        }
-                                        $daraja = mb_strtolower(trim($s['akademik_daraja_name'] ?? ''), 'UTF-8');
+                                        $short = $makeShortCode((string)($s['yonalish_name'] ?? ''));
+                                        $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
+                                        $daraja = function_exists('mb_strtolower')
+                                            ? (string)@mb_strtolower($darajaRaw, 'UTF-8')
+                                            : strtolower($darajaRaw);
                                         $darajaPrefix = '';
                                         if (strpos($daraja, 'magistr') !== false) {
                                             $darajaPrefix = 'M ';
@@ -80,7 +111,7 @@
                                         $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
                                     ?>
                                     <option value="<?= $s['id'] ?>" data-fakultet-id="<?= $fakultetId ?>">
-                                        <?= $darajaPrefix . $short . '_' . $s['kirish_yili'] . ' - ' . $s['semestr'] . '-semestr'; ?>
+                                        <?= $h($darajaPrefix . $short . '_' . ($s['kirish_yili'] ?? '') . ' - ' . ($s['semestr'] ?? '') . '-semestr') ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -124,7 +155,7 @@
                                         <option value="">Tanlang</option>
                                         <?php foreach ($kafedralar as $k): ?>
                                             <option value="<?= $k['id'] ?>">
-                                                <?= htmlspecialchars($k['name']) ?>
+                                                <?= $h($k['name']) ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
@@ -138,7 +169,7 @@
                                             <option value="">Tanlang</option>
                                             <?php foreach ($dars_soat_turlari as $d): ?>
                                                 <option value="<?= $d['id'] ?>">
-                                                    <?= htmlspecialchars($d['name']) ?>
+                                                    <?= $h($d['name']) ?>
                                                 </option>
                                             <?php endforeach; ?>
                                         </select>
@@ -230,17 +261,19 @@
         </main>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link href="../assets/vendor/select2/css/select2.min.css" rel="stylesheet" />
+    <link href="/assets/vendor/select2/css/select2.min.css" rel="stylesheet" />
 
-    <script src="../assets/vendor/jquery/jquery-3.6.0.min.js"></script>
-    <script src="../assets/vendor/select2/js/select2.min.js"></script>
+    <script src="/assets/vendor/jquery/jquery-3.6.0.min.js"></script>
+    <script>window.jQuery || document.write('<script src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>')</script>
+    <script src="/assets/vendor/select2/js/select2.min.js"></script>
+    <script>if (window.jQuery && !window.jQuery.fn.select2) { document.write('<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"><\/script>'); }</script>
 
     <script>
         let fanIndex = 0;
         let allSemestrOptions = [];
         let createdRowsById = {};
-        const darsTurlariListDefault = <?php echo json_encode($dars_soat_turlari, JSON_UNESCAPED_UNICODE); ?>;
-        const kafedralarList = <?php echo json_encode($kafedralar, JSON_UNESCAPED_UNICODE); ?>;
+        const darsTurlariListDefault = <?php echo $darsSoatTurlariJson; ?>;
+        const kafedralarList = <?php echo $kafedralarJson; ?>;
         const fanTypeLabels = {
             0: "Majburiy",
             1: "Tanlov",
@@ -251,16 +284,18 @@
         $(document).ready(function() {
             cacheSemestrOptions();
 
-            $('#fakultetFilter').select2({
-                placeholder: "Fakultetni tanlang",
-                allowClear: true,
-                width: '100%',
-            });
-            $('#semestrSelect').select2({
-                placeholder: "Semestrni tanlang",
-                allowClear: true,
-                width: '100%',
-            });
+            if ($.fn && typeof $.fn.select2 === 'function') {
+                $('#fakultetFilter').select2({
+                    placeholder: "Fakultetni tanlang",
+                    allowClear: true,
+                    width: '100%',
+                });
+                $('#semestrSelect').select2({
+                    placeholder: "Semestrni tanlang",
+                    allowClear: true,
+                    width: '100%',
+                });
+            }
             
             initializeSelect2($('.reja-card:first'));
 
@@ -319,14 +354,31 @@
             `;
         }
 
+        function buildKafedralarOptionsHtml(selectedId = '') {
+            const selected = String(selectedId || '');
+            let html = '';
+            (kafedralarList || []).forEach(item => {
+                const id = String(item.id || '');
+                const selectedAttr = id === selected ? ' selected' : '';
+                html += `<option value="${escapeHtml(id)}"${selectedAttr}>${escapeHtml(item.name || '')}</option>`;
+            });
+            return html;
+        }
+
+        function buildDarsTuriOptionsHtml(selectedId = '') {
+            const selected = String(selectedId || '');
+            let html = '';
+            (darsTurlariListDefault || []).forEach(item => {
+                const id = String(item.id || '');
+                const selectedAttr = id === selected ? ' selected' : '';
+                html += `<option value="${escapeHtml(id)}"${selectedAttr}>${escapeHtml(item.name || '')}</option>`;
+            });
+            return html;
+        }
+
         function switchToMandatory(card, index, typeValue = 0) {
-            const kafedralarOptions = `<?php foreach ($kafedralar as $k): ?>
-                <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['name']) ?></option>
-            <?php endforeach; ?>`;
-            
-            const darsTurlariOptions = `<?php foreach ($dars_soat_turlari as $d): ?>
-                <option value="<?= $d['id'] ?>"><?= htmlspecialchars($d['name']) ?></option>
-            <?php endforeach; ?>`;
+            const kafedralarOptions = buildKafedralarOptionsHtml('');
+            const darsTurlariOptions = buildDarsTuriOptionsHtml('');
 
             const mandatoryHtml = `
                 ${renderTypeButtons(index, typeValue)}
@@ -427,11 +479,7 @@
                             <label>Dars turi</label>
                             <select class="form-control" name="dars_turi[${index}][]" required>
                                 <option value="">Tanlang</option>
-                                <?php foreach ($dars_soat_turlari as $d): ?>
-                                    <option value="<?= $d['id'] ?>">
-                                        <?= htmlspecialchars($d['name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
+                                ${buildDarsTuriOptionsHtml('')}
                             </select>
                         </div>
 
@@ -534,10 +582,7 @@
             const card = $(this).closest('.reja-card');
             const wrapper = $(this).closest('.darsSoatWrapper');
             const index = card.data('index');
-            
-            const darsTurlariOptions = `<?php foreach ($dars_soat_turlari as $d): ?>
-                <option value="<?= $d['id'] ?>"><?= htmlspecialchars($d['name']) ?></option>
-            <?php endforeach; ?>`;
+            const darsTurlariOptions = buildDarsTuriOptionsHtml('');
             
             const newRow = $(`
                 <div class="form-grid-2 dars-soat-row">
@@ -618,6 +663,9 @@
         }
 
         function initializeSelect2(container) {
+            if (!window.jQuery || !$.fn || typeof $.fn.select2 !== 'function') {
+                return;
+            }
             setTimeout(() => {
                 container.find('select').each(function() {
                     const name = $(this).attr('name') || '';
@@ -637,7 +685,13 @@
             }, 10);
         }
 
-        const Toast = Swal.mixin({
+        const SwalApi = window.Swal || {
+            mixin: () => ({ fire: () => {} }),
+            fire: () => Promise.resolve({ isConfirmed: false }),
+            showValidationMessage: () => {},
+        };
+
+        const Toast = SwalApi.mixin({
             toast: true,
             position: 'top-end',
             showConfirmButton: false,
@@ -783,7 +837,7 @@
             if (!row) return;
 
             const darsTurlari = darsTurlariListDefault;
-            Swal.fire({
+            SwalApi.fire({
                 title: "O'quv reja tahrirlash",
                 width: 860,
                 html: buildEditModalHtml(row, darsTurlari),
@@ -798,14 +852,14 @@
                     const izoh = String($('#editIzoh').val() || '').trim();
 
                     if (fanCode === '' || fanName === '') {
-                        Swal.showValidationMessage("Fan kodi va fan nomi to'ldirilishi shart");
+                        SwalApi.showValidationMessage("Fan kodi va fan nomi to'ldirilishi shart");
                         return false;
                     }
 
                     const lockKafedra = parseInt(row.kafedra_lock || 0, 10) === 1;
                     const kafedraId = lockKafedra ? parseInt(row.kafedra_id || 0, 10) : parseInt(kafedraVal || 0, 10);
                     if (!lockKafedra && kafedraId <= 0) {
-                        Swal.showValidationMessage("Kafedrani tanlang");
+                        SwalApi.showValidationMessage("Kafedrani tanlang");
                         return false;
                     }
 
@@ -820,7 +874,7 @@
                     });
 
                     if (!hasPositive) {
-                        Swal.showValidationMessage("Kamida bitta dars soati 0 dan katta bo'lishi kerak");
+                        SwalApi.showValidationMessage("Kamida bitta dars soati 0 dan katta bo'lishi kerak");
                         return false;
                     }
 
