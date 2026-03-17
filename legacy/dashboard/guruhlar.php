@@ -53,8 +53,18 @@ $initialGuruhlar = $db->get_guruhlar();
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="../assets/vendor/select2/css/select2.min.css" rel="stylesheet">
     <style>
+        .table-header .table-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
         .filter-select {
             min-width: 220px;
+            max-width: 360px;
+            flex: 1 1 260px;
             height: 44px;
             border: 1px solid #d8e2eb;
             border-radius: 12px;
@@ -66,6 +76,7 @@ $initialGuruhlar = $db->get_guruhlar();
         .filter-actions {
             display: flex;
             gap: 8px;
+            flex: 0 0 auto;
         }
         .filter-btn {
             height: 44px;
@@ -82,6 +93,36 @@ $initialGuruhlar = $db->get_guruhlar();
         .filter-btn.reset {
             background: #eef2f7;
             color: #334155;
+        }
+        .table-header .search-box {
+            min-width: 220px;
+            flex: 1 1 240px;
+            max-width: 320px;
+        }
+        .table-header .search-box input {
+            width: 100%;
+        }
+        @media (max-width: 1200px) {
+            .table-header .table-actions {
+                justify-content: flex-start;
+                width: 100%;
+            }
+            .filter-select {
+                max-width: none;
+            }
+        }
+        @media (max-width: 768px) {
+            .filter-select,
+            .table-header .search-box {
+                min-width: 100%;
+                flex-basis: 100%;
+            }
+            .filter-actions {
+                width: 100%;
+            }
+            .filter-actions .filter-btn {
+                flex: 1 1 calc(50% - 4px);
+            }
         }
         #guruhModal .select2-container {
             width: 100% !important;
