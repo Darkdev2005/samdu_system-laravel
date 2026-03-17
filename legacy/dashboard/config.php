@@ -615,9 +615,61 @@ class Database{
         }
         return $data;
     }
-    public function get_guruhlar(){
-        $sql = "SELECT g.id, g.guruh_nomer, g.soni, g.create_at, y.name AS yonalish_name FROM guruhlar g
-        JOIN yonalishlar y ON y.id = g.yonalish_id ";
+    public function get_guruhlar($filters = []){
+        $hasYonalishFakultet = false;
+        $fakultetColRes = $this->query("SHOW COLUMNS FROM yonalishlar LIKE 'fakultet_id'");
+        if ($fakultetColRes && mysqli_num_rows($fakultetColRes) > 0) {
+            $hasYonalishFakultet = true;
+        }
+
+        $where = [];
+        if (!empty($filters['yonalish_id'])) {
+            $where[] = "y.id = " . (int)$filters['yonalish_id'];
+        }
+        if (!empty($filters['fakultet_id'])) {
+            $fakultetId = (int)$filters['fakultet_id'];
+            if ($hasYonalishFakultet) {
+                $where[] = "(y.fakultet_id = {$fakultetId} OR (y.fakultet_id IS NULL AND sf.fakultet_id = {$fakultetId}))";
+            } else {
+                $where[] = "sf.fakultet_id = {$fakultetId}";
+            }
+        }
+
+        $whereSql = '';
+        if (!empty($where)) {
+            $whereSql = 'WHERE ' . implode(' AND ', $where);
+        }
+
+        $fakultetSelect = $hasYonalishFakultet
+            ? "COALESCE(yf.id, sf.fakultet_id) AS fakultet_id,
+               COALESCE(yf.name, sf_name.name) AS fakultet_name"
+            : "sf.fakultet_id AS fakultet_id,
+               sf_name.name AS fakultet_name";
+
+        $fakultetJoin = $hasYonalishFakultet
+            ? "LEFT JOIN fakultetlar yf ON yf.id = y.fakultet_id"
+            : "";
+
+        $sql = "SELECT
+                    g.id,
+                    g.guruh_nomer,
+                    g.soni,
+                    g.create_at,
+                    y.id AS yonalish_id,
+                    y.name AS yonalish_name,
+                    {$fakultetSelect}
+                FROM guruhlar g
+                JOIN yonalishlar y ON y.id = g.yonalish_id
+                LEFT JOIN (
+                    SELECT yonalish_id, MAX(fakultet_id) AS fakultet_id
+                    FROM semestrlar
+                    WHERE fakultet_id IS NOT NULL
+                    GROUP BY yonalish_id
+                ) sf ON sf.yonalish_id = y.id
+                {$fakultetJoin}
+                LEFT JOIN fakultetlar sf_name ON sf_name.id = sf.fakultet_id
+                {$whereSql}
+                ORDER BY g.id ASC";
         $result = $this->query($sql);
         $data = [];
         while ($row = mysqli_fetch_assoc($result)) {

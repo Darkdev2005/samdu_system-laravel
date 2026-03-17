@@ -20,6 +20,8 @@
     <style>
         .filter-select {
             min-width: 220px;
+            max-width: 340px;
+            flex: 1 1 220px;
             height: 44px;
             border: 1px solid #d8e2eb;
             border-radius: 12px;
@@ -28,9 +30,19 @@
             background: #fff;
             color: #1f2937;
         }
+        .table-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 10px;
+            flex: 1 1 780px;
+            min-width: 300px;
+        }
         .filter-actions {
             display: flex;
             gap: 8px;
+            flex-wrap: wrap;
         }
         .filter-btn {
             height: 44px;
@@ -39,6 +51,7 @@
             padding: 0 16px;
             font-weight: 600;
             cursor: pointer;
+            white-space: nowrap;
         }
         .filter-btn.apply {
             background: #22c55e;
@@ -47,6 +60,39 @@
         .filter-btn.reset {
             background: #eef2f7;
             color: #334155;
+        }
+        .search-box {
+            flex: 1 1 240px;
+            min-width: 220px;
+            max-width: 320px;
+        }
+        .search-box input {
+            width: 100%;
+        }
+        @media (max-width: 1200px) {
+            .table-actions {
+                flex: 1 1 100%;
+                justify-content: flex-start;
+            }
+            .search-box {
+                max-width: 100%;
+            }
+        }
+        @media (max-width: 768px) {
+            .filter-select {
+                min-width: 100%;
+                max-width: 100%;
+                flex: 1 1 100%;
+            }
+            .filter-actions {
+                width: 100%;
+            }
+            .filter-btn {
+                flex: 1 1 140px;
+            }
+            .search-box {
+                min-width: 100%;
+            }
         }
     </style>
 </head>

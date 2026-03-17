@@ -1,7 +1,15 @@
 <?php
     include_once '../config.php';
     $db = new Database();
-    $guruhlar = $db->get_guruhlar();
+    $request = array_merge($_GET ?? [], $_POST ?? []);
+    $filters = [];
+    if (!empty($request['fakultet_id'])) {
+        $filters['fakultet_id'] = (int)$request['fakultet_id'];
+    }
+    if (!empty($request['yonalish_id'])) {
+        $filters['yonalish_id'] = (int)$request['yonalish_id'];
+    }
+    $guruhlar = $db->get_guruhlar($filters);
 ?>
 <?php foreach($guruhlar as $guruh): ?>
     <tr>
@@ -20,3 +28,8 @@
         </td>
     </tr>
 <?php endforeach; ?>
+<?php if (empty($guruhlar)): ?>
+    <tr>
+        <td colspan="6" style="text-align:center; color:#64748b;">Ma'lumot topilmadi</td>
+    </tr>
+<?php endif; ?>

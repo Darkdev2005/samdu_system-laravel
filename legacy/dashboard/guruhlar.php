@@ -1,7 +1,45 @@
 <?php
 include_once 'config.php';
 $db = new Database();
-$yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_yili');
+$fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
+$yonalishlar = [];
+$yonalishRes = $db->query("
+    SELECT
+        y.id,
+        y.name,
+        y.kirish_yili,
+        MAX(s.fakultet_id) AS fakultet_id
+    FROM yonalishlar y
+    LEFT JOIN semestrlar s ON s.yonalish_id = y.id
+    GROUP BY y.id, y.name, y.kirish_yili
+    ORDER BY y.name, y.kirish_yili
+");
+if ($yonalishRes) {
+    while ($row = mysqli_fetch_assoc($yonalishRes)) {
+        $yonalishlar[] = $row;
+    }
+}
+if (empty($yonalishlar)) {
+    $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_yili');
+}
+$yonalishFilterJson = json_encode(
+    array_values(
+        array_map(
+            static fn(array $row): array => [
+                'id' => (int)($row['id'] ?? 0),
+                'name' => (string)($row['name'] ?? ''),
+                'fakultet_id' => (int)($row['fakultet_id'] ?? 0),
+                'kirish_yili' => (string)($row['kirish_yili'] ?? ''),
+            ],
+            $yonalishlar
+        )
+    ),
+    JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+);
+if ($yonalishFilterJson === false) {
+    $yonalishFilterJson = '[]';
+}
+$initialGuruhlar = $db->get_guruhlar();
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -15,6 +53,36 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="../assets/vendor/select2/css/select2.min.css" rel="stylesheet">
     <style>
+        .filter-select {
+            min-width: 220px;
+            height: 44px;
+            border: 1px solid #d8e2eb;
+            border-radius: 12px;
+            padding: 0 12px;
+            font-size: 14px;
+            background: #fff;
+            color: #1f2937;
+        }
+        .filter-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .filter-btn {
+            height: 44px;
+            border: none;
+            border-radius: 10px;
+            padding: 0 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .filter-btn.apply {
+            background: #22c55e;
+            color: #fff;
+        }
+        .filter-btn.reset {
+            background: #eef2f7;
+            color: #334155;
+        }
         #guruhModal .select2-container {
             width: 100% !important;
         }
@@ -57,9 +125,27 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_
                     <div class="table-header">
                         <div class="table-title">
                             <h3>Barcha guruhlar</h3>
-                            <span class="badge" id="totalGuruhlar">0 ta</span>
+                            <span class="badge" id="totalGuruhlar"><?= count($initialGuruhlar) ?> ta</span>
                         </div>
                         <div class="table-actions">
+                            <select id="fakultetFilter" class="filter-select">
+                                <option value="">Barcha fakultetlar</option>
+                                <?php foreach ($fakultetlar as $fakultet): ?>
+                                    <option value="<?= (int)$fakultet['id'] ?>"><?= htmlspecialchars($fakultet['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <select id="yonalishFilter" class="filter-select">
+                                <option value="">Barcha yo'nalishlar</option>
+                                <?php foreach ($yonalishlar as $y): ?>
+                                    <option value="<?= (int)($y['id'] ?? 0) ?>">
+                                        <?= htmlspecialchars((string)($y['name'] ?? '')) ?><?= !empty($y['kirish_yili']) ? ' - ' . htmlspecialchars((string)$y['kirish_yili']) : '' ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="filter-actions">
+                                <button type="button" class="filter-btn apply" id="applyFiltersBtn">Filtrlash</button>
+                                <button type="button" class="filter-btn reset" id="resetFiltersBtn">Tozalash</button>
+                            </div>
                             <div class="search-box">
                                 <i class="fas fa-search"></i>
                                 <input type="text" id="searchGuruh" placeholder="Qidirish...">
@@ -172,8 +258,23 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_
     <script src="../assets/vendor/jquery/jquery-3.6.0.min.js"></script>
     <script src="../assets/vendor/select2/js/select2.min.js"></script>
     <script src="../assets/js/app.js"></script>
+    <script id="yonalishFilterData" type="application/json"><?= json_encode(
+        json_decode($yonalishFilterJson, true) ?? [],
+        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+    ) ?: '[]' ?></script>
 
     <script>
+        const yonalishFilterDataEl = document.getElementById('yonalishFilterData');
+        let allYonalishFilterItems = [];
+        try {
+            allYonalishFilterItems = JSON.parse(yonalishFilterDataEl ? yonalishFilterDataEl.textContent : '[]');
+            if (!Array.isArray(allYonalishFilterItems)) {
+                allYonalishFilterItems = [];
+            }
+        } catch (e) {
+            allYonalishFilterItems = [];
+        }
+
         const Toast = Swal.mixin({
             toast: true,
             position: 'top-end',
@@ -185,6 +286,8 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_
         document.addEventListener('DOMContentLoaded', () => {
             initGuruhModal();
             initGuruhSearch();
+            setupFilters();
+            populateYonalishFilter();
             loadGuruhlar();
             loadGuruhlarHistory();
             initYonalishSelect();
@@ -208,18 +311,88 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_
             });
         }
 
+        function applyGuruhSearch() {
+            const input = document.getElementById('searchGuruh');
+            const table = document.getElementById('guruhlarTable');
+            if (!input || !table) return;
+
+            const val = (input.value || '').toLowerCase();
+            table.querySelectorAll('tr').forEach((row) => {
+                row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+            });
+        }
+
         function loadGuruhlar() {
-            fetch('get/guruhlar_table.php')
+            const params = new URLSearchParams({
+                fakultet_id: document.getElementById('fakultetFilter')?.value || '',
+                yonalish_id: document.getElementById('yonalishFilter')?.value || ''
+            });
+            fetch(`get/guruhlar_table.php?${params.toString()}`)
                 .then(res => res.text())
                 .then(html => {
-                    document.getElementById('guruhlarTable').innerHTML = html;
-                    document.getElementById('totalGuruhlar').textContent =
-                        document.getElementById('guruhlarTable').children.length + ' ta';
+                    const tableBody = document.getElementById('guruhlarTable');
+                    tableBody.innerHTML = html;
+
+                    const rows = Array.from(tableBody.querySelectorAll('tr'));
+                    const total = rows.filter((row) => {
+                        const text = (row.textContent || '').toLowerCase();
+                        return !text.includes("ma'lumot topilmadi");
+                    }).length;
+                    document.getElementById('totalGuruhlar').textContent = total + ' ta';
+                    applyGuruhSearch();
                 })
                 .catch(() => {
                     document.getElementById('guruhlarTable').innerHTML =
                         '<tr><td colspan="6">Xatolik yuz berdi</td></tr>';
                 });
+        }
+
+        function populateYonalishFilter() {
+            const fakultetId = document.getElementById('fakultetFilter')?.value || '';
+            const yonalishSelect = document.getElementById('yonalishFilter');
+            if (!yonalishSelect) return;
+
+            const currentValue = yonalishSelect.value;
+            let options = "<option value=\"\">Barcha yo'nalishlar</option>";
+
+            allYonalishFilterItems
+                .filter((item) => !fakultetId || Number(item.fakultet_id) === Number(fakultetId))
+                .forEach((item) => {
+                    const label = item.kirish_yili ? `${item.name} - ${item.kirish_yili}` : item.name;
+                    const selected = String(item.id) === String(currentValue) ? 'selected' : '';
+                    options += `<option value=\"${item.id}\" ${selected}>${label}</option>`;
+                });
+
+            yonalishSelect.innerHTML = options;
+        }
+
+        function setupFilters() {
+            const fakultetFilter = document.getElementById('fakultetFilter');
+            const yonalishFilter = document.getElementById('yonalishFilter');
+            const applyBtn = document.getElementById('applyFiltersBtn');
+            const resetBtn = document.getElementById('resetFiltersBtn');
+
+            if (fakultetFilter) {
+                fakultetFilter.addEventListener('change', () => {
+                    if (yonalishFilter) yonalishFilter.value = '';
+                    populateYonalishFilter();
+                });
+            }
+
+            if (applyBtn) {
+                applyBtn.addEventListener('click', () => {
+                    loadGuruhlar();
+                });
+            }
+
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    if (fakultetFilter) fakultetFilter.value = '';
+                    if (yonalishFilter) yonalishFilter.value = '';
+                    populateYonalishFilter();
+                    loadGuruhlar();
+                });
+            }
         }
 
         function loadGuruhlarHistory() {
@@ -331,13 +504,10 @@ $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_
 
         function initGuruhSearch() {
             const input = document.getElementById('searchGuruh');
-            const table = document.getElementById('guruhlarTable');
+            if (!input) return;
 
             input.addEventListener('input', () => {
-                const val = input.value.toLowerCase();
-                table.querySelectorAll('tr').forEach(row => {
-                    row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
-                });
+                applyGuruhSearch();
             });
         }
 

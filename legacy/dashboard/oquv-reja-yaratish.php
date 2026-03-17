@@ -41,6 +41,30 @@
     if ($kafedralarJson === false) {
         $kafedralarJson = '[]';
     }
+    $filterYonalishlarMap = [];
+    foreach ($semestrlar as $s) {
+        $yonalishId = (int)($s['yonalish_id'] ?? 0);
+        if ($yonalishId <= 0 || isset($filterYonalishlarMap[$yonalishId])) {
+            continue;
+        }
+
+        $filterYonalishlarMap[$yonalishId] = [
+            'id' => $yonalishId,
+            'name' => (string)($s['yonalish_name'] ?? ''),
+            'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
+            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
+        ];
+    }
+    $filterYonalishlar = array_values($filterYonalishlarMap);
+    usort($filterYonalishlar, static function (array $a, array $b): int {
+        $aName = (string)($a['name'] ?? '');
+        $bName = (string)($b['name'] ?? '');
+        $nameCmp = strcmp($aName, $bName);
+        if ($nameCmp !== 0) {
+            return $nameCmp;
+        }
+        return strcmp((string)($a['kirish_yili'] ?? ''), (string)($b['kirish_yili'] ?? ''));
+    });
 
 ?>
 <!DOCTYPE html>
@@ -69,6 +93,28 @@
             display: flex;
             gap: 8px;
         }
+        .top-filters-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .top-filter-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        @media (max-width: 1100px) {
+            .top-filters-grid {
+                grid-template-columns: repeat(2, minmax(220px, 1fr));
+            }
+        }
+        @media (max-width: 700px) {
+            .top-filters-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -82,13 +128,27 @@
             <div class="content-container">
                 <form id="oquvRejaForm" class="card">
                     <h3 class="section-title">Umumiy ma'lumot</h3>
-                    <div class="form-grid-2">
+                    <div class="top-filters-grid">
                         <div class="form-group">
                             <label>Fakultet filtri</label>
                             <select class="form-control" id="fakultetFilter">
                                 <option value="">Barcha fakultetlar</option>
                                 <?php foreach ($fakultetlar as $f): ?>
                                     <option value="<?= (int)$f['id'] ?>"><?= $h($f['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Yo'nalish filtri</label>
+                            <select class="form-control" id="yonalishFilter">
+                                <option value="">Barcha yo'nalishlar</option>
+                                <?php foreach ($filterYonalishlar as $y): ?>
+                                    <option
+                                        value="<?= (int)$y['id'] ?>"
+                                        data-fakultet-id="<?= (int)$y['fakultet_id'] ?>"
+                                    >
+                                        <?= $h((string)$y['name'] . (!empty($y['kirish_yili']) ? ' - ' . (string)$y['kirish_yili'] : '')) ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -109,13 +169,26 @@
                                             $darajaPrefix = 'B ';
                                         }
                                         $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+                                        $yonalishId = (int)($s['yonalish_id'] ?? 0);
                                     ?>
-                                    <option value="<?= $s['id'] ?>" data-fakultet-id="<?= $fakultetId ?>">
+                                    <option
+                                        value="<?= $s['id'] ?>"
+                                        data-fakultet-id="<?= $fakultetId ?>"
+                                        data-yonalish-id="<?= $yonalishId ?>"
+                                    >
                                         <?= $h($darajaPrefix . $short . '_' . ($s['kirish_yili'] ?? '') . ' - ' . ($s['semestr'] ?? '') . '-semestr') ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                    </div>
+                    <div class="top-filter-actions">
+                        <button type="button" class="btn btn-primary btn-sm" id="applyTopFiltersBtn">
+                            <i class="fas fa-filter"></i> Filtrlash
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="resetTopFiltersBtn">
+                            <i class="fas fa-rotate-left"></i> Tozalash
+                        </button>
                     </div>
                     <div id="rejaWrapper">
                         <div class="reja-card" data-index="0">
@@ -234,7 +307,7 @@
                         </div>
                     </div>
                     <div class="created-list-note">
-                        Ro'yxat yuqoridagi fakultet va semestr filtriga ko'ra ko'rsatiladi. "Tahrirlash" orqali dars soatlarini yangilang.
+                        Ro'yxat yuqoridagi fakultet, yo'nalish va semestr filtrlariga ko'ra ko'rsatiladi. "Tahrirlash" orqali dars soatlarini yangilang.
                     </div>
                     <div class="table-responsive mt-2">
                         <table class="data-table">
@@ -271,6 +344,7 @@
     <script>
         let fanIndex = 0;
         let allSemestrOptions = [];
+        let allYonalishOptions = [];
         let createdRowsById = {};
         const darsTurlariListDefault = <?php echo $darsSoatTurlariJson; ?>;
         const kafedralarList = <?php echo $kafedralarJson; ?>;
@@ -283,10 +357,16 @@
 
         $(document).ready(function() {
             cacheSemestrOptions();
+            cacheYonalishOptions();
 
             if ($.fn && typeof $.fn.select2 === 'function') {
                 $('#fakultetFilter').select2({
                     placeholder: "Fakultetni tanlang",
+                    allowClear: true,
+                    width: '100%',
+                });
+                $('#yonalishFilter').select2({
+                    placeholder: "Yo'nalishni tanlang",
                     allowClear: true,
                     width: '100%',
                 });
@@ -300,11 +380,28 @@
             initializeSelect2($('.reja-card:first'));
 
             $('#fakultetFilter').on('change', function() {
-                filterSemestrByFakultet();
-                loadCreatedRejaList();
+                filterYonalishByFakultet();
+                filterSemestrByFilters();
+            });
+
+            $('#yonalishFilter').on('change', function() {
+                filterSemestrByFilters();
             });
 
             $('#semestrSelect').on('change', function() {
+                // Semestr tanlanganda forma ichidagi qiymat yangilanadi.
+            });
+
+            $('#applyTopFiltersBtn').on('click', function() {
+                loadCreatedRejaList();
+            });
+
+            $('#resetTopFiltersBtn').on('click', function() {
+                $('#fakultetFilter').val('').trigger('change.select2');
+                filterYonalishByFakultet('');
+                $('#yonalishFilter').val('').trigger('change.select2');
+                filterSemestrByFilters('');
+                $('#semestrSelect').val('').trigger('change.select2');
                 loadCreatedRejaList();
             });
 
@@ -312,7 +409,8 @@
                 loadCreatedRejaList();
             });
 
-            filterSemestrByFakultet();
+            filterYonalishByFakultet();
+            filterSemestrByFilters();
             loadCreatedRejaList();
         });
 
@@ -525,16 +623,30 @@
                     id: val,
                     text: $(this).text(),
                     fakultetId: String($(this).data('fakultet-id') || ''),
+                    yonalishId: String($(this).data('yonalish-id') || ''),
                 });
             });
         }
 
-        function rebuildSemestrOptions(selectedValue = '') {
-            const selectedFakultet = String($('#fakultetFilter').val() || '');
-            const select = $('#semestrSelect');
-            let html = '<option value="">Tanlang</option>';
+        function cacheYonalishOptions() {
+            allYonalishOptions = [];
+            $('#yonalishFilter option').each(function() {
+                const val = String($(this).attr('value') || '');
+                if (val === '') return;
+                allYonalishOptions.push({
+                    id: val,
+                    text: $(this).text(),
+                    fakultetId: String($(this).data('fakultet-id') || ''),
+                });
+            });
+        }
 
-            allSemestrOptions.forEach(item => {
+        function rebuildYonalishOptions(selectedValue = '') {
+            const selectedFakultet = String($('#fakultetFilter').val() || '');
+            const select = $('#yonalishFilter');
+            let html = "<option value=\"\">Barcha yo'nalishlar</option>";
+
+            allYonalishOptions.forEach(item => {
                 if (selectedFakultet !== '' && String(item.fakultetId) !== selectedFakultet) {
                     return;
                 }
@@ -546,15 +658,53 @@
             select.html(html);
         }
 
-        function filterSemestrByFakultet() {
+        function filterYonalishByFakultet(selectedValue = null) {
+            const currentYonalish = selectedValue !== null
+                ? String(selectedValue || '')
+                : String($('#yonalishFilter').val() || '');
+
+            rebuildYonalishOptions(currentYonalish);
+            const hasCurrent = $('#yonalishFilter option[value="' + currentYonalish + '"]').length > 0;
+
+            if (!hasCurrent) {
+                $('#yonalishFilter').val('').trigger('change.select2');
+                return;
+            }
+            $('#yonalishFilter').val(currentYonalish).trigger('change.select2');
+        }
+
+        function rebuildSemestrOptions(selectedValue = '') {
+            const selectedFakultet = String($('#fakultetFilter').val() || '');
+            const selectedYonalish = String($('#yonalishFilter').val() || '');
+            const select = $('#semestrSelect');
+            let html = '<option value="">Tanlang</option>';
+
+            allSemestrOptions.forEach(item => {
+                if (selectedFakultet !== '' && String(item.fakultetId) !== selectedFakultet) {
+                    return;
+                }
+                if (selectedYonalish !== '' && String(item.yonalishId) !== selectedYonalish) {
+                    return;
+                }
+                const selected = String(item.id) === String(selectedValue) ? ' selected' : '';
+                const fakultetAttr = item.fakultetId !== '' ? ` data-fakultet-id="${item.fakultetId}"` : '';
+                const yonalishAttr = item.yonalishId !== '' ? ` data-yonalish-id="${item.yonalishId}"` : '';
+                html += `<option value="${item.id}"${fakultetAttr}${yonalishAttr}${selected}>${escapeHtml(item.text)}</option>`;
+            });
+
+            select.html(html);
+        }
+
+        function filterSemestrByFilters(selectedValue = null) {
             const currentSemestr = String($('#semestrSelect').val() || '');
-            rebuildSemestrOptions(currentSemestr);
-            const hasCurrent = $('#semestrSelect option[value="' + currentSemestr + '"]').length > 0;
+            const targetSemestr = selectedValue !== null ? String(selectedValue || '') : currentSemestr;
+            rebuildSemestrOptions(targetSemestr);
+            const hasCurrent = $('#semestrSelect option[value="' + targetSemestr + '"]').length > 0;
             if (!hasCurrent) {
                 $('#semestrSelect').val('').trigger('change.select2');
                 return;
             }
-            $('#semestrSelect').val(currentSemestr).trigger('change.select2');
+            $('#semestrSelect').val(targetSemestr).trigger('change.select2');
         }
 
         $(document).on('click', '.addReja', function() {
@@ -760,8 +910,9 @@
 
         function loadCreatedRejaList() {
             const fakultetId = $('#fakultetFilter').val() || '';
+            const yonalishId = $('#yonalishFilter').val() || '';
             const semestrId = $('#semestrSelect').val() || '';
-            const url = `api/get_oquv_reja_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&semestr_id=${encodeURIComponent(semestrId)}`;
+            const url = `api/get_oquv_reja_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&yonalish_id=${encodeURIComponent(yonalishId)}&semestr_id=${encodeURIComponent(semestrId)}`;
 
             fetch(url)
                 .then(res => res.json())
@@ -923,6 +1074,7 @@
             
             const formData = new FormData(this);
             const selectedFakultet = $('#fakultetFilter').val() || '';
+            const selectedYonalish = $('#yonalishFilter').val() || '';
             const selectedSemestr = $('#semestrSelect').val() || '';
             
             fetch('insert/add_oquv_reja.php', {
@@ -939,7 +1091,9 @@
 
                     this.reset();
                     $('#fakultetFilter').val(selectedFakultet).trigger('change.select2');
-                    filterSemestrByFakultet();
+                    filterYonalishByFakultet(selectedYonalish);
+                    $('#yonalishFilter').val(selectedYonalish).trigger('change.select2');
+                    filterSemestrByFilters(selectedSemestr);
                     $('#semestrSelect').val(selectedSemestr).trigger('change.select2');
                     
                     $('.reja-card:gt(0)').each(function() {

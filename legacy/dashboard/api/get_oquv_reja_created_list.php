@@ -5,11 +5,19 @@ header('Content-Type: application/json; charset=utf-8');
 $db = new Database();
 
 $fakultetId = (int)($_GET['fakultet_id'] ?? 0);
+$yonalishId = (int)($_GET['yonalish_id'] ?? 0);
 $semestrId = (int)($_GET['semestr_id'] ?? 0);
+
+$yonalishFakultetColRes = $db->query("SHOW COLUMNS FROM yonalishlar LIKE 'fakultet_id'");
+$hasYonalishFakultetCol = $yonalishFakultetColRes && mysqli_num_rows($yonalishFakultetColRes) > 0;
+$fakultetField = $hasYonalishFakultetCol ? 'y.fakultet_id' : 's.fakultet_id';
 
 $where = [];
 if ($fakultetId > 0) {
-    $where[] = "y.fakultet_id = $fakultetId";
+    $where[] = "$fakultetField = $fakultetId";
+}
+if ($yonalishId > 0) {
+    $where[] = "y.id = $yonalishId";
 }
 if ($semestrId > 0) {
     $where[] = "s.id = $semestrId";
