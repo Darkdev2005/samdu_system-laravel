@@ -307,7 +307,7 @@
                         </div>
                     </div>
                     <div class="created-list-note">
-                        Ro'yxat yuqoridagi fakultet, yo'nalish va semestr filtrlariga ko'ra ko'rsatiladi. "Tahrirlash" orqali dars soatlarini yangilang.
+                        Ro'yxat yuqoridagi fakultet, yo'nalish va semestr filtrlariga ko'ra ko'rsatiladi. "Tahrirlash" orqali dars soatlarini yangilang yoki "O'chirish" bilan fanni olib tashlang.
                     </div>
                     <div class="table-responsive mt-2">
                         <table class="data-table">
@@ -897,9 +897,14 @@
                         <td>${renderDarsSummary(row, darsTurlari)}</td>
                         <td>${escapeHtml(semestrLabel)}</td>
                         <td>
-                            <button type="button" class="btn btn-outline btn-sm editCreatedRejaBtn" data-fan-id="${row.fan_id}">
-                                <i class="fas fa-pen"></i> Tahrirlash
-                            </button>
+                            <div class="table-actions">
+                                <button type="button" class="btn btn-outline btn-sm editCreatedRejaBtn" data-fan-id="${row.fan_id}">
+                                    <i class="fas fa-pen"></i> Tahrirlash
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm deleteCreatedRejaBtn" data-fan-id="${row.fan_id}">
+                                    <i class="fas fa-trash-alt"></i> O'chirish
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -1065,6 +1070,52 @@
                 })
                 .catch(() => {
                     Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+                });
+            });
+        });
+
+        $(document).on('click', '.deleteCreatedRejaBtn', function() {
+            const fanId = String($(this).data('fan-id') || '');
+            const row = createdRowsById[fanId];
+            if (!row) return;
+
+            SwalApi.fire({
+                title: "Fanni o'chirishni tasdiqlaysizmi?",
+                text: `${row.fan_code || ''} - ${row.fan_name || ''}`,
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonText: "Ha, o'chirilsin",
+                cancelButtonText: "Bekor qilish"
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+
+                const formData = new FormData();
+                formData.append('fan_id', fanId);
+
+                fetch('insert/delete_oquv_reja_item.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success) {
+                        Toast.fire({
+                            icon: 'success',
+                            title: data.message || "Fan o'chirildi"
+                        });
+                        loadCreatedRejaList();
+                    } else {
+                        Toast.fire({
+                            icon: 'error',
+                            title: (data && data.message) || "O'chirishda xatolik"
+                        });
+                    }
+                })
+                .catch(() => {
+                    Toast.fire({
+                        icon: 'error',
+                        title: "Server bilan bog'lanib bo'lmadi"
+                    });
                 });
             });
         });
