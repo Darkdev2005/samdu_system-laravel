@@ -16,7 +16,10 @@
         if ($sid <= 0) {
             continue;
         }
-        $fid = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+        $fid = (int)($s['fakultet_id'] ?? ($s['yonalish_fakultet_id'] ?? 0));
+        if ($fid <= 0) {
+            $fid = (int)($s['yonalish_fakultet_id'] ?? 0);
+        }
         if ($fid > 0 && !isset($yonalishFakultetBySemestr[$sid])) {
             $yonalishFakultetBySemestr[$sid] = $fid;
         }
@@ -29,9 +32,11 @@
             continue;
         }
 
-        $fakultetId = (int)($y['fakultet_id'] ?? 0);
-        if ($fakultetId <= 0 && isset($yonalishFakultetBySemestr[$yonalishId])) {
-            $fakultetId = (int)$yonalishFakultetBySemestr[$yonalishId];
+        $fakultetId = isset($yonalishFakultetBySemestr[$yonalishId])
+            ? (int)$yonalishFakultetBySemestr[$yonalishId]
+            : (int)($y['fakultet_id'] ?? 0);
+        if ($fakultetId <= 0) {
+            $fakultetId = (int)($y['fakultet_id'] ?? 0);
         }
 
         $filterYonalishlarMap[$yonalishId] = [
@@ -166,7 +171,10 @@
                                     } elseif (strpos($daraja, 'bakalavr') !== false) {
                                         $darajaPrefix = 'B ';
                                     }
-                                    $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+                                    $fakultetId = (int)($s['fakultet_id'] ?? ($s['yonalish_fakultet_id'] ?? 0));
+                                    if ($fakultetId <= 0) {
+                                        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? 0);
+                                    }
                                     $yonalishId = (int)($s['yonalish_id'] ?? 0);
                                 ?>
                                     <option value="<?= $s['id'] ?>"
@@ -731,6 +739,7 @@
             });
 
             $('#applyFiltersBtn').on('click', function() {
+                filterYonalishByFakultet();
                 filterSemestrByFilters();
             });
 
