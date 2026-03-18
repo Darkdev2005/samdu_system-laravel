@@ -759,6 +759,21 @@
                 filterYonalishByFakultet('');
                 filterSemestrByFilters('');
             });
+
+            // Ba'zi brauzerlarda select qiymatlari sahifa ochilgandan keyin tiklanadi.
+            // Shu sabab filtrlarni qayta sync qilamiz.
+            const syncTopFilters = () => {
+                const currentYonalish = String($('#yonalishFilter').val() || '');
+                const currentSemestr = String($('#semestrSelect').val() || '');
+                filterYonalishByFakultet(currentYonalish);
+                filterSemestrByFilters(currentSemestr);
+            };
+
+            syncTopFilters();
+            setTimeout(syncTopFilters, 150);
+            $(window).on('pageshow', function() {
+                setTimeout(syncTopFilters, 0);
+            });
         });
 
         $('#semestrSelect').on('change', function() {
