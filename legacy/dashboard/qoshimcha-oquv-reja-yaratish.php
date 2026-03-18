@@ -51,6 +51,10 @@
         }
         return strcmp((string)($a['kirish_yili'] ?? ''), (string)($b['kirish_yili'] ?? ''));
     });
+    $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+    if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+        $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+    }
     // Izoh: Fanlar ro'yxati (kod + nom) va auditoriya soatlari selectda chiqishi uchun.
     $fanOptions = [];
     $fanSql = "
@@ -80,6 +84,10 @@
             'label' => $label,
             'auditoriya_soat' => (float) $row['auditoriya_soat']
         ];
+    }
+    $fanOptionsJson = json_encode($fanOptions, $jsonFlags);
+    if ($fanOptionsJson === false) {
+        $fanOptionsJson = '[]';
     }
 ?>
 <!DOCTYPE html>
@@ -367,7 +375,7 @@
         };
 
         let fanIndex = 0;
-        const fanOptions = <?php echo json_encode($fanOptions, JSON_UNESCAPED_UNICODE); ?>;
+        const fanOptions = <?php echo $fanOptionsJson; ?>;
         const fanMap = {};
         fanOptions.forEach(f => {
             fanMap[String(f.value)] = f;
