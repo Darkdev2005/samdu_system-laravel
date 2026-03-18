@@ -756,20 +756,24 @@
 
             const semestrId = $('#semestrSelect').val();
             select.empty();
-            select.append(new Option('Tanlang', '', false, false));
 
             if (!semestrId) {
+                select.prop('disabled', true);
+                select.append(new Option('Tanlang', '', true, true));
                 select.val(null).trigger('change');
                 return;
             }
 
             const items = fanOptions.filter(f => String(f.semestr_id) === String(semestrId));
             if (items.length === 0) {
-                select.append(new Option('Fan topilmadi', '', false, false));
+                select.prop('disabled', true);
+                select.append(new Option('Fan topilmadi', '', true, true));
                 select.val(null).trigger('change');
                 return;
             }
 
+            select.prop('disabled', false);
+            select.append(new Option('Tanlang', '', true, true));
             items.forEach(f => {
                 select.append(new Option(f.label, f.value, false, false));
             });
