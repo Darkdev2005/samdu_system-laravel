@@ -83,8 +83,15 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
         $fanCode    = $row['fan_code'];
         $tanlovFan  = (int)$row['tanlov_fan'];
         $semestrId  = (int)($row['semestr_id'] ?? 0);
+        $fanId      = (int)($row['fan_id'] ?? 0);
         $variantKey = $fanCode . '|' . $semestrId;
         $hasSelectedVariants = isset($selectedVariants[$variantKey]) && count($selectedVariants[$variantKey]) > 0;
+        $nonVariantSuffix = $fanId > 0
+            ? (string)$fanId
+            : trim((string)($row['fan_name'] ?? ''));
+        $subjectKey = ($tanlovFan == 1)
+            ? $fanCode
+            : ($fanCode . '|' . $nonVariantSuffix . '|' . $semestrId);
 
         $lecture   = (int)$row['lecture'];
         $practical = (int)$row['practical'];
@@ -122,10 +129,10 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
         }
 
         if ($tanlovFan == 1) {
-            if (isset($semesters[$semestrNum]['subjects'][$fanCode])) {
+            if (isset($semesters[$semestrNum]['subjects'][$subjectKey])) {
                 // Izoh: Ishchi variantlar mavjud bo'lsa, bu yerda qayta append qilmaymiz.
-                if (empty($semesters[$semestrNum]['subjects'][$fanCode]['variants_locked'])) {
-                    $semesters[$semestrNum]['subjects'][$fanCode]['variants'][] = [
+                if (empty($semesters[$semestrNum]['subjects'][$subjectKey]['variants_locked'])) {
+                    $semesters[$semestrNum]['subjects'][$subjectKey]['variants'][] = [
                         'name' => $row['fan_name'],
                         'department' => $row['kafedra_name']
                     ];
@@ -140,7 +147,7 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
                         'department' => $row['kafedra_name']
                     ];
                 }
-                $semesters[$semestrNum]['subjects'][$fanCode] = [
+                $semesters[$semestrNum]['subjects'][$subjectKey] = [
                     'code' => $fanCode,
                     'name' => $row['fan_name'],
                     'isTanlovFan' => true,
@@ -165,7 +172,7 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
                 ];
             }
         } else {
-            $semesters[$semestrNum]['subjects'][$fanCode] = [
+            $semesters[$semestrNum]['subjects'][$subjectKey] = [
                 'code' => $fanCode,
                 'name' => $row['fan_name'],
                 'isTanlovFan' => false,
@@ -188,7 +195,7 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
             ];
         }
 
-        if ($tanlovFan != 1 || !isset($semesters[$semestrNum]['subjects'][$fanCode]['totals_calculated'])) {
+        if ($tanlovFan != 1 || !isset($semesters[$semestrNum]['subjects'][$subjectKey]['totals_calculated'])) {
             $semesters[$semestrNum]['totals']['totalHours'] += $totalSoat;
             $semesters[$semestrNum]['totals']['credit'] += round($totalSoat / 30);
 
@@ -203,7 +210,7 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
             $semesters[$semestrNum]['totals']['malakaAmaliyot'] += $malaka;
             
             if ($tanlovFan == 1) {
-                $semesters[$semestrNum]['subjects'][$fanCode]['totals_calculated'] = true;
+                $semesters[$semestrNum]['subjects'][$subjectKey]['totals_calculated'] = true;
             }
         }
     }

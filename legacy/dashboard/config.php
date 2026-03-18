@@ -575,7 +575,15 @@ class Database{
             SUM(CASE WHEN dst.name = 'Kurs ishi' THEN o.dars_soat ELSE 0 END) AS kursIshi,
             MAX(CASE WHEN dst.name = 'Kurs ishi' THEN 1 ELSE 0 END) AS kursIshiFlag,
             COALESCE(qfext.kursIshiExtraFlag, 0) AS kursIshiExtraFlag,
-            SUM(CASE WHEN dst.name = 'Malaka amaliyoti' THEN o.dars_soat ELSE 0 END) AS malakaAmaliyot
+            SUM(
+                CASE
+                    WHEN dst.name IN ('Malaka amaliyoti', 'Malakaviy amaliyot')
+                         OR dst.name LIKE 'Malaka%amaliyot%'
+                         OR dst.name LIKE 'Malakaviy%amaliyot%'
+                    THEN o.dars_soat
+                    ELSE 0
+                END
+            ) AS malakaAmaliyot
 
         FROM oquv_rejalar o
         JOIN fanlar f ON f.id = o.fan_id

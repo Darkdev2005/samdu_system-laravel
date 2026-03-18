@@ -69,7 +69,15 @@ $result = $db->query("
         SUM(CASE WHEN dst.name = 'Kurs ishi' THEN o.dars_soat ELSE 0 END) AS kursIshi,
         MAX(CASE WHEN dst.name = 'Kurs ishi' THEN 1 ELSE 0 END) AS kursIshiFlag,
         COALESCE(qfext.kursIshiExtraFlag, 0) AS kursIshiExtraFlag,
-        SUM(CASE WHEN dst.name = 'Malaka amaliyoti' THEN o.dars_soat ELSE 0 END) AS malakaAmaliyot
+        SUM(
+            CASE
+                WHEN dst.name IN ('Malaka amaliyoti', 'Malakaviy amaliyot')
+                     OR dst.name LIKE 'Malaka%amaliyot%'
+                     OR dst.name LIKE 'Malakaviy%amaliyot%'
+                THEN o.dars_soat
+                ELSE 0
+            END
+        ) AS malakaAmaliyot
     FROM oquv_rejalar o
     JOIN fanlar f ON f.id = o.fan_id
     JOIN dars_soat_turlar dst ON dst.id = o.dars_tur_id
@@ -140,11 +148,18 @@ function process_data_for_template(array $data, array $selectedVariants): array{
     foreach ($data as $row) {
         $semestrNum = (int)$row['semestr'];
         $semestrId  = (int)($row['semestr_id'] ?? 0);
+        $fanId      = (int)($row['fan_id'] ?? 0);
         $fanCode    = $row['fan_code'];
         $tanlovFan  = (int)$row['tanlov_fan'];
         $variantKey = $fanCode . '|' . $semestrId;
         $hasSelectedVariants = isset($selectedVariants[$variantKey]) && count($selectedVariants[$variantKey]) > 0;
         $isVariantFan = ($tanlovFan === 1 || $tanlovFan === 3);
+        $nonVariantSuffix = $fanId > 0
+            ? (string)$fanId
+            : trim((string)($row['fan_name'] ?? ''));
+        $subjectKey = $isVariantFan
+            ? $fanCode
+            : ($fanCode . '|' . $nonVariantSuffix . '|' . $semestrId);
 
         $lecture   = (int)$row['lecture'];
         $practical = (int)$row['practical'];
@@ -182,9 +197,9 @@ function process_data_for_template(array $data, array $selectedVariants): array{
         }
 
         if ($isVariantFan) {
-            if (isset($semesters[$semestrNum]['subjects'][$fanCode])) {
-                if (empty($semesters[$semestrNum]['subjects'][$fanCode]['variants_locked'])) {
-                    $semesters[$semestrNum]['subjects'][$fanCode]['variants'][] = [
+            if (isset($semesters[$semestrNum]['subjects'][$subjectKey])) {
+                if (empty($semesters[$semestrNum]['subjects'][$subjectKey]['variants_locked'])) {
+                    $semesters[$semestrNum]['subjects'][$subjectKey]['variants'][] = [
                         'name' => $row['fan_name'],
                         'department' => $row['kafedra_name']
                     ];
@@ -200,7 +215,7 @@ function process_data_for_template(array $data, array $selectedVariants): array{
                     ];
                 }
 
-                $semesters[$semestrNum]['subjects'][$fanCode] = [
+                $semesters[$semestrNum]['subjects'][$subjectKey] = [
                     'code' => $fanCode,
                     'name' => $row['fan_name'],
                     'isTanlovFan' => true,
@@ -225,7 +240,7 @@ function process_data_for_template(array $data, array $selectedVariants): array{
                 ];
             }
         } else {
-            $semesters[$semestrNum]['subjects'][$fanCode] = [
+            $semesters[$semestrNum]['subjects'][$subjectKey] = [
                 'code' => $fanCode,
                 'name' => $row['fan_name'],
                 'isTanlovFan' => false,
@@ -250,7 +265,7 @@ function process_data_for_template(array $data, array $selectedVariants): array{
 
         // Izoh: Tanlov/Chet tili bir kodga bir nechta variant bo'lsa, soatlar bir marta hisoblanadi.
         // Aks holda ma'ruza/amaliy va boshqalar variantlar soniga ko'payib ketadi.
-        if (!$isVariantFan || !isset($semesters[$semestrNum]['subjects'][$fanCode]['totals_calculated'])) {
+        if (!$isVariantFan || !isset($semesters[$semestrNum]['subjects'][$subjectKey]['totals_calculated'])) {
             $semesters[$semestrNum]['totals']['totalHours'] += $totalSoat;
             $semesters[$semestrNum]['totals']['credit'] += round($totalSoat / 30);
 
@@ -265,7 +280,7 @@ function process_data_for_template(array $data, array $selectedVariants): array{
             $semesters[$semestrNum]['totals']['malakaAmaliyot'] += $malaka;
             
             if ($isVariantFan) {
-                $semesters[$semestrNum]['subjects'][$fanCode]['totals_calculated'] = true;
+                $semesters[$semestrNum]['subjects'][$subjectKey]['totals_calculated'] = true;
             }
         }
     }
