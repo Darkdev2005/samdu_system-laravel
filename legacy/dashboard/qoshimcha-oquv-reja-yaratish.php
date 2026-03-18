@@ -429,13 +429,24 @@
                 .replace(/'/g, '&#039;');
         }
 
-        function setSelectValueAndSync($select, value) {
-            $select.val(value);
-            if ($select.hasClass('select2-hidden-accessible')) {
-                $select.trigger('change.select2');
-            } else {
-                $select.trigger('change');
+        function getSelectedIdWithFallback($select, emptyLabelText = '') {
+            const direct = String($select.val() || '');
+            if (direct !== '') return direct;
+
+            const selectedText = String($select.find('option:selected').text() || '').trim().toLowerCase();
+            const emptyText = String(emptyLabelText || '').trim().toLowerCase();
+            if (!selectedText || (emptyText && selectedText === emptyText)) {
+                return '';
             }
+
+            let matched = '';
+            $select.find('option').each(function() {
+                if (String($(this).text() || '').trim().toLowerCase() === selectedText) {
+                    matched = String($(this).val() || '');
+                    return false;
+                }
+            });
+            return matched;
         }
 
         function cacheSemestrOptions() {
@@ -473,7 +484,7 @@
         }
 
         function rebuildYonalishOptions(selectedValue = '') {
-            const selectedFakultet = String($('#fakultetFilter').val() || '');
+            const selectedFakultet = getSelectedIdWithFallback($('#fakultetFilter'), 'Barcha fakultetlar');
             const select = $('#yonalishFilter');
             let html = "<option value=\"\">Yo'nalishni tanlang</option>";
 
@@ -498,14 +509,14 @@
             const hasCurrent = $('#yonalishFilter option[value="' + currentYonalish + '"]').length > 0;
 
             if (!hasCurrent) {
-                setSelectValueAndSync($('#yonalishFilter'), '');
+                $('#yonalishFilter').val('').trigger('change.select2');
                 return;
             }
-            setSelectValueAndSync($('#yonalishFilter'), currentYonalish);
+            $('#yonalishFilter').val(currentYonalish).trigger('change.select2');
         }
 
         function rebuildSemestrOptions(selectedValue = '') {
-            const selectedFakultet = String($('#fakultetFilter').val() || '');
+            const selectedFakultet = getSelectedIdWithFallback($('#fakultetFilter'), 'Barcha fakultetlar');
             const selectedYonalish = String($('#yonalishFilter').val() || '');
             const select = $('#semestrSelect');
             let html = '<option value="">Tanlang</option>';
@@ -532,10 +543,10 @@
 
             const hasCurrent = $('#semestrSelect option[value="' + targetSemestr + '"]').length > 0;
             if (!hasCurrent) {
-                setSelectValueAndSync($('#semestrSelect'), '');
+                $('#semestrSelect').val('').trigger('change.select2');
                 return;
             }
-            setSelectValueAndSync($('#semestrSelect'), targetSemestr);
+            $('#semestrSelect').val(targetSemestr).trigger('change.select2');
         }
 
         function getSemestrMeta() {
@@ -760,21 +771,25 @@
             initInitialSelect2();
 
             // Dastlabki holatni to'g'ri bog'lash
-            filterYonalishByFakultet($('#yonalishFilter').val() || '');
-            filterSemestrByFilters($('#semestrSelect').val() || '');
+            filterYonalishByFakultet();
+            filterSemestrByFilters();
 
             $('#fakultetFilter').on('change', function() {
                 filterYonalishByFakultet();
-                filterSemestrByFilters('');
+                filterSemestrByFilters();
             });
 
             $('#yonalishFilter').on('change', function() {
-                filterSemestrByFilters('');
+                filterSemestrByFilters();
             });
 
-            // Native select va ayrim brauzer restore holatlarida hamisha joriy fakultetga mos ro'yxatni ochadi.
-            $('#yonalishFilter').on('focus mousedown click', function() {
-                filterYonalishByFakultet(String($(this).val() || ''));
+            // Select2 tanlanganda ham darhol mos ro'yxat qayta hisoblanadi.
+            $('#fakultetFilter').on('select2:select select2:clear', function() {
+                filterYonalishByFakultet();
+                filterSemestrByFilters();
+            });
+            $('#yonalishFilter').on('select2:select select2:clear', function() {
+                filterSemestrByFilters();
             });
 
             $('#applyFiltersBtn').on('click', function() {
@@ -783,11 +798,11 @@
             });
 
             $('#resetFiltersBtn').on('click', function() {
-                setSelectValueAndSync($('#fakultetFilter'), '');
-                setSelectValueAndSync($('#yonalishFilter'), '');
-                setSelectValueAndSync($('#semestrSelect'), '');
+                $('#fakultetFilter').val('').trigger('change.select2');
                 filterYonalishByFakultet('');
+                $('#yonalishFilter').val('').trigger('change.select2');
                 filterSemestrByFilters('');
+                $('#semestrSelect').val('').trigger('change.select2');
             });
 
             // Ba'zi brauzerlarda select qiymatlari sahifa ochilgandan keyin tiklanadi.
