@@ -38,7 +38,9 @@
             'id' => $yonalishId,
             'name' => (string)($s['yonalish_name'] ?? ''),
             'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
-            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
+            // Hostda ayrim yo'nalishlarda y.fakultet_id noto'g'ri bo'lishi mumkin.
+            // Shu sabab semestrlar jadvalidagi fakultet_id ustuvor olinadi.
+            'fakultet_id' => (int)($s['fakultet_id'] ?? ($s['yonalish_fakultet_id'] ?? 0)),
         ];
     }
     $filterYonalishlar = array_values($filterYonalishlarMap);
@@ -173,7 +175,8 @@
                                     } elseif (strpos($daraja, 'bakalavr') !== false) {
                                         $darajaPrefix = 'B ';
                                     }
-                                    $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+                                    // Semestr filtrida ham semestrlar.fakultet_id ni ustuvor ishlatamiz.
+                                    $fakultetId = (int)($s['fakultet_id'] ?? ($s['yonalish_fakultet_id'] ?? 0));
                                     $yonalishId = (int)($s['yonalish_id'] ?? 0);
                                 ?>
                                     <option value="<?= $s['id'] ?>"
