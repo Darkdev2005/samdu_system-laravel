@@ -4,48 +4,41 @@
     $db = new Database();
     $semestrlar = $db->get_semestrlar();
     $fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
-    $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_yili');
     $qoshimcha_dars_turlar = $db->get_data_by_table_all('qoshimcha_dars_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
 
-    // Izoh: Asosiy manba - yonalishlar.fakultet_id (semestrlar eski bo'lsa ham filtr to'g'ri ishlashi uchun).
-    $yonalishFakultetMap = [];
-    foreach ($yonalishlar as $y) {
-        $yid = (int)($y['id'] ?? 0);
-        if ($yid <= 0) {
-            continue;
+    $makeShortCode = static function (string $name): string {
+        $words = preg_split('/\s+/', trim($name)) ?: [];
+        $short = '';
+        foreach ($words as $word) {
+            $word = trim((string)$word);
+            if ($word === '') {
+                continue;
+            }
+            if (function_exists('mb_substr') && function_exists('mb_strtoupper')) {
+                $first = @mb_substr($word, 0, 1, 'UTF-8');
+                if ($first !== false && $first !== '') {
+                    $short .= (string)@mb_strtoupper($first, 'UTF-8');
+                    continue;
+                }
+            }
+            $short .= strtoupper((string)substr($word, 0, 1));
         }
-        $fid = (int)($y['fakultet_id'] ?? 0);
-        if ($fid > 0) {
-            $yonalishFakultetMap[$yid] = $fid;
-        }
-    }
-    // Fallback: agar yo'nalishda fakultet_id bo'sh bo'lsa, semestrdan olamiz.
-    foreach ($semestrlar as $s) {
-        $sid = (int)($s['yonalish_id'] ?? 0);
-        if ($sid <= 0 || isset($yonalishFakultetMap[$sid])) {
-            continue;
-        }
-        $fid = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
-        if ($fid > 0) {
-            $yonalishFakultetMap[$sid] = $fid;
-        }
-    }
+        return $short;
+    };
 
     $filterYonalishlarMap = [];
-    foreach ($yonalishlar as $y) {
-        $yonalishId = (int)($y['id'] ?? 0);
+    foreach ($semestrlar as $s) {
+        $yonalishId = (int)($s['yonalish_id'] ?? 0);
         if ($yonalishId <= 0 || isset($filterYonalishlarMap[$yonalishId])) {
             continue;
         }
 
-        $fakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
-
         $filterYonalishlarMap[$yonalishId] = [
             'id' => $yonalishId,
-            'name' => (string)($y['name'] ?? ''),
-            'kirish_yili' => (string)($y['kirish_yili'] ?? ''),
-            'fakultet_id' => $fakultetId,
+            'name' => (string)($s['yonalish_name'] ?? ''),
+            'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
+            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
         ];
     }
     $filterYonalishlar = array_values($filterYonalishlarMap);
@@ -161,22 +154,18 @@
                             <select class="form-control" name="semestr_id" id="semestrSelect" required>
                                 <option value="">Tanlang</option>
                                 <?php foreach ($semestrlar as $s):
-                                    $short = '';
-                                    $words = preg_split('/\s+/u', trim((string)($s['yonalish_name'] ?? '')));
-                                    foreach ($words as $w) {
-                                        $short .= mb_strtoupper(mb_substr($w, 0, 1, 'UTF-8'), 'UTF-8');
-                                    }
-                                    $daraja = mb_strtolower(trim((string)($s['akademik_daraja_name'] ?? '')), 'UTF-8');
+                                    $short = $makeShortCode((string)($s['yonalish_name'] ?? ''));
+                                    $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
+                                    $daraja = function_exists('mb_strtolower')
+                                        ? (string)@mb_strtolower($darajaRaw, 'UTF-8')
+                                        : strtolower($darajaRaw);
                                     $darajaPrefix = '';
                                     if (strpos($daraja, 'magistr') !== false) {
                                         $darajaPrefix = 'M ';
                                     } elseif (strpos($daraja, 'bakalavr') !== false) {
                                         $darajaPrefix = 'B ';
                                     }
-                                    $fakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
-                                    if ($fakultetId <= 0) {
-                                        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
-                                    }
+                                    $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
                                     $yonalishId = (int)($s['yonalish_id'] ?? 0);
                                 ?>
                                     <option value="<?= $s['id'] ?>"
@@ -407,6 +396,15 @@
                 .replace(/'/g, '&#039;');
         }
 
+        function setSelectValueAndSync($select, value) {
+            $select.val(value);
+            if ($select.hasClass('select2-hidden-accessible')) {
+                $select.trigger('change.select2');
+            } else {
+                $select.trigger('change');
+            }
+        }
+
         function cacheSemestrOptions() {
             allSemestrOptions = [];
             $('#semestrSelect option').each(function() {
@@ -467,10 +465,10 @@
             const hasCurrent = $('#yonalishFilter option[value="' + currentYonalish + '"]').length > 0;
 
             if (!hasCurrent) {
-                $('#yonalishFilter').val('').trigger('change');
+                setSelectValueAndSync($('#yonalishFilter'), '');
                 return;
             }
-            $('#yonalishFilter').val(currentYonalish).trigger('change');
+            setSelectValueAndSync($('#yonalishFilter'), currentYonalish);
         }
 
         function rebuildSemestrOptions(selectedValue = '') {
@@ -501,10 +499,10 @@
 
             const hasCurrent = $('#semestrSelect option[value="' + targetSemestr + '"]').length > 0;
             if (!hasCurrent) {
-                $('#semestrSelect').val('').trigger('change');
+                setSelectValueAndSync($('#semestrSelect'), '');
                 return;
             }
-            $('#semestrSelect').val(targetSemestr).trigger('change');
+            setSelectValueAndSync($('#semestrSelect'), targetSemestr);
         }
 
         function getSemestrMeta() {
@@ -734,6 +732,7 @@
 
             $('#fakultetFilter').on('change', function() {
                 filterYonalishByFakultet();
+                filterSemestrByFilters('');
             });
 
             $('#yonalishFilter').on('change', function() {
@@ -746,9 +745,9 @@
             });
 
             $('#resetFiltersBtn').on('click', function() {
-                $('#fakultetFilter').val('').trigger('change');
-                $('#yonalishFilter').val('').trigger('change');
-                $('#semestrSelect').val('').trigger('change');
+                setSelectValueAndSync($('#fakultetFilter'), '');
+                setSelectValueAndSync($('#yonalishFilter'), '');
+                setSelectValueAndSync($('#semestrSelect'), '');
                 filterYonalishByFakultet('');
                 filterSemestrByFilters('');
             });
