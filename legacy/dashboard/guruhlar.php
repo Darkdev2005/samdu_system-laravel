@@ -3,17 +3,35 @@ include_once 'config.php';
 $db = new Database();
 $fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
 $yonalishlar = [];
-$yonalishRes = $db->query("
-    SELECT
-        y.id,
-        y.name,
-        y.kirish_yili,
-        MAX(s.fakultet_id) AS fakultet_id
-    FROM yonalishlar y
-    LEFT JOIN semestrlar s ON s.yonalish_id = y.id
-    GROUP BY y.id, y.name, y.kirish_yili
-    ORDER BY y.name, y.kirish_yili
-");
+$yonalishHasFakultet = false;
+$yonalishFakultetColRes = $db->query("SHOW COLUMNS FROM yonalishlar LIKE 'fakultet_id'");
+if ($yonalishFakultetColRes && mysqli_num_rows($yonalishFakultetColRes) > 0) {
+    $yonalishHasFakultet = true;
+}
+
+if ($yonalishHasFakultet) {
+    $yonalishRes = $db->query("
+        SELECT
+            y.id,
+            y.name,
+            y.kirish_yili,
+            y.fakultet_id
+        FROM yonalishlar y
+        ORDER BY y.name, y.kirish_yili
+    ");
+} else {
+    $yonalishRes = $db->query("
+        SELECT
+            y.id,
+            y.name,
+            y.kirish_yili,
+            MAX(s.fakultet_id) AS fakultet_id
+        FROM yonalishlar y
+        LEFT JOIN semestrlar s ON s.yonalish_id = y.id
+        GROUP BY y.id, y.name, y.kirish_yili
+        ORDER BY y.name, y.kirish_yili
+    ");
+}
 if ($yonalishRes) {
     while ($row = mysqli_fetch_assoc($yonalishRes)) {
         $yonalishlar[] = $row;
