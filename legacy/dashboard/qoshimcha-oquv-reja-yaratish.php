@@ -91,6 +91,14 @@
         $fanOptionsJson = '[]';
     }
     $fanOptionsJsonBase64 = base64_encode($fanOptionsJson);
+    $qoshimchaDarsTurlarJson = json_encode($qoshimcha_dars_turlar ?? [], $jsonFlags);
+    if ($qoshimchaDarsTurlarJson === false) {
+        $qoshimchaDarsTurlarJson = '[]';
+    }
+    $kafedralarJson = json_encode($kafedralar ?? [], $jsonFlags);
+    if ($kafedralarJson === false) {
+        $kafedralarJson = '[]';
+    }
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -401,6 +409,8 @@
                 return [];
             }
         })();
+        const qoshimchaDarsTurlari = <?php echo $qoshimchaDarsTurlarJson; ?>;
+        const kafedralarList = <?php echo $kafedralarJson; ?>;
         const fanMap = {};
         fanOptions.forEach(f => {
             fanMap[String(f.value)] = f;
@@ -408,6 +418,7 @@
 
         let allSemestrOptions = [];
         let allYonalishOptions = [];
+        let isTopFilterSyncing = false;
 
         function initSelect2Safe($el, placeholderText) {
             if (!$el || !$el.length) return;
@@ -429,40 +440,119 @@
                 .replace(/'/g, '&#039;');
         }
 
-        function getSelectedIdWithFallback($select, emptyLabelText = '') {
-            const direct = String($select.val() || '');
-            if (direct !== '') return direct;
-
-            const selectedText = String($select.find('option:selected').text() || '').trim().toLowerCase();
-            const emptyText = String(emptyLabelText || '').trim().toLowerCase();
-            if (!selectedText || (emptyText && selectedText === emptyText)) {
-                return '';
-            }
-
-            let matched = '';
-            $select.find('option').each(function() {
-                if (String($(this).text() || '').trim().toLowerCase() === selectedText) {
-                    matched = String($(this).val() || '');
-                    return false;
-                }
+        function buildQoshimchaDarsOptionsHtml(selectedValue = '') {
+            const selected = String(selectedValue || '');
+            let html = '';
+            (qoshimchaDarsTurlari || []).forEach(item => {
+                const id = String(item.id || '');
+                if (id === '') return;
+                const name = String(item.name || '');
+                const koef = String(item.koifesent || '');
+                const selectedAttr = id === selected ? ' selected' : '';
+                html += `<option value="${id}" data-koef="${escapeOptionText(koef)}"${selectedAttr}>${escapeOptionText(name)}</option>`;
             });
-            if (matched !== '') return matched;
+            return html;
+        }
 
-            // Select2 UI ko'rsatgan matndan ham ID ni topish (host restore holatlari uchun).
-            const selectId = String($select.attr('id') || '');
-            if (selectId) {
-                const containerText = String($('#select2-' + selectId + '-container').text() || '').trim().toLowerCase();
-                if (containerText && (!emptyText || containerText !== emptyText)) {
-                    $select.find('option').each(function() {
-                        if (String($(this).text() || '').trim().toLowerCase() === containerText) {
-                            matched = String($(this).val() || '');
-                            return false;
-                        }
-                    });
-                }
+        function buildKafedralarOptionsHtml(selectedValue = '') {
+            const selected = String(selectedValue || '');
+            let html = '';
+            (kafedralarList || []).forEach(item => {
+                const id = String(item.id || '');
+                if (id === '') return;
+                const name = String(item.name || '');
+                const selectedAttr = id === selected ? ' selected' : '';
+                html += `<option value="${id}"${selectedAttr}>${escapeOptionText(name)}</option>`;
+            });
+            return html;
+        }
+
+        function cacheYonalishOptionsFromServer(rows) {
+            allYonalishOptions = (Array.isArray(rows) ? rows : []).map(item => ({
+                id: String(item.id || ''),
+                text: String(item.label || item.text || ''),
+                fakultetId: String(item.fakultet_id || item.fakultetId || ''),
+            })).filter(item => item.id !== '');
+        }
+
+        function cacheSemestrOptionsFromServer(rows) {
+            allSemestrOptions = (Array.isArray(rows) ? rows : []).map(item => ({
+                id: String(item.id || ''),
+                text: String(item.label || item.text || ''),
+                fakultetId: String(item.fakultet_id || item.fakultetId || ''),
+                yonalishId: String(item.yonalish_id || item.yonalishId || ''),
+                talaba: String(item.talaba || item.jami_talabalar || '0'),
+                talimShakli: String(item.talim_shakli || item.talimShakli || ''),
+                talimShakliId: String(item.talim_shakli_id || item.talimShakliId || '0'),
+                daraja: String(item.daraja || item.akademik_daraja_name || ''),
+                patok: String(item.patok || item.patok_soni || '0'),
+                guruh: String(item.guruh || item.guruhlar_soni || '0'),
+            })).filter(item => item.id !== '');
+        }
+
+        async function syncTopFiltersFromServer(preferredYonalish = null, preferredSemestr = null) {
+            if (isTopFilterSyncing) {
+                return;
             }
 
-            return matched;
+            const fakultetId = String($('#fakultetFilter').val() || '');
+            const currentYonalish = preferredYonalish !== null
+                ? String(preferredYonalish || '')
+                : String($('#yonalishFilter').val() || '');
+            const currentSemestr = preferredSemestr !== null
+                ? String(preferredSemestr || '')
+                : String($('#semestrSelect').val() || '');
+
+            isTopFilterSyncing = true;
+
+            try {
+                const params = new URLSearchParams();
+                if (fakultetId !== '') {
+                    params.set('fakultet_id', fakultetId);
+                }
+                if (currentYonalish !== '') {
+                    params.set('yonalish_id', currentYonalish);
+                }
+
+                const response = await fetch(`api/get_qoshimcha_filter_options.php?${params.toString()}`, {
+                    cache: 'no-store',
+                });
+                const data = await response.json();
+
+                if (!data || !data.success) {
+                    throw new Error('Filter options API javobi noto‘g‘ri');
+                }
+
+                cacheYonalishOptionsFromServer(data.yonalishlar || []);
+                cacheSemestrOptionsFromServer(data.semestrlar || []);
+
+                const effectiveYonalish = String(data.effective_yonalish_id || '');
+                const targetYonalish = effectiveYonalish !== '' ? effectiveYonalish : currentYonalish;
+
+                rebuildYonalishOptions(targetYonalish);
+
+                const selectedYonalish = String($('#yonalishFilter').val() || '');
+                const semestrTarget = currentSemestr;
+                rebuildSemestrOptions(semestrTarget);
+                const hasSemestr = $('#semestrSelect option[value="' + semestrTarget + '"]').length > 0;
+                if (!hasSemestr) {
+                    $('#semestrSelect').val('').trigger('change.select2');
+                } else {
+                    $('#semestrSelect').val(semestrTarget).trigger('change.select2');
+                }
+
+                if (selectedYonalish !== targetYonalish && targetYonalish !== '' && $('#yonalishFilter option[value="' + targetYonalish + '"]').length > 0) {
+                    $('#yonalishFilter').val(targetYonalish).trigger('change.select2');
+                    rebuildSemestrOptions(semestrTarget);
+                }
+            } catch (err) {
+                console.error('Top filter sync xatoligi:', err);
+                rebuildYonalishOptions(currentYonalish);
+                rebuildSemestrOptions(currentSemestr);
+            } finally {
+                isTopFilterSyncing = false;
+                $('#semestrSelect').trigger('change');
+            }
         }
 
         function cacheSemestrOptions() {
@@ -500,7 +590,7 @@
         }
 
         function rebuildYonalishOptions(selectedValue = '') {
-            const selectedFakultet = getSelectedIdWithFallback($('#fakultetFilter'), 'Barcha fakultetlar');
+            const selectedFakultet = String($('#fakultetFilter').val() || '');
             const select = $('#yonalishFilter');
             let html = "<option value=\"\">Yo'nalishni tanlang</option>";
 
@@ -532,7 +622,7 @@
         }
 
         function rebuildSemestrOptions(selectedValue = '') {
-            const selectedFakultet = getSelectedIdWithFallback($('#fakultetFilter'), 'Barcha fakultetlar');
+            const selectedFakultet = String($('#fakultetFilter').val() || '');
             const selectedYonalish = String($('#yonalishFilter').val() || '');
             const select = $('#semestrSelect');
             let html = '<option value="">Tanlang</option>';
@@ -786,44 +876,31 @@
             
             initInitialSelect2();
 
-            // Dastlabki holatni to'g'ri bog'lash
-            filterYonalishByFakultet();
-            filterSemestrByFilters();
+            // Dastlabki holatni serverdan qayta sinxronlash (hostda barqaror ishlashi uchun)
+            syncTopFiltersFromServer();
 
             $('#fakultetFilter').on('change', function() {
-                filterYonalishByFakultet();
-                filterSemestrByFilters();
+                if (isTopFilterSyncing) return;
+                syncTopFiltersFromServer('', '');
             });
 
             $('#yonalishFilter').on('change', function() {
-                filterSemestrByFilters();
-            });
-
-            // Select2 tanlanganda ham darhol mos ro'yxat qayta hisoblanadi.
-            $('#fakultetFilter').on('select2:select select2:clear', function() {
-                filterYonalishByFakultet();
-                filterSemestrByFilters();
-            });
-            $('#yonalishFilter').on('select2:select select2:clear', function() {
-                filterSemestrByFilters();
-            });
-
-            // Yo'nalish dropdown ochilishidan oldin ham fakultet bo'yicha ro'yxatni majburan yangilaymiz.
-            $('#yonalishFilter').on('select2:opening focus mousedown click', function() {
-                filterYonalishByFakultet(String($(this).val() || ''));
+                if (isTopFilterSyncing) return;
+                syncTopFiltersFromServer(String($(this).val() || ''), '');
             });
 
             $('#applyFiltersBtn').on('click', function() {
-                filterYonalishByFakultet();
-                filterSemestrByFilters();
+                syncTopFiltersFromServer();
             });
 
             $('#resetFiltersBtn').on('click', function() {
+                if (isTopFilterSyncing) return;
+                isTopFilterSyncing = true;
                 $('#fakultetFilter').val('').trigger('change.select2');
-                filterYonalishByFakultet('');
                 $('#yonalishFilter').val('').trigger('change.select2');
-                filterSemestrByFilters('');
                 $('#semestrSelect').val('').trigger('change.select2');
+                isTopFilterSyncing = false;
+                syncTopFiltersFromServer('', '');
             });
 
             // Ba'zi brauzerlarda select qiymatlari sahifa ochilgandan keyin tiklanadi.
@@ -831,8 +908,7 @@
             const syncTopFilters = () => {
                 const currentYonalish = String($('#yonalishFilter').val() || '');
                 const currentSemestr = String($('#semestrSelect').val() || '');
-                filterYonalishByFakultet(currentYonalish);
-                filterSemestrByFilters(currentSemestr);
+                syncTopFiltersFromServer(currentYonalish, currentSemestr);
             };
 
             syncTopFilters();
@@ -903,12 +979,7 @@
                             <label>Qo'shimcha dars turi</label>
                             <select class="form-control qoshimcha-select" name="qoshimcha_dars_id[]" required>
                                 <option value="">Tanlang</option>
-                                <?php foreach ($qoshimcha_dars_turlar as $qdt): ?>
-                                    <option value="<?= $qdt['id'] ?>"
-                                        data-koef="<?= $qdt['koifesent'] ?>">
-                                        <?= htmlspecialchars($qdt['name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
+                                ${buildQoshimchaDarsOptionsHtml('')}
                             </select>
                         </div>
                         <div class="form-group">
@@ -969,11 +1040,7 @@
                                 <label>Kafedra</label>
                                 <select class="form-control kafedra-select" name="kafedra_id[${fanIndex}][]" required>
                                     <option value="">Tanlang</option>
-                                    <?php foreach ($kafedralar as $k): ?>
-                                        <option value="<?= $k['id'] ?>">
-                                            <?= htmlspecialchars($k['name']) ?>
-                                        </option>
-                                    <?php endforeach; ?>
+                                    ${buildKafedralarOptionsHtml('')}
                                 </select>
                             </div>
                             <div class="form-group">
@@ -1029,11 +1096,7 @@
                         <label>Kafedra</label>
                         <select class="form-control kafedra-select" name="kafedra_id[${index}][]" required>
                             <option value="">Tanlang</option>
-                            <?php foreach ($kafedralar as $k): ?>
-                                <option value="<?= $k['id'] ?>">
-                                    <?= htmlspecialchars($k['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
+                            ${buildKafedralarOptionsHtml('')}
                         </select>
                     </div>
                     <div class="form-group">
