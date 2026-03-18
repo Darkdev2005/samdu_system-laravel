@@ -8,20 +8,27 @@
     $qoshimcha_dars_turlar = $db->get_data_by_table_all('qoshimcha_dars_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
 
-    // Izoh: Yo'nalish filtri semestrlar bo'sh bo'lsa ham ishlashi uchun
-    // ro'yxatni to'g'ridan-to'g'ri yonalishlar jadvalidan olamiz.
-    $yonalishFakultetBySemestr = [];
-    foreach ($semestrlar as $s) {
-        $sid = (int)($s['yonalish_id'] ?? 0);
-        if ($sid <= 0) {
+    // Izoh: Asosiy manba - yonalishlar.fakultet_id (semestrlar eski bo'lsa ham filtr to'g'ri ishlashi uchun).
+    $yonalishFakultetMap = [];
+    foreach ($yonalishlar as $y) {
+        $yid = (int)($y['id'] ?? 0);
+        if ($yid <= 0) {
             continue;
         }
-        $fid = (int)($s['fakultet_id'] ?? ($s['yonalish_fakultet_id'] ?? 0));
-        if ($fid <= 0) {
-            $fid = (int)($s['yonalish_fakultet_id'] ?? 0);
+        $fid = (int)($y['fakultet_id'] ?? 0);
+        if ($fid > 0) {
+            $yonalishFakultetMap[$yid] = $fid;
         }
-        if ($fid > 0 && !isset($yonalishFakultetBySemestr[$sid])) {
-            $yonalishFakultetBySemestr[$sid] = $fid;
+    }
+    // Fallback: agar yo'nalishda fakultet_id bo'sh bo'lsa, semestrdan olamiz.
+    foreach ($semestrlar as $s) {
+        $sid = (int)($s['yonalish_id'] ?? 0);
+        if ($sid <= 0 || isset($yonalishFakultetMap[$sid])) {
+            continue;
+        }
+        $fid = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+        if ($fid > 0) {
+            $yonalishFakultetMap[$sid] = $fid;
         }
     }
 
@@ -32,12 +39,7 @@
             continue;
         }
 
-        $fakultetId = isset($yonalishFakultetBySemestr[$yonalishId])
-            ? (int)$yonalishFakultetBySemestr[$yonalishId]
-            : (int)($y['fakultet_id'] ?? 0);
-        if ($fakultetId <= 0) {
-            $fakultetId = (int)($y['fakultet_id'] ?? 0);
-        }
+        $fakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
 
         $filterYonalishlarMap[$yonalishId] = [
             'id' => $yonalishId,
@@ -171,9 +173,9 @@
                                     } elseif (strpos($daraja, 'bakalavr') !== false) {
                                         $darajaPrefix = 'B ';
                                     }
-                                    $fakultetId = (int)($s['fakultet_id'] ?? ($s['yonalish_fakultet_id'] ?? 0));
+                                    $fakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
                                     if ($fakultetId <= 0) {
-                                        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? 0);
+                                        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
                                     }
                                     $yonalishId = (int)($s['yonalish_id'] ?? 0);
                                 ?>
