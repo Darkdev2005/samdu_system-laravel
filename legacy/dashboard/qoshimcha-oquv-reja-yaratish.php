@@ -345,8 +345,26 @@
             YAKUNIY: 21
         };
 
+        let fanIndex = 0;
+        const fanOptions = <?php echo json_encode($fanOptions, JSON_UNESCAPED_UNICODE); ?>;
+        const fanMap = {};
+        fanOptions.forEach(f => {
+            fanMap[String(f.value)] = f;
+        });
+
         let allSemestrOptions = [];
         let allYonalishOptions = [];
+
+        function initSelect2Safe($el, placeholderText) {
+            if (!$el || !$el.length) return;
+            if (window.jQuery && $.fn && typeof $.fn.select2 === 'function') {
+                $el.select2({
+                    placeholder: placeholderText,
+                    allowClear: true,
+                    width: '100%',
+                });
+            }
+        }
 
         function escapeOptionText(value) {
             return String(value ?? '')
@@ -672,23 +690,9 @@
             cacheYonalishOptions();
             cacheSemestrOptions();
 
-            $('#fakultetFilter').select2({
-                placeholder: "Fakultetni tanlang",
-                allowClear: true,
-                width: '100%',
-            });
-
-            $('#yonalishFilter').select2({
-                placeholder: "Yo'nalishni tanlang",
-                allowClear: true,
-                width: '100%',
-            });
-
-            $('#semestrSelect').select2({
-                placeholder: "Semestrni tanlang",
-                allowClear: true,
-                width: '100%',
-            });
+            initSelect2Safe($('#fakultetFilter'), "Fakultetni tanlang");
+            initSelect2Safe($('#yonalishFilter'), "Yo'nalishni tanlang");
+            initSelect2Safe($('#semestrSelect'), "Semestrni tanlang");
             
             initInitialSelect2();
 
@@ -711,6 +715,9 @@
             $('#resetFiltersBtn').on('click', function() {
                 $('#fakultetFilter').val('').trigger('change');
                 $('#yonalishFilter').val('').trigger('change');
+                $('#semestrSelect').val('').trigger('change');
+                filterYonalishByFakultet('');
+                filterSemestrByFilters('');
             });
         });
 
@@ -722,33 +729,12 @@
         });
         
         function initInitialSelect2() {
-            $('select[name="qoshimcha_dars_id[]"]').select2({
-                placeholder: "Qo'shimcha dars turini tanlang",
-                allowClear: true,
-                width: '100%',
-            });
-
-            $('select[name="fan_nomi[]"]').select2({
-                placeholder: "Fan (kod + nomi) tanlang",
-                allowClear: true,
-                width: '100%',
-            });
-            
-            $('select[name="kafedra_id[0][]"]').select2({
-                placeholder: "Kafedrani tanlang",
-                allowClear: true,
-                width: '100%',
-            });
+            initSelect2Safe($('select[name="qoshimcha_dars_id[]"]'), "Qo'shimcha dars turini tanlang");
+            initSelect2Safe($('select[name="fan_nomi[]"]'), "Fan (kod + nomi) tanlang");
+            initSelect2Safe($('select[name="kafedra_id[0][]"]'), "Kafedrani tanlang");
 
             renderFanOptions($('.reja-card:first'));
         }
-                
-        let fanIndex = 0;
-        const fanOptions = <?php echo json_encode($fanOptions, JSON_UNESCAPED_UNICODE); ?>;
-        const fanMap = {};
-        fanOptions.forEach(f => {
-            fanMap[String(f.value)] = f;
-        });
 
         function renderFanOptions(card) {
             const select = card.find('.fan-select');
@@ -898,23 +884,9 @@
             $('#rejaWrapper').append(newReja);
             
             setTimeout(() => {
-                newReja.find('.qoshimcha-select').select2({
-                    placeholder: "Qo'shimcha dars turini tanlang",
-                    allowClear: true,
-                    width: '100%',
-                });
-
-                newReja.find('.fan-select').select2({
-                    placeholder: "Fan (kod + nomi) tanlang",
-                    allowClear: true,
-                    width: '100%',
-                });
-                
-                newReja.find('.kafedra-select').select2({
-                    placeholder: "Kafedrani tanlang",
-                    allowClear: true,
-                    width: '100%',
-                });
+                initSelect2Safe(newReja.find('.qoshimcha-select'), "Qo'shimcha dars turini tanlang");
+                initSelect2Safe(newReja.find('.fan-select'), "Fan (kod + nomi) tanlang");
+                initSelect2Safe(newReja.find('.kafedra-select'), "Kafedrani tanlang");
             }, 50);
 
             renderFanOptions(newReja);
@@ -954,11 +926,7 @@
             wrapper.find('.dars-soat-actions').before(newRow);
             
             setTimeout(() => {
-                newRow.find('.kafedra-select').select2({
-                    placeholder: "Kafedrani tanlang",
-                    allowClear: true,
-                    width: '100%',
-                });
+                initSelect2Safe(newRow.find('.kafedra-select'), "Kafedrani tanlang");
             }, 50);
         });
         
