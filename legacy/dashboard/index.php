@@ -1,3 +1,64 @@
+<?php
+include_once 'config.php';
+
+$db = new Database();
+
+function tableExists(Database $db, string $table): bool
+{
+    $safeTable = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
+    if ($safeTable === '') {
+        return false;
+    }
+    $res = $db->query("SHOW TABLES LIKE '{$safeTable}'");
+    return $res && mysqli_num_rows($res) > 0;
+}
+
+function countRows(Database $db, string $table, string $where = '1=1'): int
+{
+    $safeTable = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
+    if ($safeTable === '') {
+        return 0;
+    }
+
+    $res = $db->query("SELECT COUNT(*) AS total FROM {$safeTable} WHERE {$where}");
+    if (!$res) {
+        return 0;
+    }
+
+    $row = mysqli_fetch_assoc($res);
+    return isset($row['total']) ? (int)$row['total'] : 0;
+}
+
+$yonalishlarSoni = tableExists($db, 'yonalishlar') ? countRows($db, 'yonalishlar') : 0;
+$rejalarSoni = tableExists($db, 'oquv_rejalar') ? countRows($db, 'oquv_rejalar') : 0;
+
+$kurslarSoni = 0;
+if (tableExists($db, 'semestrlar')) {
+    $kursRes = $db->query("
+        SELECT COUNT(DISTINCT FLOOR((s.semestr + 1) / 2)) AS total
+        FROM semestrlar s
+        WHERE s.semestr IS NOT NULL AND s.semestr > 0
+    ");
+    if ($kursRes) {
+        $kursRow = mysqli_fetch_assoc($kursRes);
+        $kurslarSoni = isset($kursRow['total']) ? (int)$kursRow['total'] : 0;
+    }
+}
+if ($kurslarSoni === 0 && tableExists($db, 'yonalishlar')) {
+    $kursFallbackRes = $db->query("SELECT MAX(muddati) AS total FROM yonalishlar");
+    if ($kursFallbackRes) {
+        $kursFallbackRow = mysqli_fetch_assoc($kursFallbackRes);
+        $kurslarSoni = isset($kursFallbackRow['total']) ? (int)$kursFallbackRow['total'] : 0;
+    }
+}
+
+$foydalanuvchilarSoni = 0;
+if (tableExists($db, 'users')) {
+    $foydalanuvchilarSoni = countRows($db, 'users');
+} elseif (tableExists($db, 'oqituvchilar')) {
+    $foydalanuvchilarSoni = countRows($db, 'oqituvchilar');
+}
+?>
 <!DOCTYPE html>
 <html lang="uz">
 <head>
@@ -23,7 +84,9 @@
                 <div class="navbar-right">
                     <button class="btn-notification">
                         <i class="fas fa-bell"></i>
-                        <span class="notification-badge">3</span>
+                        <?php if ($rejalarSoni === 0): ?>
+                            <span class="notification-badge">1</span>
+                        <?php endif; ?>
                     </button>
                     <div class="current-date">
                         <i class="fas fa-calendar-day"></i>
@@ -40,7 +103,7 @@
                             <i class="fas fa-compass" style="color: #27ae60;"></i>
                         </div>
                         <div class="stat-info">
-                            <h3 id="yonalishlarSoni">0</h3>
+                            <h3 id="yonalishlarSoni"><?= $yonalishlarSoni ?></h3>
                             <p>Ta'lim Yo'nalishlari</p>
                         </div>
                     </div>
@@ -50,7 +113,7 @@
                             <i class="fas fa-layer-group" style="color: #2ecc71;"></i>
                         </div>
                         <div class="stat-info">
-                            <h3 id="kurslarSoni">4</h3>
+                            <h3 id="kurslarSoni"><?= $kurslarSoni ?></h3>
                             <p>Kurslar</p>
                         </div>
                     </div>
@@ -60,7 +123,7 @@
                             <i class="fas fa-calendar-alt" style="color: #27ae60;"></i>
                         </div>
                         <div class="stat-info">
-                            <h3 id="rejalarSoni">0</h3>
+                            <h3 id="rejalarSoni"><?= $rejalarSoni ?></h3>
                             <p>O'quv Rejalar</p>
                         </div>
                     </div>
@@ -70,7 +133,7 @@
                             <i class="fas fa-users" style="color: #2ecc71;"></i>
                         </div>
                         <div class="stat-info">
-                            <h3>0</h3>
+                            <h3><?= $foydalanuvchilarSoni ?></h3>
                             <p>Foydalanuvchilar</p>
                         </div>
                     </div>
@@ -90,14 +153,14 @@
                             <i class="fas fa-book-medical"></i>
                             <span>Dastur qo'shish</span>
                         </a>
-                        <a href="haftalik-reja.php" class="action-btn">
+                        <a href="oquv-haftalik-yaratish.php" class="action-btn">
                             <i class="fas fa-calendar-plus"></i>
                             <span>Reja tuzish</span>
                         </a>
-                        <button class="action-btn secondary">
+                        <a href="oquv-yuklamalar.php" class="action-btn secondary">
                             <i class="fas fa-download"></i>
                             <span>Hisobot yuklash</span>
-                        </button>
+                        </a>
                     </div>
                 </div>
 
@@ -112,7 +175,7 @@
                                 <i class="fas fa-info-circle"></i>
                             </div>
                             <div class="activity-content">
-                                <p>Hozircha faoliyat yo'q. Yo'nalish, dastur yoki reja qo'shishni boshlang!</p>
+                                <p>Yo'nalishlar: <?= $yonalishlarSoni ?> ta, o'quv rejalar: <?= $rejalarSoni ?> ta, kurslar: <?= $kurslarSoni ?> ta.</p>
                                 <small class="activity-time">Bugun</small>
                             </div>
                         </div>
