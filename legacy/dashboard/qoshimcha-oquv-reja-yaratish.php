@@ -38,9 +38,8 @@
             'id' => $yonalishId,
             'name' => (string)($s['yonalish_name'] ?? ''),
             'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
-            // Hostda ayrim yo'nalishlarda y.fakultet_id noto'g'ri bo'lishi mumkin.
-            // Shu sabab semestrlar jadvalidagi fakultet_id ustuvor olinadi.
-            'fakultet_id' => (int)($s['fakultet_id'] ?? ($s['yonalish_fakultet_id'] ?? 0)),
+            // O'quv reja sahifasi bilan bir xil mantiq: yo'nalishdagi fakultet ustuvor.
+            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
         ];
     }
     $filterYonalishlar = array_values($filterYonalishlarMap);
@@ -175,8 +174,7 @@
                                     } elseif (strpos($daraja, 'bakalavr') !== false) {
                                         $darajaPrefix = 'B ';
                                     }
-                                    // Semestr filtrida ham semestrlar.fakultet_id ni ustuvor ishlatamiz.
-                                    $fakultetId = (int)($s['fakultet_id'] ?? ($s['yonalish_fakultet_id'] ?? 0));
+                                    $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
                                     $yonalishId = (int)($s['yonalish_id'] ?? 0);
                                 ?>
                                     <option value="<?= $s['id'] ?>"
@@ -748,6 +746,11 @@
 
             $('#yonalishFilter').on('change', function() {
                 filterSemestrByFilters('');
+            });
+
+            // Native select va ayrim brauzer restore holatlarida hamisha joriy fakultetga mos ro'yxatni ochadi.
+            $('#yonalishFilter').on('focus mousedown click', function() {
+                filterYonalishByFakultet(String($(this).val() || ''));
             });
 
             $('#applyFiltersBtn').on('click', function() {
