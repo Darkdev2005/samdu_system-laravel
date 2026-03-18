@@ -147,7 +147,7 @@
                         <div class="form-group">
                             <label>Yo'nalish filtri</label>
                             <select class="form-control" id="yonalishFilter">
-                                <option value="">Barcha yo'nalishlar</option>
+                                <option value="">Yo'nalishni tanlang</option>
                                 <?php foreach ($filterYonalishlar as $y): ?>
                                     <option
                                         value="<?= (int)$y['id'] ?>"
@@ -451,7 +451,7 @@
         function rebuildYonalishOptions(selectedValue = '') {
             const selectedFakultet = String($('#fakultetFilter').val() || '');
             const select = $('#yonalishFilter');
-            let html = "<option value=\"\">Barcha yo'nalishlar</option>";
+            let html = "<option value=\"\">Yo'nalishni tanlang</option>";
 
             allYonalishOptions.forEach(item => {
                 if (selectedFakultet !== '' && String(item.fakultetId) !== selectedFakultet) {
