@@ -4,19 +4,41 @@
     $db = new Database();
     $semestrlar = $db->get_semestrlar();
     $fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
+    $yonalishlar = $db->get_data_by_table_all('yonalishlar', 'ORDER BY name, kirish_yili');
     $qoshimcha_dars_turlar = $db->get_data_by_table_all('qoshimcha_dars_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
-    $filterYonalishlarMap = [];
+
+    // Izoh: Yo'nalish filtri semestrlar bo'sh bo'lsa ham ishlashi uchun
+    // ro'yxatni to'g'ridan-to'g'ri yonalishlar jadvalidan olamiz.
+    $yonalishFakultetBySemestr = [];
     foreach ($semestrlar as $s) {
-        $yonalishId = (int)($s['yonalish_id'] ?? 0);
+        $sid = (int)($s['yonalish_id'] ?? 0);
+        if ($sid <= 0) {
+            continue;
+        }
+        $fid = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+        if ($fid > 0 && !isset($yonalishFakultetBySemestr[$sid])) {
+            $yonalishFakultetBySemestr[$sid] = $fid;
+        }
+    }
+
+    $filterYonalishlarMap = [];
+    foreach ($yonalishlar as $y) {
+        $yonalishId = (int)($y['id'] ?? 0);
         if ($yonalishId <= 0 || isset($filterYonalishlarMap[$yonalishId])) {
             continue;
         }
+
+        $fakultetId = (int)($y['fakultet_id'] ?? 0);
+        if ($fakultetId <= 0 && isset($yonalishFakultetBySemestr[$yonalishId])) {
+            $fakultetId = (int)$yonalishFakultetBySemestr[$yonalishId];
+        }
+
         $filterYonalishlarMap[$yonalishId] = [
             'id' => $yonalishId,
-            'name' => (string)($s['yonalish_name'] ?? ''),
-            'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
-            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
+            'name' => (string)($y['name'] ?? ''),
+            'kirish_yili' => (string)($y['kirish_yili'] ?? ''),
+            'fakultet_id' => $fakultetId,
         ];
     }
     $filterYonalishlar = array_values($filterYonalishlarMap);
