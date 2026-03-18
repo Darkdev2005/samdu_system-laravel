@@ -446,6 +446,22 @@
                     return false;
                 }
             });
+            if (matched !== '') return matched;
+
+            // Select2 UI ko'rsatgan matndan ham ID ni topish (host restore holatlari uchun).
+            const selectId = String($select.attr('id') || '');
+            if (selectId) {
+                const containerText = String($('#select2-' + selectId + '-container').text() || '').trim().toLowerCase();
+                if (containerText && (!emptyText || containerText !== emptyText)) {
+                    $select.find('option').each(function() {
+                        if (String($(this).text() || '').trim().toLowerCase() === containerText) {
+                            matched = String($(this).val() || '');
+                            return false;
+                        }
+                    });
+                }
+            }
+
             return matched;
         }
 
@@ -790,6 +806,11 @@
             });
             $('#yonalishFilter').on('select2:select select2:clear', function() {
                 filterSemestrByFilters();
+            });
+
+            // Yo'nalish dropdown ochilishidan oldin ham fakultet bo'yicha ro'yxatni majburan yangilaymiz.
+            $('#yonalishFilter').on('select2:opening focus mousedown click', function() {
+                filterYonalishByFakultet(String($(this).val() || ''));
             });
 
             $('#applyFiltersBtn').on('click', function() {
