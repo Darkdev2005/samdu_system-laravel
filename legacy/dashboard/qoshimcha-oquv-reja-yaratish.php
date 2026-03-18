@@ -90,6 +90,7 @@
     if ($fanOptionsJson === false) {
         $fanOptionsJson = '[]';
     }
+    $fanOptionsJsonBase64 = base64_encode($fanOptionsJson);
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -375,8 +376,31 @@
             YAKUNIY: 21
         };
 
+        const SwalApi = window.Swal || {
+            mixin: () => ({ fire: () => {} }),
+            fire: () => Promise.resolve({ isConfirmed: false }),
+            showValidationMessage: () => {},
+        };
+
+        const Toast = SwalApi.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 2000,
+            timerProgressBar: true
+        });
+
         let fanIndex = 0;
-        const fanOptions = <?php echo $fanOptionsJson; ?>;
+        const fanOptions = (() => {
+            try {
+                const raw = atob('<?php echo $fanOptionsJsonBase64; ?>');
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                console.error('fanOptions parse failed:', e);
+                return [];
+            }
+        })();
         const fanMap = {};
         fanOptions.forEach(f => {
             fanMap[String(f.value)] = f;
@@ -1170,7 +1194,7 @@
             });
             
             if (hourMismatch) {
-                Swal.fire({
+                SwalApi.fire({
                     icon: 'warning',
                     title: 'Soatlar mos emas!',
                     text: mismatchMessage,
@@ -1237,13 +1261,6 @@
             });
         });
         
-        const Toast = Swal.mixin({
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 2000,
-            timerProgressBar: true
-        });
     </script>
 </body>
 </html>
