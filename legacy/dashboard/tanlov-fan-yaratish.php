@@ -339,6 +339,89 @@
             }
         }
 
+        function getSelectedIdWithFallback($select, emptyLabels = []) {
+            if (!$select || !$select.length) {
+                return '';
+            }
+
+            const labels = Array.isArray(emptyLabels) ? emptyLabels : [emptyLabels];
+            const placeholders = new Set(
+                labels.map(label => String(label || '').trim().toLowerCase()).filter(Boolean)
+            );
+            const normalize = (value) => String(value || '').trim();
+            const isPlaceholder = (text) => {
+                const normalized = normalize(text).toLowerCase();
+                return normalized === '' || placeholders.has(normalized);
+            };
+
+            const directValue = normalize($select.val());
+            if (directValue !== '') {
+                return directValue;
+            }
+
+            try {
+                if (typeof $select.select2 === 'function' && $select.data('select2')) {
+                    const data = $select.select2('data');
+                    if (Array.isArray(data) && data.length > 0) {
+                        const dataId = normalize(data[0] && data[0].id);
+                        if (dataId !== '') {
+                            if ($select.find(`option[value="${dataId}"]`).length > 0) {
+                                $select.val(dataId);
+                            }
+                            return dataId;
+                        }
+                    }
+                }
+            } catch (e) {
+                // Select2 fallback davom etadi.
+            }
+
+            const selectedOption = $select.find('option:selected').first();
+            const optionValue = normalize(selectedOption.attr('value'));
+            if (optionValue !== '') {
+                return optionValue;
+            }
+
+            const candidates = [];
+            const selectedText = normalize(selectedOption.text());
+            if (selectedText !== '') {
+                candidates.push(selectedText);
+            }
+
+            const rendered = $select.next('.select2-container').find('.select2-selection__rendered').first();
+            if (rendered.length) {
+                const renderedTitle = normalize(rendered.attr('title'));
+                const renderedText = normalize(rendered.text()).replace(/^×\s*/, '').trim();
+                if (renderedTitle !== '') candidates.push(renderedTitle);
+                if (renderedText !== '') candidates.push(renderedText);
+            }
+
+            for (const text of candidates) {
+                if (isPlaceholder(text)) {
+                    continue;
+                }
+
+                let matched = $select.find('option').filter(function() {
+                    return normalize($(this).text()) === text;
+                }).first();
+
+                if (!matched.length) {
+                    matched = $select.find('option').filter(function() {
+                        const optionText = normalize($(this).text());
+                        return optionText !== '' && (optionText.includes(text) || text.includes(optionText));
+                    }).first();
+                }
+
+                const matchedValue = normalize(matched.attr('value'));
+                if (matchedValue !== '') {
+                    $select.val(matchedValue);
+                    return matchedValue;
+                }
+            }
+
+            return '';
+        }
+
         function cacheTopFilterOptions() {
             allYonalishFilterOptions.length = 0;
             $('#yonalishFilter option').each(function() {
@@ -365,9 +448,9 @@
         }
 
         function rebuildYonalishFilter(preferredValue = '') {
-            const selectedFakultet = String($('#fakultetFilter').val() || '');
+            const selectedFakultet = getSelectedIdWithFallback($('#fakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
             const select = $('#yonalishFilter');
-            const current = String(preferredValue || select.val() || '');
+            const current = String(preferredValue || getSelectedIdWithFallback(select, ["Yo'nalishni tanlang"]));
 
             select.empty().append('<option value="">Yo\'nalishni tanlang</option>');
             allYonalishFilterOptions
@@ -387,10 +470,10 @@
         }
 
         function rebuildSemestrFilter(preferredValue = '') {
-            const selectedFakultet = String($('#fakultetFilter').val() || '');
-            const selectedYonalish = String($('#yonalishFilter').val() || '');
+            const selectedFakultet = getSelectedIdWithFallback($('#fakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
+            const selectedYonalish = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
             const select = $('#semestrSelect');
-            const current = String(preferredValue || select.val() || '');
+            const current = String(preferredValue || getSelectedIdWithFallback(select, ['Semestrni tanlang']));
 
             select.empty().append('<option value="">Semestrni tanlang</option>');
             allSemestrFilterOptions
@@ -414,7 +497,7 @@
         }
 
         function refreshTanlovOptionsBySemestr() {
-            const semestrId = $('#semestrSelect').val();
+            const semestrId = getSelectedIdWithFallback($('#semestrSelect'), ['Semestrni tanlang']);
             $('.tanlov-fan-select').each(function() {
                 renderTanlovOptions($(this), semestrId);
             });
@@ -455,14 +538,33 @@
             });
 
             $('#applyTopFiltersBtn').on('click', function() {
-                rebuildYonalishFilter($('#yonalishFilter').val() || '');
-                rebuildSemestrFilter($('#semestrSelect').val() || '');
+                rebuildYonalishFilter(getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]));
+                rebuildSemestrFilter(getSelectedIdWithFallback($('#semestrSelect'), ['Semestrni tanlang']));
             });
 
             $('#resetTopFiltersBtn').on('click', function() {
                 $('#fakultetFilter').val('').trigger('change');
                 rebuildYonalishFilter('');
                 rebuildSemestrFilter('');
+            });
+
+            const syncTopFilters = () => {
+                const currentYonalish = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
+                const currentSemestr = getSelectedIdWithFallback($('#semestrSelect'), ['Semestrni tanlang']);
+                rebuildYonalishFilter(currentYonalish);
+                rebuildSemestrFilter(currentSemestr);
+            };
+
+            syncTopFilters();
+            setTimeout(syncTopFilters, 150);
+            $(window).on('pageshow', function() {
+                setTimeout(syncTopFilters, 0);
+            });
+
+            $('#yonalishFilter').on('select2:opening focus mousedown click', function() {
+                const currentYonalish = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
+                rebuildYonalishFilter(currentYonalish);
+                rebuildSemestrFilter(getSelectedIdWithFallback($('#semestrSelect'), ['Semestrni tanlang']));
             });
         });
 
@@ -590,7 +692,7 @@
             $('#rejaWrapper').append(newCard);
             newCard.html(buildTanlovCard(fanIndex));
             initializeSelect2(newCard);
-            const semestrId = $('#semestrSelect').val();
+            const semestrId = getSelectedIdWithFallback($('#semestrSelect'), ['Semestrni tanlang']);
             const tanlovSelect = newCard.find('.tanlov-fan-select');
             renderTanlovOptions(tanlovSelect, semestrId);
         });

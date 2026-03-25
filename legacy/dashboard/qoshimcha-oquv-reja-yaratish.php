@@ -4,6 +4,7 @@
     $db = new Database();
     $semestrlar = $db->get_semestrlar();
     $fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
+    $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     $qoshimcha_dars_turlar = $db->get_data_by_table_all('qoshimcha_dars_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
 
@@ -27,6 +28,15 @@
         return $short;
     };
 
+    $yonalishFakultetMap = [];
+    foreach ($yonalishlar as $yRow) {
+        $yId = (int)($yRow['id'] ?? 0);
+        if ($yId <= 0) {
+            continue;
+        }
+        $yonalishFakultetMap[$yId] = (int)($yRow['fakultet_id'] ?? 0);
+    }
+
     $filterYonalishlarMap = [];
     foreach ($semestrlar as $s) {
         $yonalishId = (int)($s['yonalish_id'] ?? 0);
@@ -34,12 +44,16 @@
             continue;
         }
 
+        $resolvedFakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
+        if ($resolvedFakultetId <= 0) {
+            $resolvedFakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+        }
+
         $filterYonalishlarMap[$yonalishId] = [
             'id' => $yonalishId,
             'name' => (string)($s['yonalish_name'] ?? ''),
             'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
-            // O'quv reja sahifasi bilan bir xil mantiq: yo'nalishdagi fakultet ustuvor.
-            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
+            'fakultet_id' => $resolvedFakultetId,
         ];
     }
     $filterYonalishlar = array_values($filterYonalishlarMap);
@@ -183,8 +197,11 @@
                                     } elseif (strpos($daraja, 'bakalavr') !== false) {
                                         $darajaPrefix = 'B ';
                                     }
-                                    $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
                                     $yonalishId = (int)($s['yonalish_id'] ?? 0);
+                                    $fakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
+                                    if ($fakultetId <= 0) {
+                                        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+                                    }
                                 ?>
                                     <option value="<?= $s['id'] ?>"
                                         data-fakultet-id="<?= $fakultetId ?>"
@@ -431,6 +448,89 @@
             }
         }
 
+        function getSelectedIdWithFallback($select, emptyLabels = []) {
+            if (!$select || !$select.length) {
+                return '';
+            }
+
+            const labels = Array.isArray(emptyLabels) ? emptyLabels : [emptyLabels];
+            const placeholders = new Set(
+                labels.map(label => String(label || '').trim().toLowerCase()).filter(Boolean)
+            );
+            const normalize = (value) => String(value || '').trim();
+            const isPlaceholder = (text) => {
+                const normalized = normalize(text).toLowerCase();
+                return normalized === '' || placeholders.has(normalized);
+            };
+
+            const directValue = normalize($select.val());
+            if (directValue !== '') {
+                return directValue;
+            }
+
+            try {
+                if (typeof $select.select2 === 'function' && $select.data('select2')) {
+                    const data = $select.select2('data');
+                    if (Array.isArray(data) && data.length > 0) {
+                        const dataId = normalize(data[0] && data[0].id);
+                        if (dataId !== '') {
+                            if ($select.find(`option[value="${dataId}"]`).length > 0) {
+                                $select.val(dataId);
+                            }
+                            return dataId;
+                        }
+                    }
+                }
+            } catch (e) {
+                // Select2 fallback davom etadi.
+            }
+
+            const selectedOption = $select.find('option:selected').first();
+            const optionValue = normalize(selectedOption.attr('value'));
+            if (optionValue !== '') {
+                return optionValue;
+            }
+
+            const candidates = [];
+            const selectedText = normalize(selectedOption.text());
+            if (selectedText !== '') {
+                candidates.push(selectedText);
+            }
+
+            const rendered = $select.next('.select2-container').find('.select2-selection__rendered').first();
+            if (rendered.length) {
+                const renderedTitle = normalize(rendered.attr('title'));
+                const renderedText = normalize(rendered.text()).replace(/^×\s*/, '').trim();
+                if (renderedTitle !== '') candidates.push(renderedTitle);
+                if (renderedText !== '') candidates.push(renderedText);
+            }
+
+            for (const text of candidates) {
+                if (isPlaceholder(text)) {
+                    continue;
+                }
+
+                let matched = $select.find('option').filter(function() {
+                    return normalize($(this).text()) === text;
+                }).first();
+
+                if (!matched.length) {
+                    matched = $select.find('option').filter(function() {
+                        const optionText = normalize($(this).text());
+                        return optionText !== '' && (optionText.includes(text) || text.includes(optionText));
+                    }).first();
+                }
+
+                const matchedValue = normalize(matched.attr('value'));
+                if (matchedValue !== '') {
+                    $select.val(matchedValue);
+                    return matchedValue;
+                }
+            }
+
+            return '';
+        }
+
         function escapeOptionText(value) {
             return String(value ?? '')
                 .replace(/&/g, '&amp;')
@@ -495,13 +595,13 @@
                 return;
             }
 
-            const fakultetId = String($('#fakultetFilter').val() || '');
+            const fakultetId = getSelectedIdWithFallback($('#fakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
             const currentYonalish = preferredYonalish !== null
                 ? String(preferredYonalish || '')
-                : String($('#yonalishFilter').val() || '');
+                : getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
             const currentSemestr = preferredSemestr !== null
                 ? String(preferredSemestr || '')
-                : String($('#semestrSelect').val() || '');
+                : getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
 
             isTopFilterSyncing = true;
 
@@ -531,7 +631,7 @@
 
                 rebuildYonalishOptions(targetYonalish);
 
-                const selectedYonalish = String($('#yonalishFilter').val() || '');
+                const selectedYonalish = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
                 const semestrTarget = currentSemestr;
                 rebuildSemestrOptions(semestrTarget);
                 const hasSemestr = $('#semestrSelect option[value="' + semestrTarget + '"]').length > 0;
@@ -590,7 +690,7 @@
         }
 
         function rebuildYonalishOptions(selectedValue = '') {
-            const selectedFakultet = String($('#fakultetFilter').val() || '');
+            const selectedFakultet = getSelectedIdWithFallback($('#fakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
             const select = $('#yonalishFilter');
             let html = "<option value=\"\">Yo'nalishni tanlang</option>";
 
@@ -609,7 +709,7 @@
         function filterYonalishByFakultet(selectedValue = null) {
             const currentYonalish = selectedValue !== null
                 ? String(selectedValue || '')
-                : String($('#yonalishFilter').val() || '');
+                : getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
 
             rebuildYonalishOptions(currentYonalish);
             const hasCurrent = $('#yonalishFilter option[value="' + currentYonalish + '"]').length > 0;
@@ -622,8 +722,8 @@
         }
 
         function rebuildSemestrOptions(selectedValue = '') {
-            const selectedFakultet = String($('#fakultetFilter').val() || '');
-            const selectedYonalish = String($('#yonalishFilter').val() || '');
+            const selectedFakultet = getSelectedIdWithFallback($('#fakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
+            const selectedYonalish = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
             const select = $('#semestrSelect');
             let html = '<option value="">Tanlang</option>';
 
@@ -642,7 +742,7 @@
         }
 
         function filterSemestrByFilters(selectedValue = null) {
-            const currentSemestr = String($('#semestrSelect').val() || '');
+            const currentSemestr = getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
             const targetSemestr = selectedValue !== null ? String(selectedValue || '') : currentSemestr;
 
             rebuildSemestrOptions(targetSemestr);
@@ -906,8 +1006,8 @@
             // Ba'zi brauzerlarda select qiymatlari sahifa ochilgandan keyin tiklanadi.
             // Shu sabab filtrlarni qayta sync qilamiz.
             const syncTopFilters = () => {
-                const currentYonalish = String($('#yonalishFilter').val() || '');
-                const currentSemestr = String($('#semestrSelect').val() || '');
+                const currentYonalish = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
+                const currentSemestr = getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
                 syncTopFiltersFromServer(currentYonalish, currentSemestr);
             };
 
@@ -915,6 +1015,18 @@
             setTimeout(syncTopFilters, 150);
             $(window).on('pageshow', function() {
                 setTimeout(syncTopFilters, 0);
+            });
+
+            $('#yonalishFilter').on('select2:opening focus mousedown click', function() {
+                if (isTopFilterSyncing) return;
+                const currentYonalish = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
+                filterYonalishByFakultet(currentYonalish);
+            });
+
+            $('#semestrSelect').on('select2:opening focus mousedown click', function() {
+                if (isTopFilterSyncing) return;
+                const currentSemestr = getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
+                filterSemestrByFilters(currentSemestr);
             });
         });
 

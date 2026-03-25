@@ -57,6 +57,7 @@
 
     $semestrlar = $db->get_semestrlar();
     $fakultetlar = $db->get_data_by_table_all('fakultetlar');
+    $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     $dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -79,6 +80,15 @@
         }
         return $short;
     };
+    $yonalishFakultetMap = [];
+    foreach ($yonalishlar as $yRow) {
+        $yId = (int)($yRow['id'] ?? 0);
+        if ($yId <= 0) {
+            continue;
+        }
+        $yonalishFakultetMap[$yId] = (int)($yRow['fakultet_id'] ?? 0);
+    }
+
     $filterYonalishlarMap = [];
     foreach ($semestrlar as $s) {
         $yonalishId = (int)($s['yonalish_id'] ?? 0);
@@ -86,11 +96,16 @@
             continue;
         }
 
+        $resolvedFakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
+        if ($resolvedFakultetId <= 0) {
+            $resolvedFakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+        }
+
         $filterYonalishlarMap[$yonalishId] = [
             'id' => $yonalishId,
             'name' => (string)($s['yonalish_name'] ?? ''),
             'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
-            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
+            'fakultet_id' => $resolvedFakultetId,
         ];
     }
     $filterYonalishlar = array_values($filterYonalishlarMap);
@@ -157,8 +172,11 @@
             $label = 'Semestr: ' . (int)$s['id'];
         }
         $label = $darajaPrefix . $label;
-        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
         $yonalishId = (int)($s['yonalish_id'] ?? 0);
+        $fakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
+        if ($fakultetId <= 0) {
+            $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+        }
         $semestrOptions .= '<option value="' . (int)$s['id'] . '" data-fakultet-id="' . $fakultetId . '" data-yonalish-id="' . $yonalishId . '">' . $h($label) . '</option>';
     }
     if ($semestrOptions === '') {
@@ -167,7 +185,6 @@
 
     // Izoh: Yo'nalishlar ro'yxatini map qilib olamiz.
     $yonalishlarMap = [];
-    $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     foreach ($yonalishlar as $y) {
         $label = trim($y['name'] ?? '');
         $yil = trim($y['kirish_yili'] ?? '');
@@ -1130,6 +1147,89 @@
             }
         }
 
+        function getSelectedIdWithFallback($select, emptyLabels = []) {
+            if (!$select || !$select.length) {
+                return '';
+            }
+
+            const labels = Array.isArray(emptyLabels) ? emptyLabels : [emptyLabels];
+            const placeholders = new Set(
+                labels.map(label => String(label || '').trim().toLowerCase()).filter(Boolean)
+            );
+            const normalize = (value) => String(value || '').trim();
+            const isPlaceholder = (text) => {
+                const normalized = normalize(text).toLowerCase();
+                return normalized === '' || placeholders.has(normalized);
+            };
+
+            const directValue = normalize($select.val());
+            if (directValue !== '') {
+                return directValue;
+            }
+
+            try {
+                if (typeof $select.select2 === 'function' && $select.data('select2')) {
+                    const data = $select.select2('data');
+                    if (Array.isArray(data) && data.length > 0) {
+                        const dataId = normalize(data[0] && data[0].id);
+                        if (dataId !== '') {
+                            if ($select.find(`option[value="${dataId}"]`).length > 0) {
+                                $select.val(dataId);
+                            }
+                            return dataId;
+                        }
+                    }
+                }
+            } catch (e) {
+                // Select2 fallback davom etadi.
+            }
+
+            const selectedOption = $select.find('option:selected').first();
+            const optionValue = normalize(selectedOption.attr('value'));
+            if (optionValue !== '') {
+                return optionValue;
+            }
+
+            const candidates = [];
+            const selectedText = normalize(selectedOption.text());
+            if (selectedText !== '') {
+                candidates.push(selectedText);
+            }
+
+            const rendered = $select.next('.select2-container').find('.select2-selection__rendered').first();
+            if (rendered.length) {
+                const renderedTitle = normalize(rendered.attr('title'));
+                const renderedText = normalize(rendered.text()).replace(/^×\s*/, '').trim();
+                if (renderedTitle !== '') candidates.push(renderedTitle);
+                if (renderedText !== '') candidates.push(renderedText);
+            }
+
+            for (const text of candidates) {
+                if (isPlaceholder(text)) {
+                    continue;
+                }
+
+                let matched = $select.find('option').filter(function() {
+                    return normalize($(this).text()) === text;
+                }).first();
+
+                if (!matched.length) {
+                    matched = $select.find('option').filter(function() {
+                        const optionText = normalize($(this).text());
+                        return optionText !== '' && (optionText.includes(text) || text.includes(optionText));
+                    }).first();
+                }
+
+                const matchedValue = normalize(matched.attr('value'));
+                if (matchedValue !== '') {
+                    $select.val(matchedValue);
+                    return matchedValue;
+                }
+            }
+
+            return '';
+        }
+
         function cacheChetTopFilterOptions() {
             allChetYonalishFilterOptions.length = 0;
             $('#chetYonalishFilter option').each(function() {
@@ -1156,7 +1256,7 @@
         }
 
         function rebuildChetYonalishFilter(preferredValue = '') {
-            const selectedFakultet = String($('#chetFakultetFilter').val() || '');
+            const selectedFakultet = getSelectedIdWithFallback($('#chetFakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
             const select = $('#chetYonalishFilter');
             const current = String(preferredValue || select.val() || '');
 
@@ -1178,8 +1278,8 @@
         }
 
         function rebuildChetSemestrFilter(preferredValue = '') {
-            const selectedFakultet = String($('#chetFakultetFilter').val() || '');
-            const selectedYonalish = String($('#chetYonalishFilter').val() || '');
+            const selectedFakultet = getSelectedIdWithFallback($('#chetFakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
+            const selectedYonalish = getSelectedIdWithFallback($('#chetYonalishFilter'), ["Yo'nalishni tanlang"]);
             const select = $('#chetSemestrSelect');
             const current = String(preferredValue || select.val() || '');
 
@@ -1704,14 +1804,33 @@
             });
 
             $('#applyChetTopFiltersBtn').on('click', function() {
-                rebuildChetYonalishFilter($('#chetYonalishFilter').val() || '');
-                rebuildChetSemestrFilter($('#chetSemestrSelect').val() || '');
+                rebuildChetYonalishFilter(getSelectedIdWithFallback($('#chetYonalishFilter'), ["Yo'nalishni tanlang"]));
+                rebuildChetSemestrFilter(getSelectedIdWithFallback($('#chetSemestrSelect'), ['Semestrni tanlang']));
             });
 
             $('#resetChetTopFiltersBtn').on('click', function() {
                 $('#chetFakultetFilter').val('').trigger('change');
                 rebuildChetYonalishFilter('');
                 rebuildChetSemestrFilter('');
+            });
+
+            const syncChetTopFilters = () => {
+                const currentYonalish = getSelectedIdWithFallback($('#chetYonalishFilter'), ["Yo'nalishni tanlang"]);
+                const currentSemestr = getSelectedIdWithFallback($('#chetSemestrSelect'), ['Semestrni tanlang']);
+                rebuildChetYonalishFilter(currentYonalish);
+                rebuildChetSemestrFilter(currentSemestr);
+            };
+
+            syncChetTopFilters();
+            setTimeout(syncChetTopFilters, 150);
+            $(window).on('pageshow', function() {
+                setTimeout(syncChetTopFilters, 0);
+            });
+
+            $('#chetYonalishFilter').on('select2:opening focus mousedown click', function() {
+                const currentYonalish = getSelectedIdWithFallback($('#chetYonalishFilter'), ["Yo'nalishni tanlang"]);
+                rebuildChetYonalishFilter(currentYonalish);
+                rebuildChetSemestrFilter(getSelectedIdWithFallback($('#chetSemestrSelect'), ['Semestrni tanlang']));
             });
         });
 
