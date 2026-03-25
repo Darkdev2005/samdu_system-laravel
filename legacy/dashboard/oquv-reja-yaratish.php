@@ -235,37 +235,27 @@
                                 </div>
                             </div>
                             <div class="darsSoatWrapper">
-                                <div class="form-grid-2 dars-soat-row">
-                                    <div class="form-group">
-                                        <label>Dars turi</label>
-                                        <select class="form-control" name="dars_turi[0][]" required>
-                                            <option value="">Tanlang</option>
-                                            <?php foreach ($dars_soat_turlari as $d): ?>
-                                                <option value="<?= $d['id'] ?>">
-                                                    <?= $h($d['name']) ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
+                                <?php foreach ($dars_soat_turlari as $d): ?>
+                                    <div class="form-grid-2 dars-soat-row">
+                                        <div class="form-group">
+                                            <label>Dars turi</label>
+                                            <input type="text"
+                                                class="form-control"
+                                                value="<?= $h($d['name']) ?>"
+                                                readonly
+                                                tabindex="-1">
+                                            <input type="hidden" name="dars_turi[0][]" value="<?= (int)$d['id'] ?>">
+                                        </div>
 
-                                    <div class="form-group">
-                                        <label>Dars soati</label>
-                                        <input type="number"
-                                            class="form-control"
-                                            name="dars_soati[0][]"
-                                            min="0"
-                                            required>
+                                        <div class="form-group">
+                                            <label>Dars soati</label>
+                                            <input type="number"
+                                                class="form-control"
+                                                name="dars_soati[0][]"
+                                                min="0">
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="dars-soat-actions">
-                                    <button type="button" class="btn btn-outline btn-sm addDarsSoat">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-
-                                    <button type="button" class="btn btn-danger btn-sm removeDarsSoat">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </div>
+                                <?php endforeach; ?>
                             </div>
                             <div class="reja-actions">
                                 <button type="button" class="btn btn-outline btn-sm addReja">
@@ -463,20 +453,30 @@
             return html;
         }
 
-        function buildDarsTuriOptionsHtml(selectedId = '') {
-            const selected = String(selectedId || '');
+        function buildAllDarsRowsHtml(index) {
             let html = '';
             (darsTurlariListDefault || []).forEach(item => {
                 const id = String(item.id || '');
-                const selectedAttr = id === selected ? ' selected' : '';
-                html += `<option value="${escapeHtml(id)}"${selectedAttr}>${escapeHtml(item.name || '')}</option>`;
+                const name = escapeHtml(item.name || '');
+                html += `
+                    <div class="form-grid-2 dars-soat-row">
+                        <div class="form-group">
+                            <label>Dars turi</label>
+                            <input type="text" class="form-control" value="${name}" readonly tabindex="-1">
+                            <input type="hidden" name="dars_turi[${index}][]" value="${escapeHtml(id)}">
+                        </div>
+                        <div class="form-group">
+                            <label>Dars soati</label>
+                            <input type="number" class="form-control" name="dars_soati[${index}][]" min="0">
+                        </div>
+                    </div>
+                `;
             });
             return html;
         }
 
         function switchToMandatory(card, index, typeValue = 0) {
             const kafedralarOptions = buildKafedralarOptionsHtml('');
-            const darsTurlariOptions = buildDarsTuriOptionsHtml('');
 
             const mandatoryHtml = `
                 ${renderTypeButtons(index, typeValue)}
@@ -503,33 +503,7 @@
                 </div>
                 
                 <div class="darsSoatWrapper">
-                    <div class="form-grid-2 dars-soat-row">
-                        <div class="form-group">
-                            <label>Dars turi</label>
-                            <select class="form-control" name="dars_turi[${index}][]" required>
-                                <option value="">Tanlang</option>
-                                ${darsTurlariOptions}
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Dars soati</label>
-                            <input type="number"
-                                class="form-control"
-                                name="dars_soati[${index}][]"
-                                min="0"
-                                required>
-                        </div>
-                    </div>
-                    <div class="dars-soat-actions">
-                        <button type="button" class="btn btn-outline btn-sm addDarsSoat">
-                            <i class="fas fa-plus"></i>
-                        </button>
-
-                        <button type="button" class="btn btn-danger btn-sm removeDarsSoat">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
+                    ${buildAllDarsRowsHtml(index)}
                 </div>
                 
                 <div class="reja-actions">
@@ -572,33 +546,7 @@
                 </div>
 
                 <div class="darsSoatWrapper">
-                    <div class="form-grid-2 dars-soat-row">
-                        <div class="form-group">
-                            <label>Dars turi</label>
-                            <select class="form-control" name="dars_turi[${index}][]" required>
-                                <option value="">Tanlang</option>
-                                ${buildDarsTuriOptionsHtml('')}
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Dars soati</label>
-                            <input type="number"
-                                class="form-control"
-                                name="dars_soati[${index}][]"
-                                min="0"
-                                required>
-                        </div>
-                    </div>
-                    <div class="dars-soat-actions">
-                        <button type="button" class="btn btn-outline btn-sm addDarsSoat">
-                            <i class="fas fa-plus"></i>
-                        </button>
-
-                        <button type="button" class="btn btn-danger btn-sm removeDarsSoat">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
+                    ${buildAllDarsRowsHtml(index)}
                 </div>
 
                 <div class="reja-actions">
@@ -728,45 +676,6 @@
             initializeSelect2(newCard);
         });
 
-        $(document).on('click', '.addDarsSoat', function() {
-            const card = $(this).closest('.reja-card');
-            const wrapper = $(this).closest('.darsSoatWrapper');
-            const index = card.data('index');
-            const darsTurlariOptions = buildDarsTuriOptionsHtml('');
-            
-            const newRow = $(`
-                <div class="form-grid-2 dars-soat-row">
-                    <div class="form-group">
-                        <label>Dars turi</label>
-                        <select class="form-control" name="dars_turi[${index}][]" required>
-                            <option value="">Tanlang</option>
-                            ${darsTurlariOptions}
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Dars soati</label>
-                        <input type="number"
-                            class="form-control"
-                            name="dars_soati[${index}][]"
-                            min="0"
-                            required>
-                    </div>
-                </div>
-            `);
-            
-            newRow.insertBefore(wrapper.find('.dars-soat-actions'));
-        });
-
-        $(document).on('click', '.removeDarsSoat', function() {
-            const wrapper = $(this).closest('.darsSoatWrapper');
-            const rows = wrapper.find('.dars-soat-row');
-            
-            if (rows.length > 1) {
-                rows.last().remove();
-            }
-        });
-
         $(document).on('click', '.removeReja', function() {
             const rejas = $('.reja-card');
             if (rejas.length > 1) {
@@ -833,6 +742,54 @@
                     }
                 });
             }, 10);
+        }
+
+        function prepareDarsRowsForSubmit(formElement) {
+            const tempDisabledFields = [];
+            let hasInvalidRow = false;
+
+            $(formElement).find('.dars-soat-row').each(function() {
+                const typeSelect = $(this).find('[name^="dars_turi["]').first();
+                const soatInput = $(this).find('input[name^="dars_soati["]').first();
+                if (!typeSelect.length || !soatInput.length) {
+                    return;
+                }
+
+                const rawSoat = String(soatInput.val() ?? '').trim();
+                const soatValue = rawSoat === '' ? 0 : Number(rawSoat);
+
+                if (rawSoat === '' || !Number.isFinite(soatValue) || soatValue <= 0) {
+                    typeSelect.prop('disabled', true);
+                    soatInput.prop('disabled', true);
+                    tempDisabledFields.push(typeSelect[0], soatInput[0]);
+                    if (typeSelect.is('select')) {
+                        typeSelect.removeClass('is-invalid');
+                    }
+                    return;
+                }
+
+                if (String(typeSelect.val() || '').trim() === '') {
+                    hasInvalidRow = true;
+                    if (typeSelect.is('select')) {
+                        typeSelect.addClass('is-invalid');
+                        if (document.activeElement !== typeSelect[0]) {
+                            typeSelect.trigger('focus');
+                        }
+                    }
+                } else {
+                    if (typeSelect.is('select')) {
+                        typeSelect.removeClass('is-invalid');
+                    }
+                }
+            });
+
+            return { tempDisabledFields, hasInvalidRow };
+        }
+
+        function restoreTemporarilyDisabledFields(fields) {
+            (fields || []).forEach(field => {
+                if (field) field.disabled = false;
+            });
         }
 
         const SwalApi = window.Swal || {
@@ -1122,8 +1079,19 @@
 
         $('#oquvRejaForm').on('submit', function(e) {
             e.preventDefault();
-            
+
+            const { tempDisabledFields, hasInvalidRow } = prepareDarsRowsForSubmit(this);
+            if (hasInvalidRow) {
+                restoreTemporarilyDisabledFields(tempDisabledFields);
+                Toast.fire({
+                    icon: 'error',
+                    title: "Dars soati kiritilgan qatorlarda dars turi tanlanishi shart"
+                });
+                return;
+            }
+
             const formData = new FormData(this);
+            restoreTemporarilyDisabledFields(tempDisabledFields);
             const selectedFakultet = $('#fakultetFilter').val() || '';
             const selectedYonalish = $('#yonalishFilter').val() || '';
             const selectedSemestr = $('#semestrSelect').val() || '';

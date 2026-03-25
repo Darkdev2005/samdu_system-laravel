@@ -79,9 +79,14 @@
             if (isset($_POST['dars_turi'][$index], $_POST['dars_soati'][$index])) {
                 foreach ($_POST['dars_turi'][$index] as $i => $darsTurId) {
                     $darsTurId = (int) $darsTurId;
-                    $darsSoat = (int) ($_POST['dars_soati'][$index][$i] ?? 0);
-                    
-                    if ($darsTurId <= 0 || $darsSoat < 0) {
+                    $rawDarsSoat = trim((string) ($_POST['dars_soati'][$index][$i] ?? ''));
+                    if ($rawDarsSoat === '') {
+                        continue;
+                    }
+
+                    $darsSoat = (int) $rawDarsSoat;
+
+                    if ($darsTurId <= 0 || $darsSoat <= 0) {
                         continue;
                     }
                     
@@ -165,9 +170,14 @@
                 if ($baseFanId > 0 && isset($_POST['dars_turi'][$index])) {
                     foreach ($_POST['dars_turi'][$index] as $i => $darsTurId) {
                         $darsTurId = (int) $darsTurId;
-                        $darsSoat = isset($_POST['dars_soati'][$index][$i]) ? (int) $_POST['dars_soati'][$index][$i] : 0;
+                        $rawDarsSoat = trim((string) ($_POST['dars_soati'][$index][$i] ?? ''));
+                        if ($rawDarsSoat === '') {
+                            continue;
+                        }
 
-                        if ($darsTurId <= 0 || $darsSoat < 0) {
+                        $darsSoat = (int) $rawDarsSoat;
+
+                        if ($darsTurId <= 0 || $darsSoat <= 0) {
                             continue;
                         }
 
