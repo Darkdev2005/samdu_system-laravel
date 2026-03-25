@@ -303,9 +303,24 @@
     <script>if (window.jQuery && !window.jQuery.fn.select2) { document.write('<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"><\/script>'); }</script>
 
     <script>
+        if (window.jQuery && window.jQuery.fn && typeof window.jQuery.fn.select2 !== 'function') {
+            // Izoh: Hostda select2 yuklanmasa ham sahifa JS'i to'xtab qolmasin.
+            window.jQuery.fn.select2 = function() { return this; };
+        }
+
         let fanIndex = 0;
         const allYonalishFilterOptions = [];
         const allSemestrFilterOptions = [];
+
+        function triggerSelectRefresh($select) {
+            if ($select && $select.length && $select.hasClass('select2-hidden-accessible')) {
+                $select.trigger('change.select2');
+                return;
+            }
+            if ($select && $select.length) {
+                $select.trigger('change');
+            }
+        }
 
         function cacheTopFilterOptions() {
             allYonalishFilterOptions.length = 0;
@@ -351,9 +366,7 @@
 
             const hasCurrent = current !== '' && select.find(`option[value="${current}"]`).length > 0;
             select.val(hasCurrent ? current : '');
-            if (select.hasClass('select2-hidden-accessible')) {
-                select.trigger('change.select2');
-            }
+            triggerSelectRefresh(select);
         }
 
         function rebuildSemestrFilter(preferredValue = '') {
@@ -378,9 +391,7 @@
 
             const hasCurrent = current !== '' && select.find(`option[value="${current}"]`).length > 0;
             select.val(hasCurrent ? current : '');
-            if (select.hasClass('select2-hidden-accessible')) {
-                select.trigger('change.select2');
-            }
+            triggerSelectRefresh(select);
 
             refreshTanlovOptionsBySemestr();
         }
@@ -432,7 +443,7 @@
             });
 
             $('#resetTopFiltersBtn').on('click', function() {
-                $('#fakultetFilter').val('').trigger('change.select2');
+                $('#fakultetFilter').val('').trigger('change');
                 rebuildYonalishFilter('');
                 rebuildSemestrFilter('');
             });
