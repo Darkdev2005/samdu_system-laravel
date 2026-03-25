@@ -56,8 +56,53 @@
     }
 
     $semestrlar = $db->get_semestrlar();
+    $fakultetlar = $db->get_data_by_table_all('fakultetlar');
     $dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
+    $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $makeShortCode = static function (string $name): string {
+        $words = preg_split('/\s+/', trim($name)) ?: [];
+        $short = '';
+        foreach ($words as $word) {
+            $word = trim((string)$word);
+            if ($word === '') {
+                continue;
+            }
+            if (function_exists('mb_substr') && function_exists('mb_strtoupper')) {
+                $first = @mb_substr($word, 0, 1, 'UTF-8');
+                if ($first !== false && $first !== '') {
+                    $short .= (string)@mb_strtoupper($first, 'UTF-8');
+                    continue;
+                }
+            }
+            $short .= strtoupper((string)substr($word, 0, 1));
+        }
+        return $short;
+    };
+    $filterYonalishlarMap = [];
+    foreach ($semestrlar as $s) {
+        $yonalishId = (int)($s['yonalish_id'] ?? 0);
+        if ($yonalishId <= 0 || isset($filterYonalishlarMap[$yonalishId])) {
+            continue;
+        }
+
+        $filterYonalishlarMap[$yonalishId] = [
+            'id' => $yonalishId,
+            'name' => (string)($s['yonalish_name'] ?? ''),
+            'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
+            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
+        ];
+    }
+    $filterYonalishlar = array_values($filterYonalishlarMap);
+    usort($filterYonalishlar, static function (array $a, array $b): int {
+        $aName = (string)($a['name'] ?? '');
+        $bName = (string)($b['name'] ?? '');
+        $nameCmp = strcmp($aName, $bName);
+        if ($nameCmp !== 0) {
+            return $nameCmp;
+        }
+        return strcmp((string)($a['kirish_yili'] ?? ''), (string)($b['kirish_yili'] ?? ''));
+    });
     // Izoh: Chet tili fan select uchun faqat o'quv rejada yaratilgan fanlar olinadi (semestr bo'yicha).
     $chet_tili_fanlar = $db->get_data_by_table_all('fanlar', 'WHERE tanlov_fan = 3 AND (kafedra_id = 0 OR kafedra_id IS NULL OR kafedra_id = "")');
     $chetTiliOptionsBySemestr = [];
@@ -86,7 +131,10 @@
         $yonalishName = trim($s['yonalish_name'] ?? '');
         $kirishYili = trim($s['kirish_yili'] ?? '');
         $semestrNum = trim($s['semestr'] ?? '');
-        $daraja = mb_strtolower(trim($s['akademik_daraja_name'] ?? ''), 'UTF-8');
+        $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
+        $daraja = function_exists('mb_strtolower')
+            ? (string)@mb_strtolower($darajaRaw, 'UTF-8')
+            : strtolower($darajaRaw);
         $darajaPrefix = '';
         if (strpos($daraja, 'magistr') !== false) {
             $darajaPrefix = 'M ';
@@ -109,7 +157,9 @@
             $label = 'Semestr: ' . (int)$s['id'];
         }
         $label = $darajaPrefix . $label;
-        $semestrOptions .= '<option value="' . (int)$s['id'] . '">' . htmlspecialchars($label) . '</option>';
+        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+        $yonalishId = (int)($s['yonalish_id'] ?? 0);
+        $semestrOptions .= '<option value="' . (int)$s['id'] . '" data-fakultet-id="' . $fakultetId . '" data-yonalish-id="' . $yonalishId . '">' . $h($label) . '</option>';
     }
     if ($semestrOptions === '') {
         $semestrOptions = '<option value="" disabled>Semestr topilmadi</option>';
@@ -625,6 +675,18 @@
         .tab-content.active {
             display: block;
         }
+        .top-filters-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .top-filter-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
         .guruh-list-empty {
             padding: 14px;
             background: #f8fafc;
@@ -691,6 +753,16 @@
             margin-top: 6px;
             padding-right: 6px;
         }
+        @media (max-width: 1100px) {
+            .top-filters-grid {
+                grid-template-columns: repeat(2, minmax(220px, 1fr));
+            }
+        }
+        @media (max-width: 700px) {
+            .top-filters-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -711,31 +783,67 @@
                 <div id="chet-tab-yaratish" class="tab-content active">
                     <form id="chetTiliYaratishForm" class="card">
                         <h3 class="section-title">Umumiy ma'lumot</h3>
-                        <div class="form-grid-2">
+                        <div class="top-filters-grid">
+                            <div class="form-group">
+                                <label>Fakultet filtri</label>
+                                <select class="form-control" id="chetFakultetFilter">
+                                    <option value="">Barcha fakultetlar</option>
+                                    <?php foreach ($fakultetlar as $f): ?>
+                                        <option value="<?= (int)$f['id'] ?>"><?= $h($f['name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Yo'nalish filtri</label>
+                                <select class="form-control" id="chetYonalishFilter">
+                                    <option value="">Yo'nalishni tanlang</option>
+                                    <?php foreach ($filterYonalishlar as $y): ?>
+                                        <option
+                                            value="<?= (int)$y['id'] ?>"
+                                            data-fakultet-id="<?= (int)$y['fakultet_id'] ?>"
+                                        >
+                                            <?= $h((string)$y['name'] . (!empty($y['kirish_yili']) ? ' - ' . (string)$y['kirish_yili'] : '')) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                             <div class="form-group">
                                 <label>Semestr</label>
                                 <select class="form-control" name="semestr_id" id="chetSemestrSelect" required>
-                                    <option value="">Tanlang</option>
-                                        <?php foreach ($semestrlar as $s): 
-                                            $short = '';
-                                            $words = preg_split('/\s+/u', trim($s['yonalish_name']));
-                                            foreach ($words as $w) {
-                                                $short .= mb_strtoupper(mb_substr($w, 0, 1, 'UTF-8'), 'UTF-8');
-                                            }
-                                            $daraja = mb_strtolower(trim($s['akademik_daraja_name'] ?? ''), 'UTF-8');
+                                    <option value="">Semestrni tanlang</option>
+                                        <?php foreach ($semestrlar as $s):
+                                            $short = $makeShortCode((string)($s['yonalish_name'] ?? ''));
+                                            $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
+                                            $daraja = function_exists('mb_strtolower')
+                                                ? (string)@mb_strtolower($darajaRaw, 'UTF-8')
+                                                : strtolower($darajaRaw);
                                             $darajaPrefix = '';
                                             if (strpos($daraja, 'magistr') !== false) {
                                                 $darajaPrefix = 'M ';
                                             } elseif (strpos($daraja, 'bakalavr') !== false) {
                                                 $darajaPrefix = 'B ';
                                             }
+                                            $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+                                            $yonalishId = (int)($s['yonalish_id'] ?? 0);
                                         ?>
-                                        <option value="<?= $s['id'] ?>">
-                                            <?= $darajaPrefix . $short . '_' . $s['kirish_yili'] . ' - ' . $s['semestr'] . '-semestr'; ?>
+                                        <option
+                                            value="<?= (int)$s['id'] ?>"
+                                            data-fakultet-id="<?= $fakultetId ?>"
+                                            data-yonalish-id="<?= $yonalishId ?>"
+                                        >
+                                            <?= $h($darajaPrefix . $short . '_' . ($s['kirish_yili'] ?? '') . ' - ' . ($s['semestr'] ?? '') . '-semestr') ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
+                        </div>
+                        <div class="top-filter-actions">
+                            <button type="button" class="btn btn-primary btn-sm" id="applyChetTopFiltersBtn">
+                                <i class="fas fa-filter"></i> Filtrlash
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="resetChetTopFiltersBtn">
+                                <i class="fas fa-rotate-left"></i> Tozalash
+                            </button>
                         </div>
 
                         <div id="chetRejaWrapper">
@@ -989,9 +1097,11 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <link href="/assets/vendor/select2/css/select2.min.css" rel="stylesheet" />
+    <script src="/assets/vendor/jquery/jquery-3.6.0.min.js"></script>
+    <script>window.jQuery || document.write('<script src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>')</script>
+    <script src="/assets/vendor/select2/js/select2.min.js"></script>
+    <script>if (window.jQuery && !window.jQuery.fn.select2) { document.write('<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"><\/script>'); }</script>
 
     <script>
         const baseFanMeta = <?php echo json_encode($baseFanMeta, JSON_UNESCAPED_UNICODE); ?>;
@@ -1002,6 +1112,93 @@
 
         let chetFanIndex = 0;
         let semestrRowIndex = 0;
+        const allChetYonalishFilterOptions = [];
+        const allChetSemestrFilterOptions = [];
+
+        function cacheChetTopFilterOptions() {
+            allChetYonalishFilterOptions.length = 0;
+            $('#chetYonalishFilter option').each(function() {
+                const value = String($(this).attr('value') || '');
+                if (!value) return;
+                allChetYonalishFilterOptions.push({
+                    value,
+                    label: $(this).text(),
+                    fakultetId: String($(this).data('fakultet-id') || ''),
+                });
+            });
+
+            allChetSemestrFilterOptions.length = 0;
+            $('#chetSemestrSelect option').each(function() {
+                const value = String($(this).attr('value') || '');
+                if (!value) return;
+                allChetSemestrFilterOptions.push({
+                    value,
+                    label: $(this).text(),
+                    fakultetId: String($(this).data('fakultet-id') || ''),
+                    yonalishId: String($(this).data('yonalish-id') || ''),
+                });
+            });
+        }
+
+        function rebuildChetYonalishFilter(preferredValue = '') {
+            const selectedFakultet = String($('#chetFakultetFilter').val() || '');
+            const select = $('#chetYonalishFilter');
+            const current = String(preferredValue || select.val() || '');
+
+            select.empty().append('<option value="">Yo\'nalishni tanlang</option>');
+            allChetYonalishFilterOptions
+                .filter((item) => !selectedFakultet || item.fakultetId === selectedFakultet)
+                .forEach((item) => {
+                    select.append(
+                        $('<option>')
+                            .attr('value', item.value)
+                            .attr('data-fakultet-id', item.fakultetId)
+                            .text(item.label)
+                    );
+                });
+
+            const hasCurrent = current !== '' && select.find(`option[value="${current}"]`).length > 0;
+            select.val(hasCurrent ? current : '');
+            if (select.hasClass('select2-hidden-accessible')) {
+                select.trigger('change.select2');
+            }
+        }
+
+        function rebuildChetSemestrFilter(preferredValue = '') {
+            const selectedFakultet = String($('#chetFakultetFilter').val() || '');
+            const selectedYonalish = String($('#chetYonalishFilter').val() || '');
+            const select = $('#chetSemestrSelect');
+            const current = String(preferredValue || select.val() || '');
+
+            select.empty().append('<option value="">Semestrni tanlang</option>');
+            allChetSemestrFilterOptions
+                .filter((item) => !selectedFakultet || item.fakultetId === selectedFakultet)
+                .filter((item) => !selectedYonalish || item.yonalishId === selectedYonalish)
+                .forEach((item) => {
+                    select.append(
+                        $('<option>')
+                            .attr('value', item.value)
+                            .attr('data-fakultet-id', item.fakultetId)
+                            .attr('data-yonalish-id', item.yonalishId)
+                            .text(item.label)
+                    );
+                });
+
+            const hasCurrent = current !== '' && select.find(`option[value="${current}"]`).length > 0;
+            select.val(hasCurrent ? current : '');
+            if (select.hasClass('select2-hidden-accessible')) {
+                select.trigger('change.select2');
+            }
+
+            refreshChetOptionsBySemestr();
+        }
+
+        function refreshChetOptionsBySemestr() {
+            const semestrId = $('#chetSemestrSelect').val();
+            $('.chet-tili-select').each(function() {
+                renderChetOptions($(this), semestrId);
+            });
+        }
 
         function escapeHtml(value) {
             return String(value ?? '')
@@ -1450,6 +1647,18 @@
                 setActiveTab(target);
             });
 
+            cacheChetTopFilterOptions();
+
+            $('#chetFakultetFilter').select2({
+                placeholder: "Fakultetni tanlang",
+                allowClear: true,
+                width: '100%',
+            });
+            $('#chetYonalishFilter').select2({
+                placeholder: "Yo'nalishni tanlang",
+                allowClear: true,
+                width: '100%',
+            });
             // Izoh: Chet tili fanini yaratish selectlari.
             $('#chetSemestrSelect').select2({
                 placeholder: "Semestrni tanlang",
@@ -1457,9 +1666,11 @@
                 width: '100%',
             });
 
+            rebuildChetYonalishFilter();
+            rebuildChetSemestrFilter();
+
             initializeChetSelect2($('#chetRejaWrapper .reja-card:first'));
-            const semestrId = $('#chetSemestrSelect').val();
-            renderChetOptions($('#chetRejaWrapper .reja-card:first').find('.chet-tili-select'), semestrId);
+            refreshChetOptionsBySemestr();
 
             $('#biriktirishBaseFanSelect').select2({
                 placeholder: "Bazaviy chet tili fanini tanlang",
@@ -1471,14 +1682,31 @@
             addSemestrRow();
             refreshBaseFanSelect();
             renderTaqsimotMatrix();
+
+            $('#chetFakultetFilter').on('change', function() {
+                rebuildChetYonalishFilter('');
+                rebuildChetSemestrFilter('');
+            });
+
+            $('#chetYonalishFilter').on('change', function() {
+                rebuildChetSemestrFilter('');
+            });
+
+            $('#applyChetTopFiltersBtn').on('click', function() {
+                rebuildChetYonalishFilter($('#chetYonalishFilter').val() || '');
+                rebuildChetSemestrFilter($('#chetSemestrSelect').val() || '');
+            });
+
+            $('#resetChetTopFiltersBtn').on('click', function() {
+                $('#chetFakultetFilter').val('').trigger('change.select2');
+                rebuildChetYonalishFilter('');
+                rebuildChetSemestrFilter('');
+            });
         });
 
         // Izoh: Chet tili semestri tanlanganda fanlar ro'yxatini yangilash.
         $('#chetSemestrSelect').on('change', function() {
-            const semestrId = $(this).val();
-            $('.chet-tili-select').each(function() {
-                renderChetOptions($(this), semestrId);
-            });
+            refreshChetOptionsBySemestr();
         });
 
         $('#biriktirishBaseFanSelect').on('change', function() {
