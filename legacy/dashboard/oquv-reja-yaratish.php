@@ -80,6 +80,28 @@
             font-size: 13px;
             margin-top: 6px;
         }
+        .calc-summary {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+            margin-bottom: 12px;
+            padding: 14px;
+            border: 1px solid #dbeafe;
+            border-radius: 14px;
+            background: #f8fbff;
+        }
+        .calc-summary-note {
+            font-size: 12px;
+            color: #64748b;
+            display: flex;
+            align-items: end;
+            padding-bottom: 10px;
+        }
+        .calc-summary-note.is-warning {
+            color: #b45309;
+            font-weight: 600;
+        }
         .compact-list {
             margin: 0;
             padding-left: 18px;
@@ -112,6 +134,9 @@
         }
         @media (max-width: 700px) {
             .top-filters-grid {
+                grid-template-columns: 1fr;
+            }
+            .calc-summary {
                 grid-template-columns: 1fr;
             }
         }
@@ -256,6 +281,19 @@
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
+                            </div>
+                            <div class="calc-summary">
+                                <div class="form-group">
+                                    <label>Jami soat</label>
+                                    <input type="number" class="form-control jami-soat-input" value="0" readonly tabindex="-1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Kredit</label>
+                                    <input type="number" class="form-control kredit-input" value="0" readonly tabindex="-1">
+                                </div>
+                                <div class="calc-summary-note" data-role="credit-note">
+                                    30 soat = 1 kredit
+                                </div>
                             </div>
                             <div class="reja-actions">
                                 <button type="button" class="btn btn-outline btn-sm addReja">
@@ -402,6 +440,7 @@
             filterYonalishByFakultet();
             filterSemestrByFilters();
             loadCreatedRejaList();
+            updateAllCardCalculators();
         });
 
         $(document).on('click', '.fanTypeToggle', function() {
@@ -417,6 +456,7 @@
             }
 
             initializeSelect2(card);
+            updateCardCalculator(card);
         });
 
         // Izoh: Fan kodi va nomi input bo'lgani uchun select change handler kerak emas.
@@ -475,6 +515,59 @@
             return html;
         }
 
+        function buildCalculatorSummaryHtml() {
+            return `
+                <div class="calc-summary">
+                    <div class="form-group">
+                        <label>Jami soat</label>
+                        <input type="number" class="form-control jami-soat-input" value="0" readonly tabindex="-1">
+                    </div>
+                    <div class="form-group">
+                        <label>Kredit</label>
+                        <input type="number" class="form-control kredit-input" value="0" readonly tabindex="-1">
+                    </div>
+                    <div class="calc-summary-note" data-role="credit-note">30 soat = 1 kredit</div>
+                </div>
+            `;
+        }
+
+        function updateCardCalculator(card) {
+            const soatInputs = card.find('input[name^="dars_soati["]');
+            let totalHours = 0;
+
+            soatInputs.each(function() {
+                const raw = String($(this).val() ?? '').trim();
+                if (raw === '') return;
+                const value = Number(raw);
+                if (Number.isFinite(value) && value > 0) {
+                    totalHours += value;
+                }
+            });
+
+            const credit = Math.round(totalHours / 30);
+            card.find('.jami-soat-input').val(totalHours);
+            card.find('.kredit-input').val(credit);
+
+            const note = card.find('[data-role="credit-note"]');
+            if (!note.length) return;
+
+            if (totalHours > 0 && totalHours % 30 !== 0) {
+                note
+                    .text(`30 soat = 1 kredit. Joriy jami ${totalHours} soat, kredit round(${totalHours}/30) = ${credit}`)
+                    .addClass('is-warning');
+            } else {
+                note
+                    .text('30 soat = 1 kredit')
+                    .removeClass('is-warning');
+            }
+        }
+
+        function updateAllCardCalculators() {
+            $('.reja-card').each(function() {
+                updateCardCalculator($(this));
+            });
+        }
+
         function switchToMandatory(card, index, typeValue = 0) {
             const kafedralarOptions = buildKafedralarOptionsHtml('');
 
@@ -505,6 +598,8 @@
                 <div class="darsSoatWrapper">
                     ${buildAllDarsRowsHtml(index)}
                 </div>
+
+                ${buildCalculatorSummaryHtml()}
                 
                 <div class="reja-actions">
                     <button type="button" class="btn btn-outline btn-sm addReja">
@@ -548,6 +643,8 @@
                 <div class="darsSoatWrapper">
                     ${buildAllDarsRowsHtml(index)}
                 </div>
+
+                ${buildCalculatorSummaryHtml()}
 
                 <div class="reja-actions">
                     <button type="button" class="btn btn-outline btn-sm addReja">
@@ -674,6 +771,7 @@
             }
             
             initializeSelect2(newCard);
+            updateCardCalculator(newCard);
         });
 
         $(document).on('click', '.removeReja', function() {
@@ -719,6 +817,7 @@
                 card.find('select[name^="dars_turi["]').attr('name', `dars_turi[${newIndex}][]`);
                 card.find('input[name^="dars_soati["]').attr('name', `dars_soati[${newIndex}][]`);
             });
+            updateAllCardCalculators();
         }
 
         function initializeSelect2(container) {
@@ -1130,6 +1229,7 @@
                     firstCard.data('index', 0);
                     switchToMandatory(firstCard, 0, 0);
                     initializeSelect2(firstCard);
+                    updateCardCalculator(firstCard);
                     loadCreatedRejaList();
                     
                 } else {
@@ -1146,6 +1246,12 @@
                 });
             });
         });
+
+        $(document).on('input', 'input[name^="dars_soati["]', function() {
+            updateCardCalculator($(this).closest('.reja-card'));
+        });
+
+        updateAllCardCalculators();
     </script>
 </body>
 </html>
