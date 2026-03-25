@@ -60,6 +60,27 @@
     $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     $dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
+    $kafedralarSimple = array_map(static function ($row): array {
+        return [
+            'id' => (int)($row['id'] ?? 0),
+            'name' => (string)($row['name'] ?? ''),
+        ];
+    }, $kafedralar);
+    $darsTurlariSimple = array_map(static function ($row): array {
+        return [
+            'id' => (int)($row['id'] ?? 0),
+            'name' => (string)($row['name'] ?? ''),
+        ];
+    }, $dars_soat_turlari);
+    $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+    $kafedralarJson = json_encode($kafedralarSimple, $jsonFlags);
+    if ($kafedralarJson === false) {
+        $kafedralarJson = '[]';
+    }
+    $darsTurlariJson = json_encode($darsTurlariSimple, $jsonFlags);
+    if ($darsTurlariJson === false) {
+        $darsTurlariJson = '[]';
+    }
     $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $makeShortCode = static function (string $name): string {
         $words = preg_split('/\s+/', trim($name)) ?: [];
@@ -1230,6 +1251,15 @@
             return '';
         }
 
+        function escapeOptionText(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         function cacheChetTopFilterOptions() {
             allChetYonalishFilterOptions.length = 0;
             $('#chetYonalishFilter option').each(function() {
@@ -1919,13 +1949,28 @@
             });
         });
 
-        const chetKafedralarOptions = `<?php foreach ($kafedralar as $k): ?>
-            <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['name']) ?></option>
-        <?php endforeach; ?>`;
+        const chetKafedralarList = <?php echo $kafedralarJson; ?>;
+        const chetDarsTurlariList = <?php echo $darsTurlariJson; ?>;
 
-        const chetDarsTurlariOptions = `<?php foreach ($dars_soat_turlari as $d): ?>
-            <option value="<?= $d['id'] ?>"><?= htmlspecialchars($d['name']) ?></option>
-        <?php endforeach; ?>`;
+        function buildChetKafedralarOptionsHtml() {
+            let html = '';
+            (chetKafedralarList || []).forEach((item) => {
+                const id = String(item.id || '');
+                if (id === '') return;
+                html += `<option value="${id}">${escapeOptionText(item.name || '')}</option>`;
+            });
+            return html;
+        }
+
+        function buildChetDarsTurlariOptionsHtml() {
+            let html = '';
+            (chetDarsTurlariList || []).forEach((item) => {
+                const id = String(item.id || '');
+                if (id === '') return;
+                html += `<option value="${id}">${escapeOptionText(item.name || '')}</option>`;
+            });
+            return html;
+        }
 
         const chetTiliOptionsBySemestr = <?php echo json_encode($chetTiliOptionsBySemestr, JSON_UNESCAPED_UNICODE); ?>;
 
@@ -1960,7 +2005,7 @@
                             <label>Kafedra</label>
                             <select class="form-control" name="tanlov_kafedra_id[${index}][]" required>
                                 <option value="">Tanlang</option>
-                                ${chetKafedralarOptions}
+                                ${buildChetKafedralarOptionsHtml()}
                             </select>
                         </div>
                     </div>
@@ -1982,7 +2027,7 @@
                             <label>Dars turi</label>
                             <select class="form-control" name="dars_turi[${index}][]" required>
                                 <option value="">Tanlang</option>
-                                ${chetDarsTurlariOptions}
+                                ${buildChetDarsTurlariOptionsHtml()}
                             </select>
                         </div>
                         <div class="form-group">
@@ -2059,7 +2104,7 @@
                             <label>Kafedra</label>
                             <select class="form-control" name="tanlov_kafedra_id[${index}][]" required>
                                 <option value="">Tanlang</option>
-                                ${chetKafedralarOptions}
+                                ${buildChetKafedralarOptionsHtml()}
                             </select>
                         </div>
                     </div>
@@ -2098,7 +2143,7 @@
                         <label>Dars turi</label>
                         <select class="form-control" name="dars_turi[${index}][]" required>
                             <option value="">Tanlang</option>
-                            ${chetDarsTurlariOptions}
+                            ${buildChetDarsTurlariOptionsHtml()}
                         </select>
                     </div>
                     <div class="form-group">

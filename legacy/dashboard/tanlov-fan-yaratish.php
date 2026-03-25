@@ -8,6 +8,27 @@
     $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     $dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
+    $kafedralarSimple = array_map(static function ($row): array {
+        return [
+            'id' => (int)($row['id'] ?? 0),
+            'name' => (string)($row['name'] ?? ''),
+        ];
+    }, $kafedralar);
+    $darsTurlariSimple = array_map(static function ($row): array {
+        return [
+            'id' => (int)($row['id'] ?? 0),
+            'name' => (string)($row['name'] ?? ''),
+        ];
+    }, $dars_soat_turlari);
+    $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+    $kafedralarJson = json_encode($kafedralarSimple, $jsonFlags);
+    if ($kafedralarJson === false) {
+        $kafedralarJson = '[]';
+    }
+    $darsTurlariJson = json_encode($darsTurlariSimple, $jsonFlags);
+    if ($darsTurlariJson === false) {
+        $darsTurlariJson = '[]';
+    }
     $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $makeShortCode = static function (string $name): string {
         $words = preg_split('/\s+/', trim($name)) ?: [];
@@ -422,6 +443,15 @@
             return '';
         }
 
+        function escapeOptionText(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         function cacheTopFilterOptions() {
             allYonalishFilterOptions.length = 0;
             $('#yonalishFilter option').each(function() {
@@ -573,13 +603,28 @@
             refreshTanlovOptionsBySemestr();
         });
 
-        const kafedralarOptions = `<?php foreach ($kafedralar as $k): ?>
-            <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['name']) ?></option>
-        <?php endforeach; ?>`;
+        const kafedralarList = <?php echo $kafedralarJson; ?>;
+        const darsTurlariList = <?php echo $darsTurlariJson; ?>;
 
-        const darsTurlariOptions = `<?php foreach ($dars_soat_turlari as $d): ?>
-            <option value="<?= $d['id'] ?>"><?= htmlspecialchars($d['name']) ?></option>
-        <?php endforeach; ?>`;
+        function buildKafedralarOptionsHtml() {
+            let html = '';
+            (kafedralarList || []).forEach((item) => {
+                const id = String(item.id || '');
+                if (id === '') return;
+                html += `<option value="${id}">${escapeOptionText(item.name || '')}</option>`;
+            });
+            return html;
+        }
+
+        function buildDarsTurlariOptionsHtml() {
+            let html = '';
+            (darsTurlariList || []).forEach((item) => {
+                const id = String(item.id || '');
+                if (id === '') return;
+                html += `<option value="${id}">${escapeOptionText(item.name || '')}</option>`;
+            });
+            return html;
+        }
         // Izoh: Tanlov fan select uchun optionlar (semestr bo'yicha).
         const tanlovFanOptionsBySemestr = <?php echo json_encode($tanlovFanOptionsBySemestr, JSON_UNESCAPED_UNICODE); ?>;
 
@@ -615,7 +660,7 @@
                             <label>Kafedra</label>
                             <select class="form-control" name="tanlov_kafedra_id[${index}][]" required>
                                 <option value="">Tanlang</option>
-                                ${kafedralarOptions}
+                                ${buildKafedralarOptionsHtml()}
                             </select>
                         </div>
                     </div>
@@ -637,7 +682,7 @@
                             <label>Dars turi</label>
                             <select class="form-control" name="dars_turi[${index}][]" required>
                                 <option value="">Tanlang</option>
-                            ${darsTurlariOptions}
+                            ${buildDarsTurlariOptionsHtml()}
                             </select>
                         </div>
                         <div class="form-group">
@@ -716,7 +761,7 @@
                             <label>Kafedra</label>
                             <select class="form-control" name="tanlov_kafedra_id[${index}][]" required>
                                 <option value="">Tanlang</option>
-                                ${kafedralarOptions}
+                                ${buildKafedralarOptionsHtml()}
                             </select>
                         </div>
                     </div>
@@ -755,7 +800,7 @@
                         <label>Dars turi</label>
                         <select class="form-control" name="dars_turi[${index}][]" required>
                             <option value="">Tanlang</option>
-                            ${darsTurlariOptions}
+                            ${buildDarsTurlariOptionsHtml()}
                         </select>
                     </div>
                     <div class="form-group">
