@@ -5,6 +5,7 @@
     $db = new Database();
     $semestrlar = $db->get_semestrlar();
     $fakultetlar = $db->get_data_by_table_all('fakultetlar');
+    $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     $dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -27,6 +28,14 @@
         }
         return $short;
     };
+    $yonalishFakultetMap = [];
+    foreach ($yonalishlar as $yRow) {
+        $yId = (int)($yRow['id'] ?? 0);
+        if ($yId <= 0) {
+            continue;
+        }
+        $yonalishFakultetMap[$yId] = (int)($yRow['fakultet_id'] ?? 0);
+    }
     $filterYonalishlarMap = [];
     foreach ($semestrlar as $s) {
         $yonalishId = (int)($s['yonalish_id'] ?? 0);
@@ -34,11 +43,16 @@
             continue;
         }
 
+        $resolvedFakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
+        if ($resolvedFakultetId <= 0) {
+            $resolvedFakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+        }
+
         $filterYonalishlarMap[$yonalishId] = [
             'id' => $yonalishId,
             'name' => (string)($s['yonalish_name'] ?? ''),
             'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
-            'fakultet_id' => (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0)),
+            'fakultet_id' => $resolvedFakultetId,
         ];
     }
     $filterYonalishlar = array_values($filterYonalishlarMap);
@@ -158,8 +172,11 @@
                                         } elseif (strpos($daraja, 'bakalavr') !== false) {
                                             $darajaPrefix = 'B ';
                                         }
-                                        $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
                                         $yonalishId = (int)($s['yonalish_id'] ?? 0);
+                                        $fakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
+                                        if ($fakultetId <= 0) {
+                                            $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+                                        }
                                     ?>
                                     <option
                                         value="<?= (int)$s['id'] ?>"
