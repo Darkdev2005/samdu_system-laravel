@@ -117,6 +117,12 @@
                             </a>
                         </li>
                         <li>
+                            <a href="fanlardan-nusxa-olish.php">
+                                <i class="fas fa-copy"></i>
+                                <span>Fanlardan nusxa olish</span>
+                            </a>
+                        </li>
+                        <li>
                             <a href="tanlov-fan-yaratish.php">
                                 <i class="fas fa-list-check"></i>
                                 <span>Tanlov fan yaratish</span>
