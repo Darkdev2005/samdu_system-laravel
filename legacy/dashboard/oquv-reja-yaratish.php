@@ -322,6 +322,88 @@
                     </div>
                 </form>
 
+                <div class="card mt-4" id="copyFanlarCard">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <h3>Fanlardan nusxa olish</h3>
+                        </div>
+                    </div>
+                    <div class="created-list-note">
+                        Avval yuqoridan maqsad semestrni tanlang. So'ng manba fakultet, yo'nalish va semestrni tanlab fanlarni nusxalang.
+                    </div>
+                    <div class="top-filters-grid mt-2">
+                        <div class="form-group">
+                            <label>Manba fakultet</label>
+                            <select class="form-control" id="copySourceFakultet">
+                                <option value="">Fakultetni tanlang</option>
+                                <?php foreach ($fakultetlar as $f): ?>
+                                    <option value="<?= (int)$f['id'] ?>"><?= $h($f['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Manba yo'nalish</label>
+                            <select class="form-control" id="copySourceYonalish">
+                                <option value="">Yo'nalishni tanlang</option>
+                                <?php foreach ($filterYonalishlar as $y): ?>
+                                    <option
+                                        value="<?= (int)$y['id'] ?>"
+                                        data-fakultet-id="<?= (int)$y['fakultet_id'] ?>"
+                                    >
+                                        <?= $h((string)$y['name'] . (!empty($y['kirish_yili']) ? ' - ' . (string)$y['kirish_yili'] : '')) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Manba semestr</label>
+                            <select class="form-control" id="copySourceSemestr">
+                                <option value="">Semestrni tanlang</option>
+                                <?php foreach ($semestrlar as $s): 
+                                    $short = $makeShortCode((string)($s['yonalish_name'] ?? ''));
+                                    $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
+                                    $daraja = function_exists('mb_strtolower')
+                                        ? (string)@mb_strtolower($darajaRaw, 'UTF-8')
+                                        : strtolower($darajaRaw);
+                                    $darajaPrefix = '';
+                                    if (strpos($daraja, 'magistr') !== false) {
+                                        $darajaPrefix = 'M ';
+                                    } elseif (strpos($daraja, 'bakalavr') !== false) {
+                                        $darajaPrefix = 'B ';
+                                    }
+                                    $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+                                    $yonalishId = (int)($s['yonalish_id'] ?? 0);
+                                ?>
+                                    <option
+                                        value="<?= (int)$s['id'] ?>"
+                                        data-fakultet-id="<?= $fakultetId ?>"
+                                        data-yonalish-id="<?= $yonalishId ?>"
+                                    >
+                                        <?= $h($darajaPrefix . $short . '_' . ($s['kirish_yili'] ?? '') . ' - ' . ($s['semestr'] ?? '') . '-semestr') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="top-filters-grid mt-2">
+                        <div class="form-group">
+                            <label>Nusxa olish rejimi</label>
+                            <select class="form-control" id="copyScopeMode">
+                                <option value="required_merged">Faqat majburiy + birlashtiriladigan (0,2)</option>
+                                <option value="all">Tanlov + chet tili bilan birga (0,1,2,3)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="top-filter-actions">
+                        <button type="button" class="btn btn-primary btn-sm" id="copyRunBtn">
+                            <i class="fas fa-copy"></i> Fanlarni nusxalash
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="copyResetBtn">
+                            <i class="fas fa-rotate-left"></i> Tozalash
+                        </button>
+                    </div>
+                </div>
+
                 <div class="card mt-4">
                     <div class="table-header">
                         <div class="table-title">
@@ -403,6 +485,21 @@
                     allowClear: true,
                     width: '100%',
                 });
+                $('#copySourceFakultet').select2({
+                    placeholder: "Fakultetni tanlang",
+                    allowClear: true,
+                    width: '100%',
+                });
+                $('#copySourceYonalish').select2({
+                    placeholder: "Yo'nalishni tanlang",
+                    allowClear: true,
+                    width: '100%',
+                });
+                $('#copySourceSemestr').select2({
+                    placeholder: "Semestrni tanlang",
+                    allowClear: true,
+                    width: '100%',
+                });
             }
             
             initializeSelect2($('.reja-card:first'));
@@ -437,8 +534,101 @@
                 loadCreatedRejaList();
             });
 
+            $('#copySourceFakultet').on('change', function() {
+                filterCopyYonalishByFakultet();
+                filterCopySemestrByFilters();
+            });
+
+            $('#copySourceYonalish').on('change', function() {
+                filterCopySemestrByFilters();
+            });
+
+            $('#copyResetBtn').on('click', function() {
+                $('#copySourceFakultet').val('').trigger('change.select2');
+                filterCopyYonalishByFakultet('');
+                $('#copySourceYonalish').val('').trigger('change.select2');
+                filterCopySemestrByFilters('');
+                $('#copySourceSemestr').val('').trigger('change.select2');
+                $('#copyScopeMode').val('required_merged');
+            });
+
+            $('#copyRunBtn').on('click', function() {
+                const targetSemestrId = String($('#semestrSelect').val() || '');
+                const sourceSemestrId = String($('#copySourceSemestr').val() || '');
+                const scopeMode = String($('#copyScopeMode').val() || 'required_merged');
+
+                if (targetSemestrId === '') {
+                    Toast.fire({ icon: 'error', title: "Avval maqsad semestrni tanlang" });
+                    return;
+                }
+                if (sourceSemestrId === '') {
+                    Toast.fire({ icon: 'error', title: "Manba semestrni tanlang" });
+                    return;
+                }
+                if (targetSemestrId === sourceSemestrId) {
+                    Toast.fire({ icon: 'error', title: "Manba va maqsad semestr bir xil bo'lmasligi kerak" });
+                    return;
+                }
+
+                const targetText = String($('#semestrSelect option:selected').text() || '').trim();
+                const sourceText = String($('#copySourceSemestr option:selected').text() || '').trim();
+                const scopeText = scopeMode === 'all'
+                    ? 'Tanlov + Chet tili bilan birga (0,1,2,3)'
+                    : 'Faqat majburiy + birlashtiriladigan (0,2)';
+
+                SwalApi.fire({
+                    title: "Fanlarni nusxalash",
+                    icon: "question",
+                    html: `
+                        <div style="text-align:left;">
+                            <div><b>Manba:</b> ${escapeHtml(sourceText)}</div>
+                            <div style="margin-top:6px;"><b>Maqsad:</b> ${escapeHtml(targetText)}</div>
+                            <div style="margin-top:6px;"><b>Rejim:</b> ${escapeHtml(scopeText)}</div>
+                        </div>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonText: "Ha, nusxalash",
+                    cancelButtonText: "Bekor qilish"
+                }).then((result) => {
+                    if (!result.isConfirmed) return;
+
+                    const formData = new FormData();
+                    formData.append('target_semestr_id', targetSemestrId);
+                    formData.append('source_semestr_id', sourceSemestrId);
+                    formData.append('scope_mode', scopeMode);
+
+                    fetch('insert/copy_oquv_reja_items.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.success) {
+                            Toast.fire({
+                                icon: 'success',
+                                title: data.message || "Fanlar nusxalandi"
+                            });
+                            loadCreatedRejaList();
+                        } else {
+                            Toast.fire({
+                                icon: 'error',
+                                title: (data && data.message) || "Nusxalashda xatolik yuz berdi"
+                            });
+                        }
+                    })
+                    .catch(() => {
+                        Toast.fire({
+                            icon: 'error',
+                            title: "Server bilan bog'lanib bo'lmadi"
+                        });
+                    });
+                });
+            });
+
             filterYonalishByFakultet();
             filterSemestrByFilters();
+            filterCopyYonalishByFakultet();
+            filterCopySemestrByFilters();
             loadCreatedRejaList();
             updateAllCardCalculators();
         });
@@ -750,6 +940,73 @@
                 return;
             }
             $('#semestrSelect').val(targetSemestr).trigger('change.select2');
+        }
+
+        function rebuildCopyYonalishOptions(selectedValue = '') {
+            const selectedFakultet = String($('#copySourceFakultet').val() || '');
+            const select = $('#copySourceYonalish');
+            let html = "<option value=\"\">Yo'nalishni tanlang</option>";
+
+            allYonalishOptions.forEach(item => {
+                if (selectedFakultet !== '' && String(item.fakultetId) !== selectedFakultet) {
+                    return;
+                }
+                const selected = String(item.id) === String(selectedValue) ? ' selected' : '';
+                const dataAttr = item.fakultetId !== '' ? ` data-fakultet-id="${item.fakultetId}"` : '';
+                html += `<option value="${item.id}"${dataAttr}${selected}>${escapeHtml(item.text)}</option>`;
+            });
+
+            select.html(html);
+        }
+
+        function filterCopyYonalishByFakultet(selectedValue = null) {
+            const currentYonalish = selectedValue !== null
+                ? String(selectedValue || '')
+                : String($('#copySourceYonalish').val() || '');
+
+            rebuildCopyYonalishOptions(currentYonalish);
+            const hasCurrent = $('#copySourceYonalish option[value="' + currentYonalish + '"]').length > 0;
+
+            if (!hasCurrent) {
+                $('#copySourceYonalish').val('').trigger('change.select2');
+                return;
+            }
+            $('#copySourceYonalish').val(currentYonalish).trigger('change.select2');
+        }
+
+        function rebuildCopySemestrOptions(selectedValue = '') {
+            const selectedFakultet = String($('#copySourceFakultet').val() || '');
+            const selectedYonalish = String($('#copySourceYonalish').val() || '');
+            const select = $('#copySourceSemestr');
+            let html = '<option value="">Semestrni tanlang</option>';
+
+            allSemestrOptions.forEach(item => {
+                if (selectedFakultet !== '' && String(item.fakultetId) !== selectedFakultet) {
+                    return;
+                }
+                if (selectedYonalish !== '' && String(item.yonalishId) !== selectedYonalish) {
+                    return;
+                }
+                const selected = String(item.id) === String(selectedValue) ? ' selected' : '';
+                const fakultetAttr = item.fakultetId !== '' ? ` data-fakultet-id="${item.fakultetId}"` : '';
+                const yonalishAttr = item.yonalishId !== '' ? ` data-yonalish-id="${item.yonalishId}"` : '';
+                html += `<option value="${item.id}"${fakultetAttr}${yonalishAttr}${selected}>${escapeHtml(item.text)}</option>`;
+            });
+
+            select.html(html);
+        }
+
+        function filterCopySemestrByFilters(selectedValue = null) {
+            const currentSemestr = String($('#copySourceSemestr').val() || '');
+            const targetSemestr = selectedValue !== null ? String(selectedValue || '') : currentSemestr;
+            rebuildCopySemestrOptions(targetSemestr);
+            const hasCurrent = $('#copySourceSemestr option[value="' + targetSemestr + '"]').length > 0;
+
+            if (!hasCurrent) {
+                $('#copySourceSemestr').val('').trigger('change.select2');
+                return;
+            }
+            $('#copySourceSemestr').val(targetSemestr).trigger('change.select2');
         }
 
         $(document).on('click', '.addReja', function() {
