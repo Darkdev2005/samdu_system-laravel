@@ -80,6 +80,34 @@
             font-size: 13px;
             margin-top: 6px;
         }
+        .created-list-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .created-list-controls-left,
+        .created-list-controls-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .created-list-search {
+            min-width: 220px;
+            max-width: 360px;
+        }
+        .created-list-per-page {
+            width: 95px;
+        }
+        .created-list-page-info {
+            font-size: 13px;
+            color: #64748b;
+            min-width: 110px;
+            text-align: center;
+        }
         .calc-summary {
             display: grid;
             grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -410,6 +438,22 @@
                     <div class="created-list-note">
                         Ro'yxat yuqoridagi fakultet, yo'nalish va semestr filtrlariga ko'ra ko'rsatiladi. "Tahrirlash" orqali dars soatlarini yangilang yoki "O'chirish" bilan fanni olib tashlang.
                     </div>
+                    <div class="created-list-controls">
+                        <div class="created-list-controls-left">
+                            <input type="text" class="form-control created-list-search" id="createdRejaSearchInput" placeholder="Jadvaldan qidirish...">
+                            <select class="form-control created-list-per-page" id="createdRejaPerPage">
+                                <option value="10">10 ta</option>
+                                <option value="20" selected>20 ta</option>
+                                <option value="50">50 ta</option>
+                                <option value="100">100 ta</option>
+                            </select>
+                        </div>
+                        <div class="created-list-controls-right">
+                            <span class="created-list-page-info" id="createdRejaPageInfo">0-0 / 0</span>
+                            <button type="button" class="btn btn-outline btn-sm" id="createdRejaPrevPage" disabled>Oldingi</button>
+                            <button type="button" class="btn btn-outline btn-sm" id="createdRejaNextPage" disabled>Keyingi</button>
+                        </div>
+                    </div>
                     <div class="table-responsive mt-2">
                         <table class="data-table">
                             <thead>
@@ -447,6 +491,11 @@
         let allSemestrOptions = [];
         let allYonalishOptions = [];
         let createdRowsById = {};
+        let createdRowsAll = [];
+        let createdRowsFiltered = [];
+        let createdListPage = 1;
+        let createdListPerPage = 20;
+        let createdListDarsTurlari = [];
         const darsTurlariListDefault = <?php echo $darsSoatTurlariJson; ?>;
         const kafedralarList = <?php echo $kafedralarJson; ?>;
         const fanTypeLabels = {
@@ -523,6 +572,35 @@
 
             $('#refreshCreatedRejaBtn').on('click', function() {
                 loadCreatedRejaList();
+            });
+
+            $('#createdRejaSearchInput').on('input', function() {
+                applyCreatedRejaTableFilters(true);
+            });
+
+            $('#createdRejaPerPage').on('change', function() {
+                const val = parseInt($(this).val() || 20, 10);
+                createdListPerPage = Number.isFinite(val) && val > 0 ? val : 20;
+                applyCreatedRejaTableFilters(true);
+            });
+
+            $('#createdRejaPrevPage').on('click', function() {
+                if (createdListPage <= 1) {
+                    return;
+                }
+                createdListPage -= 1;
+                renderCreatedRejaTableCurrentPage();
+            });
+
+            $('#createdRejaNextPage').on('click', function() {
+                const total = createdRowsFiltered.length;
+                const perPage = Math.max(1, createdListPerPage);
+                const totalPages = Math.max(1, Math.ceil(total / perPage));
+                if (createdListPage >= totalPages) {
+                    return;
+                }
+                createdListPage += 1;
+                renderCreatedRejaTableCurrentPage();
             });
 
             $('#copySourceFakultet').on('change', function() {
@@ -1170,18 +1248,74 @@
             return `<ul class="compact-list">${parts.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>`;
         }
 
-        function renderCreatedRejaTable(rows, darsTurlari) {
+        function getCreatedRowSearchText(row, darsTurlari) {
+            if (!row) return '';
+
+            const fanTypeLabel = fanTypeLabels[parseInt(row.tanlov_fan || 0, 10)] || 'Noma\'lum';
+            const dars = row.dars || {};
+            const darsText = (darsTurlari || []).map(tur => {
+                const tid = String(tur.id || '');
+                const soat = parseInt(dars[tid] || 0, 10) || 0;
+                return soat > 0 ? `${tur.name || ''} ${soat}` : '';
+            }).filter(Boolean).join(' ');
+
+            return [
+                row.fan_code || '',
+                row.fan_name || '',
+                fanTypeLabel,
+                row.kafedra_name || '',
+                row.yonalish_name || '',
+                row.kirish_yili || '',
+                row.semestr_num || '',
+                darsText
+            ].join(' ').toLowerCase();
+        }
+
+        function applyCreatedRejaTableFilters(resetPage = false) {
+            const searchValue = String($('#createdRejaSearchInput').val() || '').trim().toLowerCase();
+            if (resetPage) {
+                createdListPage = 1;
+            }
+
+            if (!searchValue) {
+                createdRowsFiltered = createdRowsAll.slice();
+            } else {
+                createdRowsFiltered = createdRowsAll.filter(row => (
+                    getCreatedRowSearchText(row, createdListDarsTurlari).includes(searchValue)
+                ));
+            }
+
+            renderCreatedRejaTableCurrentPage();
+        }
+
+        function renderCreatedRejaTableCurrentPage() {
             const tbody = $('#createdRejaTableBody');
             const countBadge = $('#createdRejaCount');
-            countBadge.text(`${rows.length} ta`);
+            const totalRows = createdRowsFiltered.length;
+            countBadge.text(`${totalRows} ta`);
 
-            if (!rows.length) {
-                tbody.html('<tr><td colspan="7">Tanlangan filter bo‘yicha fan topilmadi</td></tr>');
+            if (!totalRows) {
+                tbody.html('<tr><td colspan="7">Tanlangan filter bo\'yicha fan topilmadi</td></tr>');
+                $('#createdRejaPageInfo').text('0-0 / 0');
+                $('#createdRejaPrevPage').prop('disabled', true);
+                $('#createdRejaNextPage').prop('disabled', true);
                 return;
             }
 
+            const perPage = Math.max(1, createdListPerPage);
+            const totalPages = Math.max(1, Math.ceil(totalRows / perPage));
+            if (createdListPage > totalPages) {
+                createdListPage = totalPages;
+            }
+            if (createdListPage < 1) {
+                createdListPage = 1;
+            }
+
+            const fromIndex = (createdListPage - 1) * perPage;
+            const pageRows = createdRowsFiltered.slice(fromIndex, fromIndex + perPage);
+
             let html = '';
-            rows.forEach(row => {
+            pageRows.forEach(row => {
                 const fanTypeLabel = fanTypeLabels[parseInt(row.tanlov_fan || 0, 10)] || 'Noma\'lum';
                 const semestrLabel = `${row.yonalish_name || '-'} - ${row.kirish_yili || '-'} / ${row.semestr_num || '-'}`;
 
@@ -1191,7 +1325,7 @@
                         <td>${escapeHtml(row.fan_name || '-')}</td>
                         <td>${escapeHtml(fanTypeLabel)}</td>
                         <td>${escapeHtml(row.kafedra_name || '-')}</td>
-                        <td>${renderDarsSummary(row, darsTurlari)}</td>
+                        <td>${renderDarsSummary(row, createdListDarsTurlari)}</td>
                         <td>${escapeHtml(semestrLabel)}</td>
                         <td>
                             <div class="table-actions">
@@ -1208,6 +1342,10 @@
             });
 
             tbody.html(html);
+            const toIndex = fromIndex + pageRows.length;
+            $('#createdRejaPageInfo').text(`${fromIndex + 1}-${toIndex} / ${totalRows}`);
+            $('#createdRejaPrevPage').prop('disabled', createdListPage <= 1);
+            $('#createdRejaNextPage').prop('disabled', createdListPage >= totalPages);
         }
 
         function loadCreatedRejaList() {
@@ -1222,6 +1360,9 @@
                     if (!data || !data.success) {
                         $('#createdRejaTableBody').html('<tr><td colspan="7">Ro\'yxatni yuklab bo\'lmadi</td></tr>');
                         $('#createdRejaCount').text('0 ta');
+                        $('#createdRejaPageInfo').text('0-0 / 0');
+                        $('#createdRejaPrevPage').prop('disabled', true);
+                        $('#createdRejaNextPage').prop('disabled', true);
                         return;
                     }
 
@@ -1238,11 +1379,16 @@
                         }
                     });
 
-                    renderCreatedRejaTable(rows, darsTurlari);
+                    createdRowsAll = rows;
+                    createdListDarsTurlari = darsTurlari;
+                    applyCreatedRejaTableFilters(true);
                 })
                 .catch(() => {
                     $('#createdRejaTableBody').html('<tr><td colspan="7">Server bilan bog\'lanib bo\'lmadi</td></tr>');
                     $('#createdRejaCount').text('0 ta');
+                    $('#createdRejaPageInfo').text('0-0 / 0');
+                    $('#createdRejaPrevPage').prop('disabled', true);
+                    $('#createdRejaNextPage').prop('disabled', true);
                 });
         }
 
