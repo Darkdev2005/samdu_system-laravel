@@ -272,36 +272,22 @@
                             </div>
 
                             <div class="darsSoatWrapper">
-                                <div class="form-grid-2 dars-soat-row">
-                                    <div class="form-group">
-                                        <label>Dars turi</label>
-                                        <select class="form-control" name="dars_turi[0][]" required>
-                                            <option value="">Tanlang</option>
-                                            <?php foreach ($dars_soat_turlari as $d): ?>
-                                                <option value="<?= $d['id'] ?>">
-                                                    <?= htmlspecialchars($d['name']) ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
+                                <?php foreach ($dars_soat_turlari as $d): ?>
+                                    <div class="form-grid-2 dars-soat-row">
+                                        <div class="form-group">
+                                            <label>Dars turi</label>
+                                            <input type="text" class="form-control" value="<?= htmlspecialchars($d['name']) ?>" readonly tabindex="-1">
+                                            <input type="hidden" name="dars_turi[0][]" value="<?= (int)$d['id'] ?>">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Dars soati</label>
+                                            <input type="number"
+                                                class="form-control"
+                                                name="dars_soati[0][]"
+                                                min="0">
+                                        </div>
                                     </div>
-                                    <div class="form-group">
-                                        <label>Dars soati</label>
-                                        <input type="number"
-                                            class="form-control"
-                                            name="dars_soati[0][]"
-                                            min="0"
-                                            required>
-                                    </div>
-                                </div>
-                                <div class="dars-soat-actions">
-                                    <button type="button" class="btn btn-outline btn-sm addDarsSoat">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-
-                                    <button type="button" class="btn btn-danger btn-sm removeDarsSoat">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </div>
+                                <?php endforeach; ?>
                             </div>
 
                             <div class="reja-actions">
@@ -625,6 +611,31 @@
             });
             return html;
         }
+
+        function buildAllTanlovDarsRowsHtml(index) {
+            let html = '';
+            (darsTurlariList || []).forEach((item) => {
+                const id = String(item.id || '');
+                if (id === '') return;
+                html += `
+                    <div class="form-grid-2 dars-soat-row">
+                        <div class="form-group">
+                            <label>Dars turi</label>
+                            <input type="text" class="form-control" value="${escapeOptionText(item.name || '')}" readonly tabindex="-1">
+                            <input type="hidden" name="dars_turi[${index}][]" value="${id}">
+                        </div>
+                        <div class="form-group">
+                            <label>Dars soati</label>
+                            <input type="number"
+                                class="form-control"
+                                name="dars_soati[${index}][]"
+                                min="0">
+                        </div>
+                    </div>
+                `;
+            });
+            return html;
+        }
         // Izoh: Tanlov fan select uchun optionlar (semestr bo'yicha).
         const tanlovFanOptionsBySemestr = <?php echo json_encode($tanlovFanOptionsBySemestr, JSON_UNESCAPED_UNICODE); ?>;
 
@@ -677,32 +688,7 @@
                 </div>
 
                 <div class="darsSoatWrapper">
-                    <div class="form-grid-2 dars-soat-row">
-                        <div class="form-group">
-                            <label>Dars turi</label>
-                            <select class="form-control" name="dars_turi[${index}][]" required>
-                                <option value="">Tanlang</option>
-                            ${buildDarsTurlariOptionsHtml()}
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Dars soati</label>
-                            <input type="number"
-                                class="form-control"
-                                name="dars_soati[${index}][]"
-                                min="0"
-                                required>
-                        </div>
-                    </div>
-                    <div class="dars-soat-actions">
-                        <button type="button" class="btn btn-outline btn-sm addDarsSoat">
-                            <i class="fas fa-plus"></i>
-                        </button>
-
-                        <button type="button" class="btn btn-danger btn-sm removeDarsSoat">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
+                    ${buildAllTanlovDarsRowsHtml(index)}
                 </div>
 
                 <div class="reja-actions">
@@ -789,43 +775,6 @@
             }
         });
 
-        $(document).on('click', '.addDarsSoat', function() {
-            const card = $(this).closest('.reja-card');
-            const wrapper = $(this).closest('.darsSoatWrapper');
-            const index = card.data('index');
-            
-            const newRow = $(`
-                <div class="form-grid-2 dars-soat-row">
-                    <div class="form-group">
-                        <label>Dars turi</label>
-                        <select class="form-control" name="dars_turi[${index}][]" required>
-                            <option value="">Tanlang</option>
-                            ${buildDarsTurlariOptionsHtml()}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Dars soati</label>
-                        <input type="number"
-                            class="form-control"
-                            name="dars_soati[${index}][]"
-                            min="0"
-                            required>
-                    </div>
-                </div>
-            `);
-            
-            newRow.insertBefore(wrapper.find('.dars-soat-actions'));
-        });
-
-        $(document).on('click', '.removeDarsSoat', function() {
-            const wrapper = $(this).closest('.darsSoatWrapper');
-            const rows = wrapper.find('.dars-soat-row');
-            
-            if (rows.length > 1) {
-                rows.last().remove();
-            }
-        });
-
         $(document).on('click', '.removeReja', function() {
             const rejas = $('.reja-card');
             if (rejas.length > 1) {
@@ -857,7 +806,7 @@
                 card.find('select[name^="tanlov_fan_base["]').attr('name', `tanlov_fan_base[${newIndex}]`);
                 card.find('input[name^="tanlov_fan_nomi["]').attr('name', `tanlov_fan_nomi[${newIndex}][]`);
                 card.find('select[name^="tanlov_kafedra_id["]').attr('name', `tanlov_kafedra_id[${newIndex}][]`);
-                card.find('select[name^="dars_turi["]').attr('name', `dars_turi[${newIndex}][]`);
+                card.find('[name^="dars_turi["]').attr('name', `dars_turi[${newIndex}][]`);
                 card.find('input[name^="dars_soati["]').attr('name', `dars_soati[${newIndex}][]`);
             });
         }
