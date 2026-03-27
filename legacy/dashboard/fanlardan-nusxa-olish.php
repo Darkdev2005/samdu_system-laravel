@@ -49,6 +49,37 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
     }
     return strcmp((string)($a['kirish_yili'] ?? ''), (string)($b['kirish_yili'] ?? ''));
 });
+
+$dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
+$kafedralar = $db->get_data_by_table_all('kafedralar');
+$jsonFlags = 0;
+if (defined('JSON_UNESCAPED_UNICODE')) {
+    $jsonFlags |= JSON_UNESCAPED_UNICODE;
+}
+if (defined('JSON_UNESCAPED_SLASHES')) {
+    $jsonFlags |= JSON_UNESCAPED_SLASHES;
+}
+if (defined('JSON_HEX_TAG')) {
+    $jsonFlags |= JSON_HEX_TAG;
+}
+if (defined('JSON_HEX_AMP')) {
+    $jsonFlags |= JSON_HEX_AMP;
+}
+if (defined('JSON_HEX_APOS')) {
+    $jsonFlags |= JSON_HEX_APOS;
+}
+if (defined('JSON_HEX_QUOT')) {
+    $jsonFlags |= JSON_HEX_QUOT;
+}
+
+$darsSoatTurlariJson = json_encode($dars_soat_turlari, $jsonFlags);
+if ($darsSoatTurlariJson === false) {
+    $darsSoatTurlariJson = '[]';
+}
+$kafedralarJson = json_encode($kafedralar, $jsonFlags);
+if ($kafedralarJson === false) {
+    $kafedralarJson = '[]';
+}
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -206,16 +237,6 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                         </div>
                     </div>
 
-                    <div class="top-filters-grid mt-2">
-                        <div class="form-group">
-                            <label>Nusxa olish rejimi</label>
-                            <select class="form-control" id="copyScopeMode">
-                                <option value="required_merged">Faqat majburiy + birlashtiriladigan (0,2)</option>
-                                <option value="all">Tanlov + chet tili bilan birga (0,1,2,3)</option>
-                            </select>
-                        </div>
-                    </div>
-
                     <div class="top-filter-actions">
                         <button type="button" class="btn btn-primary btn-sm" id="copyRunBtn">
                             <i class="fas fa-copy"></i> Fanlarni nusxalash
@@ -223,6 +244,43 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                         <button type="button" class="btn btn-secondary btn-sm" id="copyResetBtn">
                             <i class="fas fa-rotate-left"></i> Tozalash
                         </button>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <h3>Nusxalangan fanlar ro'yxati</h3>
+                            <span class="badge" id="createdRejaCount">0 ta</span>
+                        </div>
+                        <div class="table-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="refreshCreatedRejaBtn">
+                                <i class="fas fa-rotate"></i> Yangilash
+                            </button>
+                        </div>
+                    </div>
+                    <div class="created-list-note">
+                        Ro'yxat yuqoridagi maqsad filtrlariga ko'ra ko'rsatiladi. "Tahrirlash" va "O'chirish" shu yerda ishlaydi.
+                    </div>
+                    <div class="table-responsive mt-2">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fan kodi</th>
+                                    <th>Fan nomi</th>
+                                    <th>Fan turi</th>
+                                    <th>Kafedra</th>
+                                    <th>Dars soatlari</th>
+                                    <th>Semestr</th>
+                                    <th>Harakat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="createdRejaTableBody">
+                                <tr>
+                                    <td colspan="7">Yuklanmoqda...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -239,10 +297,20 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
     <script>
         let allYonalishOptions = [];
         let allSemestrOptions = [];
+        let createdRowsById = {};
+        const darsTurlariListDefault = <?php echo $darsSoatTurlariJson; ?>;
+        const kafedralarList = <?php echo $kafedralarJson; ?>;
+        const fanTypeLabels = {
+            0: "Majburiy",
+            1: "Tanlov",
+            2: "Birlashtiriladigan",
+            3: "Chet tili",
+        };
 
         const SwalApi = window.Swal || {
             mixin: () => ({ fire: () => {} }),
             fire: () => Promise.resolve({ isConfirmed: false }),
+            showValidationMessage: () => {},
         };
         const Toast = SwalApi.mixin({
             toast: true,
@@ -346,6 +414,137 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
             $('#' + prefix + 'Semestr').val(hasCurrent ? current : '').trigger('change.select2');
         }
 
+        function renderDarsSummary(row, darsTurlari) {
+            const dars = row.dars || {};
+            const parts = [];
+
+            (darsTurlari || []).forEach(tur => {
+                const tid = String(tur.id || '');
+                const soat = parseInt(dars[tid] || 0, 10) || 0;
+                if (soat > 0) {
+                    parts.push(`${tur.name}: ${soat}`);
+                }
+            });
+
+            if (!parts.length) {
+                return '-';
+            }
+            return `<ul class="compact-list">${parts.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+        }
+
+        function renderCreatedRejaTable(rows, darsTurlari) {
+            const tbody = $('#createdRejaTableBody');
+            const countBadge = $('#createdRejaCount');
+            countBadge.text(`${rows.length} ta`);
+
+            if (!rows.length) {
+                tbody.html('<tr><td colspan="7">Tanlangan maqsad filtr bo\'yicha fan topilmadi</td></tr>');
+                return;
+            }
+
+            let html = '';
+            rows.forEach(row => {
+                const fanTypeLabel = fanTypeLabels[parseInt(row.tanlov_fan || 0, 10)] || 'Noma\'lum';
+                const semestrLabel = `${row.yonalish_name || '-'} - ${row.kirish_yili || '-'} / ${row.semestr_num || '-'}`;
+                html += `
+                    <tr>
+                        <td>${escapeHtml(row.fan_code || '-')}</td>
+                        <td>${escapeHtml(row.fan_name || '-')}</td>
+                        <td>${escapeHtml(fanTypeLabel)}</td>
+                        <td>${escapeHtml(row.kafedra_name || '-')}</td>
+                        <td>${renderDarsSummary(row, darsTurlari)}</td>
+                        <td>${escapeHtml(semestrLabel)}</td>
+                        <td>
+                            <div class="table-actions">
+                                <button type="button" class="btn btn-outline btn-sm editCreatedRejaBtn" data-fan-id="${row.fan_id}">
+                                    <i class="fas fa-pen"></i> Tahrirlash
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm deleteCreatedRejaBtn" data-fan-id="${row.fan_id}">
+                                    <i class="fas fa-trash-alt"></i> O'chirish
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.html(html);
+        }
+
+        function loadCreatedRejaList() {
+            const fakultetId = String($('#targetFakultet').val() || '');
+            const yonalishId = String($('#targetYonalish').val() || '');
+            const semestrId = String($('#targetSemestr').val() || '');
+            const url = `api/get_oquv_reja_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&yonalish_id=${encodeURIComponent(yonalishId)}&semestr_id=${encodeURIComponent(semestrId)}`;
+
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    if (!data || !data.success) {
+                        $('#createdRejaTableBody').html('<tr><td colspan="7">Ro\'yxatni yuklab bo\'lmadi</td></tr>');
+                        $('#createdRejaCount').text('0 ta');
+                        return;
+                    }
+
+                    const rows = Array.isArray(data.rows) ? data.rows : [];
+                    const darsTurlari = Array.isArray(data.dars_turlari) && data.dars_turlari.length
+                        ? data.dars_turlari
+                        : darsTurlariListDefault;
+
+                    createdRowsById = {};
+                    rows.forEach(r => {
+                        const fid = parseInt(r.fan_id || 0, 10);
+                        if (fid > 0) {
+                            createdRowsById[String(fid)] = r;
+                        }
+                    });
+
+                    renderCreatedRejaTable(rows, darsTurlari);
+                })
+                .catch(() => {
+                    $('#createdRejaTableBody').html('<tr><td colspan="7">Server bilan bog\'lanib bo\'lmadi</td></tr>');
+                    $('#createdRejaCount').text('0 ta');
+                });
+        }
+
+        function buildKafedraOptions(selectedId, lockKafedra) {
+            const selected = String(selectedId || '');
+            let html = '<option value="">Tanlang</option>';
+            (kafedralarList || []).forEach(k => {
+                const id = String(k.id || '');
+                const selectedAttr = selected === id ? ' selected' : '';
+                html += `<option value="${id}"${selectedAttr}>${escapeHtml(k.name || '')}</option>`;
+            });
+            return `<select class="swal2-input" id="editKafedraId" ${lockKafedra ? 'disabled' : ''}>${html}</select>`;
+        }
+
+        function buildEditModalHtml(row, darsTurlari) {
+            const dars = row.dars || {};
+            let darsRows = '';
+            (darsTurlari || darsTurlariListDefault).forEach(tur => {
+                const tid = String(tur.id || '');
+                const soat = parseInt(dars[tid] || 0, 10) || 0;
+                darsRows += `
+                    <div style="display:flex;gap:8px;align-items:center;margin:6px 0;">
+                        <label style="flex:1;text-align:left;">${escapeHtml(tur.name || '')}</label>
+                        <input type="number" min="0" step="1" class="swal2-input edit-dars-input" data-dars-tur-id="${tid}" value="${soat}" style="width:120px;margin:0;">
+                    </div>
+                `;
+            });
+
+            const lockKafedra = parseInt(row.kafedra_lock || 0, 10) === 1;
+            return `
+                <input type="text" id="editFanCode" class="swal2-input" placeholder="Fan kodi" value="${escapeHtml(row.fan_code || '')}">
+                <input type="text" id="editFanName" class="swal2-input" placeholder="Fan nomi" value="${escapeHtml(row.fan_name || '')}">
+                <div style="text-align:left;margin:8px 0 4px 0;font-size:13px;color:#64748b;">Kafedra</div>
+                ${buildKafedraOptions(row.kafedra_id || '', lockKafedra)}
+                <div style="text-align:left;margin:10px 0 4px 0;font-size:13px;color:#64748b;">Dars soatlari</div>
+                <div style="max-height:220px;overflow:auto;padding-right:4px;">${darsRows}</div>
+                <textarea id="editIzoh" class="swal2-textarea" placeholder="Izoh">${escapeHtml(row.izoh || '')}</textarea>
+                ${lockKafedra ? '<div style="text-align:left;font-size:12px;color:#64748b;">Tanlov/Chet tili bazaviy fanida kafedra o\'zgartirilmaydi.</div>' : ''}
+            `;
+        }
+
         function initSelect2() {
             if (!window.jQuery || !$.fn || typeof $.fn.select2 !== 'function') {
                 return;
@@ -374,9 +573,14 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
             $('#targetFakultet').on('change', function() {
                 syncYonalish('target');
                 syncSemestr('target');
+                loadCreatedRejaList();
             });
             $('#targetYonalish').on('change', function() {
                 syncSemestr('target');
+                loadCreatedRejaList();
+            });
+            $('#targetSemestr').on('change', function() {
+                loadCreatedRejaList();
             });
 
             $('#sourceFakultet').on('change', function() {
@@ -386,20 +590,22 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
             $('#sourceYonalish').on('change', function() {
                 syncSemestr('source');
             });
+            $('#refreshCreatedRejaBtn').on('click', function() {
+                loadCreatedRejaList();
+            });
 
             $('#copyResetBtn').on('click', function() {
                 $('#targetFakultet, #targetYonalish, #targetSemestr, #sourceFakultet, #sourceYonalish, #sourceSemestr').val('').trigger('change.select2');
-                $('#copyScopeMode').val('required_merged');
                 syncYonalish('target', '');
                 syncSemestr('target', '');
                 syncYonalish('source', '');
                 syncSemestr('source', '');
+                loadCreatedRejaList();
             });
 
             $('#copyRunBtn').on('click', function() {
                 const targetSemestrId = String($('#targetSemestr').val() || '');
                 const sourceSemestrId = String($('#sourceSemestr').val() || '');
-                const scopeMode = String($('#copyScopeMode').val() || 'required_merged');
 
                 if (targetSemestrId === '') {
                     Toast.fire({ icon: 'error', title: "Maqsad semestrni tanlang" });
@@ -416,9 +622,6 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
 
                 const targetText = String($('#targetSemestr option:selected').text() || '').trim();
                 const sourceText = String($('#sourceSemestr option:selected').text() || '').trim();
-                const scopeText = scopeMode === 'all'
-                    ? 'Tanlov + Chet tili bilan birga (0,1,2,3)'
-                    : 'Faqat majburiy + birlashtiriladigan (0,2)';
 
                 SwalApi.fire({
                     title: "Fanlarni nusxalash",
@@ -427,7 +630,6 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                         <div style="text-align:left;">
                             <div><b>Manba:</b> ${escapeHtml(sourceText)}</div>
                             <div style="margin-top:6px;"><b>Maqsad:</b> ${escapeHtml(targetText)}</div>
-                            <div style="margin-top:6px;"><b>Rejim:</b> ${escapeHtml(scopeText)}</div>
                         </div>
                     `,
                     showCancelButton: true,
@@ -439,7 +641,6 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                     const formData = new FormData();
                     formData.append('target_semestr_id', targetSemestrId);
                     formData.append('source_semestr_id', sourceSemestrId);
-                    formData.append('scope_mode', scopeMode);
 
                     fetch('insert/copy_oquv_reja_items.php', {
                         method: 'POST',
@@ -452,6 +653,7 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                                 icon: 'success',
                                 title: data.message || "Fanlar nusxalandi"
                             });
+                            loadCreatedRejaList();
                         } else {
                             Toast.fire({
                                 icon: 'error',
@@ -472,8 +674,144 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
             syncSemestr('target');
             syncYonalish('source');
             syncSemestr('source');
+            loadCreatedRejaList();
+        });
+
+        $(document).on('click', '.editCreatedRejaBtn', function() {
+            const fanId = String($(this).data('fan-id') || '');
+            const row = createdRowsById[fanId];
+            if (!row) {
+                return;
+            }
+
+            const darsTurlari = darsTurlariListDefault;
+            SwalApi.fire({
+                title: "O'quv reja tahrirlash",
+                width: 860,
+                html: buildEditModalHtml(row, darsTurlari),
+                showCancelButton: true,
+                confirmButtonText: "Saqlash",
+                cancelButtonText: "Bekor qilish",
+                focusConfirm: false,
+                preConfirm: () => {
+                    const fanCode = String($('#editFanCode').val() || '').trim();
+                    const fanName = String($('#editFanName').val() || '').trim();
+                    const kafedraVal = String($('#editKafedraId').val() || '').trim();
+                    const izoh = String($('#editIzoh').val() || '').trim();
+
+                    if (fanCode === '' || fanName === '') {
+                        SwalApi.showValidationMessage("Fan kodi va fan nomi to'ldirilishi shart");
+                        return false;
+                    }
+
+                    const lockKafedra = parseInt(row.kafedra_lock || 0, 10) === 1;
+                    const kafedraId = lockKafedra ? parseInt(row.kafedra_id || 0, 10) : parseInt(kafedraVal || 0, 10);
+                    if (!lockKafedra && kafedraId <= 0) {
+                        SwalApi.showValidationMessage("Kafedrani tanlang");
+                        return false;
+                    }
+
+                    const dars = {};
+                    let hasPositive = false;
+                    $('.edit-dars-input').each(function() {
+                        const darsTurId = String($(this).data('dars-tur-id') || '');
+                        let value = parseInt($(this).val() || 0, 10);
+                        if (Number.isNaN(value) || value < 0) {
+                            value = 0;
+                        }
+                        dars[darsTurId] = value;
+                        if (value > 0) {
+                            hasPositive = true;
+                        }
+                    });
+
+                    if (!hasPositive) {
+                        SwalApi.showValidationMessage("Kamida bitta dars soati 0 dan katta bo'lishi kerak");
+                        return false;
+                    }
+
+                    return {
+                        fan_id: parseInt(row.fan_id || 0, 10),
+                        fan_code: fanCode,
+                        fan_name: fanName,
+                        kafedra_id: kafedraId,
+                        izoh: izoh,
+                        dars: dars,
+                    };
+                }
+            }).then((result) => {
+                if (!result.isConfirmed || !result.value) {
+                    return;
+                }
+
+                const payload = result.value;
+                const formData = new FormData();
+                formData.append('fan_id', String(payload.fan_id));
+                formData.append('fan_code', payload.fan_code);
+                formData.append('fan_name', payload.fan_name);
+                formData.append('kafedra_id', String(payload.kafedra_id));
+                formData.append('izoh', payload.izoh);
+                formData.append('dars_json', JSON.stringify(payload.dars));
+
+                fetch('insert/update_oquv_reja_item.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success) {
+                        Toast.fire({ icon: 'success', title: data.message || "Yangilandi" });
+                        loadCreatedRejaList();
+                    } else {
+                        Toast.fire({ icon: 'error', title: (data && data.message) || "Yangilashda xatolik" });
+                    }
+                })
+                .catch(() => {
+                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+                });
+            });
+        });
+
+        $(document).on('click', '.deleteCreatedRejaBtn', function() {
+            const fanId = String($(this).data('fan-id') || '');
+            const row = createdRowsById[fanId];
+            if (!row) {
+                return;
+            }
+
+            SwalApi.fire({
+                title: "Fanni o'chirishni tasdiqlaysizmi?",
+                text: `${row.fan_code || ''} - ${row.fan_name || ''}`,
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonText: "Ha, o'chirilsin",
+                cancelButtonText: "Bekor qilish"
+            }).then((result) => {
+                if (!result.isConfirmed) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('fan_id', fanId);
+
+                fetch('insert/delete_oquv_reja_item.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success) {
+                        Toast.fire({ icon: 'success', title: data.message || "Fan o'chirildi" });
+                        loadCreatedRejaList();
+                    } else {
+                        Toast.fire({ icon: 'error', title: (data && data.message) || "O'chirishda xatolik" });
+                    }
+                })
+                .catch(() => {
+                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+                });
+            });
         });
     </script>
 </body>
 </html>
-

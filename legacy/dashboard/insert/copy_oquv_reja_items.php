@@ -6,7 +6,6 @@ $db = new Database();
 
 $targetSemestrId = (int)($_POST['target_semestr_id'] ?? 0);
 $sourceSemestrId = (int)($_POST['source_semestr_id'] ?? 0);
-$scopeMode = trim((string)($_POST['scope_mode'] ?? 'required_merged'));
 
 if ($targetSemestrId <= 0 || $sourceSemestrId <= 0) {
     echo json_encode([
@@ -23,19 +22,7 @@ if ($targetSemestrId === $sourceSemestrId) {
     ]);
     return;
 }
-
-$scopeMap = [
-    'required_merged' => [0, 2],
-    'all' => [0, 1, 2, 3],
-];
-$allowedTanlovTypes = $scopeMap[$scopeMode] ?? null;
-if ($allowedTanlovTypes === null) {
-    echo json_encode([
-        'success' => false,
-        'message' => "Nusxa olish rejimi noto'g'ri"
-    ]);
-    return;
-}
+$allowedTanlovTypes = [0, 1, 2, 3];
 
 $sourceSemestr = $db->get_data_by_table('semestrlar', ['id' => $sourceSemestrId]);
 $targetSemestr = $db->get_data_by_table('semestrlar', ['id' => $targetSemestrId]);
@@ -249,4 +236,3 @@ echo json_encode([
     'success' => false,
     'message' => "Nusxalash jarayonida xatolik yuz berdi"
 ]);
-

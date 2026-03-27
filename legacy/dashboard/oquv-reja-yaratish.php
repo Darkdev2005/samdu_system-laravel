@@ -385,15 +385,6 @@
                             </select>
                         </div>
                     </div>
-                    <div class="top-filters-grid mt-2">
-                        <div class="form-group">
-                            <label>Nusxa olish rejimi</label>
-                            <select class="form-control" id="copyScopeMode">
-                                <option value="required_merged">Faqat majburiy + birlashtiriladigan (0,2)</option>
-                                <option value="all">Tanlov + chet tili bilan birga (0,1,2,3)</option>
-                            </select>
-                        </div>
-                    </div>
                     <div class="top-filter-actions">
                         <button type="button" class="btn btn-primary btn-sm" id="copyRunBtn">
                             <i class="fas fa-copy"></i> Fanlarni nusxalash
@@ -549,13 +540,11 @@
                 $('#copySourceYonalish').val('').trigger('change.select2');
                 filterCopySemestrByFilters('');
                 $('#copySourceSemestr').val('').trigger('change.select2');
-                $('#copyScopeMode').val('required_merged');
             });
 
             $('#copyRunBtn').on('click', function() {
                 const targetSemestrId = String($('#semestrSelect').val() || '');
                 const sourceSemestrId = String($('#copySourceSemestr').val() || '');
-                const scopeMode = String($('#copyScopeMode').val() || 'required_merged');
 
                 if (targetSemestrId === '') {
                     Toast.fire({ icon: 'error', title: "Avval maqsad semestrni tanlang" });
@@ -572,9 +561,6 @@
 
                 const targetText = String($('#semestrSelect option:selected').text() || '').trim();
                 const sourceText = String($('#copySourceSemestr option:selected').text() || '').trim();
-                const scopeText = scopeMode === 'all'
-                    ? 'Tanlov + Chet tili bilan birga (0,1,2,3)'
-                    : 'Faqat majburiy + birlashtiriladigan (0,2)';
 
                 SwalApi.fire({
                     title: "Fanlarni nusxalash",
@@ -583,7 +569,6 @@
                         <div style="text-align:left;">
                             <div><b>Manba:</b> ${escapeHtml(sourceText)}</div>
                             <div style="margin-top:6px;"><b>Maqsad:</b> ${escapeHtml(targetText)}</div>
-                            <div style="margin-top:6px;"><b>Rejim:</b> ${escapeHtml(scopeText)}</div>
                         </div>
                     `,
                     showCancelButton: true,
@@ -595,7 +580,6 @@
                     const formData = new FormData();
                     formData.append('target_semestr_id', targetSemestrId);
                     formData.append('source_semestr_id', sourceSemestrId);
-                    formData.append('scope_mode', scopeMode);
 
                     fetch('insert/copy_oquv_reja_items.php', {
                         method: 'POST',
