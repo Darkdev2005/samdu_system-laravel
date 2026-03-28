@@ -110,8 +110,19 @@ $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
             <tbody>
                 <?php 
                 $counter = 1;
+                $formatSoat = static function ($value): string {
+                    $numeric = (float)$value;
+                    if ($numeric == 0.0) {
+                        return '';
+                    }
+                    if (fmod($numeric, 1.0) == 0.0) {
+                        return (string)(int)round($numeric);
+                    }
+                    return rtrim(rtrim(number_format($numeric, 2, '.', ''), '0'), '.');
+                };
                 $totals = [
                     'reja_maruza' => 0, 'reja_amaliy' => 0, 'reja_lab' => 0, 'reja_seminar' => 0,
+                    'amalda_maruza' => 0, 'amalda_amaliy' => 0, 'amalda_lab' => 0, 'amalda_seminar' => 0,
                     'oraliq' => 0, 'yakuniy' => 0,
                     'kurs_ishi' => 0, 'kurs_loyiha' => 0,
                     'oquv_ped' => 0, 'uzluksiz' => 0, 'dala_otm' => 0, 'dala_tash' => 0, 'ishlab' => 0,
@@ -143,6 +154,10 @@ $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
                         $kursIshi = $talaba > 0 ? round($talaba * 2.4) : 0;
                         $kursLoyiha = $talaba > 0 ? round($talaba * 3.6) : 0;
                         $uzluksiz = $talaba > 0 ? round($talaba * ($isExternal ? 0.4 : 2)) : 0;
+                        $amaldaMaruza = (float)($row['maruza_soat'] ?? 0) * (int)($row['patok_soni'] ?? 0);
+                        $amaldaAmaliy = (float)($row['amaliy_soat'] ?? 0) * (int)($row['kattaguruh_soni'] ?? 0);
+                        $amaldaLab = (float)($row['laboratoriya_soat'] ?? 0) * (int)($row['kichikguruh_soni'] ?? 0);
+                        $amaldaSeminar = (float)($row['seminar_soat'] ?? 0) * (int)($row['kattaguruh_soni'] ?? 0);
 
                         $jamiAll = (float)($row['jami_soat'] ?? 0) + $oraliq + $yakuniy + $kursIshi + $kursLoyiha + $uzluksiz;
 
@@ -150,6 +165,10 @@ $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
                         $totals['reja_amaliy'] += (float)($row['amaliy_soat'] ?? 0);
                         $totals['reja_lab'] += (float)($row['laboratoriya_soat'] ?? 0);
                         $totals['reja_seminar'] += (float)($row['seminar_soat'] ?? 0);
+                        $totals['amalda_maruza'] += $amaldaMaruza;
+                        $totals['amalda_amaliy'] += $amaldaAmaliy;
+                        $totals['amalda_lab'] += $amaldaLab;
+                        $totals['amalda_seminar'] += $amaldaSeminar;
                         $totals['oraliq'] += $oraliq;
                         $totals['yakuniy'] += $yakuniy;
                         $totals['kurs_ishi'] += $kursIshi;
@@ -193,10 +212,10 @@ $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
                     <td><?= $row['laboratoriya_soat'] ?></td>
                     <td><?= $row['seminar_soat'] ?></td>
                     <!-- Amalda bajarilgan -->
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
+                    <td><?= $formatSoat($amaldaMaruza) ?></td>
+                    <td><?= $formatSoat($amaldaAmaliy) ?></td>
+                    <td><?= $formatSoat($amaldaLab) ?></td>
+                    <td><?= $formatSoat($amaldaSeminar) ?></td>
                     <!-- Reyting nazorati -->
                     <td><?= $oraliq ?: '' ?></td>
                     <td><?= $yakuniy ?: '' ?></td>
@@ -315,10 +334,10 @@ $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
                     <td><strong><?= $totals['reja_lab'] ?></strong></td>
                     <td><strong><?= $totals['reja_seminar'] ?></strong></td>
                     <!-- Amalda bajarilgan -->
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
+                    <td><strong><?= $formatSoat($totals['amalda_maruza']) ?></strong></td>
+                    <td><strong><?= $formatSoat($totals['amalda_amaliy']) ?></strong></td>
+                    <td><strong><?= $formatSoat($totals['amalda_lab']) ?></strong></td>
+                    <td><strong><?= $formatSoat($totals['amalda_seminar']) ?></strong></td>
                     <!-- Reyting nazorati -->
                     <td><strong><?= $totals['oraliq'] ?></strong></td>
                     <td><strong><?= $totals['yakuniy'] ?></strong></td>
