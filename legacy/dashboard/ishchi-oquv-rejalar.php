@@ -5,8 +5,11 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 require_once 'config.php';
 $db = new Database();
 
-// Izoh: Filtrlar (yo'nalish va semestr) uchun qiymatlar.
+// Izoh: Filtrlar (fakultet, yo'nalish va semestr) uchun qiymatlar.
 $filters = [];
+if (!empty($_GET['fakultet_id'])) {
+    $filters['fakultet_id'] = (int)$_GET['fakultet_id'];
+}
 if (!empty($_GET['yonalish_id'])) {
     $filters['yonalish_id'] = (int)$_GET['yonalish_id'];
 }
@@ -14,7 +17,51 @@ if (!empty($_GET['semestr'])) {
     $filters['semestr'] = (int)$_GET['semestr'];
 }
 
-$yonalishlar = $db->get_data_by_table_all('yonalishlar');
+$hasYonalishFakultet = false;
+$fakultetColRes = $db->query("SHOW COLUMNS FROM yonalishlar LIKE 'fakultet_id'");
+if ($fakultetColRes && mysqli_num_rows($fakultetColRes) > 0) {
+    $hasYonalishFakultet = true;
+}
+
+$fakultetlar = $db->get_data_by_table_all('fakultetlar');
+$yonalishlar = [];
+$yonalishSql = $hasYonalishFakultet
+    ? "
+        SELECT
+            y.id,
+            y.name,
+            y.kirish_yili,
+            COALESCE(y.fakultet_id, sf.fakultet_id, 0) AS fakultet_id
+        FROM yonalishlar y
+        LEFT JOIN (
+            SELECT yonalish_id, MAX(fakultet_id) AS fakultet_id
+            FROM semestrlar
+            WHERE fakultet_id IS NOT NULL
+            GROUP BY yonalish_id
+        ) sf ON sf.yonalish_id = y.id
+        ORDER BY y.name, y.kirish_yili
+    "
+    : "
+        SELECT
+            y.id,
+            y.name,
+            y.kirish_yili,
+            COALESCE(sf.fakultet_id, 0) AS fakultet_id
+        FROM yonalishlar y
+        LEFT JOIN (
+            SELECT yonalish_id, MAX(fakultet_id) AS fakultet_id
+            FROM semestrlar
+            WHERE fakultet_id IS NOT NULL
+            GROUP BY yonalish_id
+        ) sf ON sf.yonalish_id = y.id
+        ORDER BY y.name, y.kirish_yili
+    ";
+$yonalishRes = $db->query($yonalishSql);
+if ($yonalishRes) {
+    while ($row = mysqli_fetch_assoc($yonalishRes)) {
+        $yonalishlar[] = $row;
+    }
+}
 $semestrNumbers = [];
 $semestrRes = $db->query("SELECT DISTINCT semestr FROM semestrlar ORDER BY semestr");
 if ($semestrRes) {
@@ -35,6 +82,14 @@ if (!empty($semestrNumbers)) {
 // Izoh: Ishchi o'quv reja jadvali uchun ma'lumotlar (kafedra bilan).
 $oquv_rejalar = [];
 $where = [];
+if (!empty($filters['fakultet_id'])) {
+    $fakultetId = (int)$filters['fakultet_id'];
+    if ($hasYonalishFakultet) {
+        $where[] = "(y.fakultet_id = {$fakultetId} OR (y.fakultet_id IS NULL AND s.fakultet_id = {$fakultetId}))";
+    } else {
+        $where[] = "s.fakultet_id = {$fakultetId}";
+    }
+}
 if (!empty($filters['yonalish_id'])) {
     $where[] = "y.id = " . (int)$filters['yonalish_id'];
 }
@@ -326,6 +381,22 @@ function process_data_for_template(array $data, array $selectedVariants): array{
 
 $data = process_data_for_template($oquv_rejalar, $selectedVariants);
 
+// Izoh: Reja bajarilish foizi endi semestr kesimida (jadvalga chiqqan fanlar bo'yicha) hisoblanadi.
+$totalSubjectsCount = 0;
+$completedSubjectsCount = 0;
+foreach (($data['semesters'] ?? []) as $semester) {
+    foreach (($semester['subjects'] ?? []) as $subject) {
+        $totalSubjectsCount++;
+        if ((int)($subject['totalHours'] ?? 0) > 0) {
+            $completedSubjectsCount++;
+        }
+    }
+}
+$completionPercent = $totalSubjectsCount > 0
+    ? round(($completedSubjectsCount * 100) / $totalSubjectsCount, 1)
+    : 0;
+$completionPercentText = rtrim(rtrim(number_format($completionPercent, 1, '.', ''), '0'), '.');
+
 function renderSubjectCells($subject, $side = 'left') {
     if (!$subject) {
         return '
@@ -453,10 +524,22 @@ function renderSubjectCells($subject, $side = 'left') {
             <div class="content-container">
                 <div class="controls-panel">
                     <form class="filter-form" method="get" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <select class="form-control" name="fakultet_id" style="min-width:220px;" data-placeholder="Barcha fakultetlar">
+                            <option value="">Barcha fakultetlar</option>
+                            <?php foreach ($fakultetlar as $f): ?>
+                                <option value="<?= (int)$f['id'] ?>" <?= (!empty($filters['fakultet_id']) && (int)$filters['fakultet_id'] === (int)$f['id']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($f['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                         <select class="form-control" name="yonalish_id" style="min-width:200px;" data-placeholder="Barcha yo'nalishlar">
                             <option value="">Barcha yo'nalishlar</option>
                             <?php foreach ($yonalishlar as $y): ?>
-                                <option value="<?= (int)$y['id'] ?>" <?= (!empty($filters['yonalish_id']) && (int)$filters['yonalish_id'] === (int)$y['id']) ? 'selected' : '' ?>>
+                                <option
+                                    value="<?= (int)$y['id'] ?>"
+                                    data-fakultet-id="<?= (int)($y['fakultet_id'] ?? 0) ?>"
+                                    <?= (!empty($filters['yonalish_id']) && (int)$filters['yonalish_id'] === (int)$y['id']) ? 'selected' : '' ?>
+                                >
                                     <?= htmlspecialchars($y['name']) ?> - <?= htmlspecialchars($y['kirish_yili']) ?>
                                 </option>
                             <?php endforeach; ?>
@@ -509,6 +592,12 @@ function renderSubjectCells($subject, $side = 'left') {
                         <h4>Semestrlar</h4>
                         <div class="value"><?php echo count($data['semesters']); ?></div>
                         <div class="label">Umumiy semestrlar soni</div>
+                    </div>
+
+                    <div class="stat-card-excel">
+                        <h4>Reja Bajarilishi</h4>
+                        <div class="value"><?php echo $completionPercentText; ?>%</div>
+                        <div class="label"><?php echo $completedSubjectsCount; ?> / <?php echo $totalSubjectsCount; ?> fan to'ldirilgan</div>
                     </div>
                 </div>
 
@@ -716,7 +805,42 @@ function renderSubjectCells($subject, $side = 'left') {
         });
 
         $(document).ready(function() {
-            $('select[name="yonalish_id"], select[name="semestr"]').each(function() {
+            const $fakultetSelect = $('select[name="fakultet_id"]');
+            const $yonalishSelect = $('select[name="yonalish_id"]');
+            const yonalishOptionsCache = [];
+
+            $yonalishSelect.find('option').each(function() {
+                const value = String($(this).attr('value') || '');
+                if (value === '') return;
+                yonalishOptionsCache.push({
+                    value: value,
+                    text: $(this).text(),
+                    fakultetId: String($(this).data('fakultet-id') || ''),
+                });
+            });
+
+            function rebuildYonalishOptions() {
+                const selectedFakultet = String($fakultetSelect.val() || '');
+                const currentYonalish = String($yonalishSelect.val() || '');
+                let html = "<option value=\"\">Barcha yo'nalishlar</option>";
+
+                yonalishOptionsCache.forEach(function(item) {
+                    if (selectedFakultet !== '' && item.fakultetId !== selectedFakultet) {
+                        return;
+                    }
+                    const selected = (currentYonalish !== '' && currentYonalish === item.value) ? ' selected' : '';
+                    const dataAttr = item.fakultetId !== '' ? ` data-fakultet-id="${item.fakultetId}"` : '';
+                    html += `<option value="${item.value}"${dataAttr}${selected}>${item.text}</option>`;
+                });
+
+                $yonalishSelect.html(html);
+                if (currentYonalish !== '' && $yonalishSelect.find(`option[value="${currentYonalish}"]`).length === 0) {
+                    $yonalishSelect.val('');
+                }
+                $yonalishSelect.trigger('change.select2');
+            }
+
+            $('select[name="fakultet_id"], select[name="yonalish_id"], select[name="semestr"]').each(function() {
                 const placeholder = $(this).data('placeholder') || 'Tanlang';
                 $(this).select2({
                     placeholder: placeholder,
@@ -724,6 +848,9 @@ function renderSubjectCells($subject, $side = 'left') {
                     width: 'style'
                 });
             });
+
+            $fakultetSelect.on('change', rebuildYonalishOptions);
+            rebuildYonalishOptions();
         });
     </script>
 </body>

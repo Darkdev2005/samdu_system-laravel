@@ -541,9 +541,23 @@ class Database{
         return $result;
     }
     public function get_oquv_rejalar($filters = []){
+        $hasYonalishFakultet = false;
+        $fakultetColRes = $this->query("SHOW COLUMNS FROM yonalishlar LIKE 'fakultet_id'");
+        if ($fakultetColRes && mysqli_num_rows($fakultetColRes) > 0) {
+            $hasYonalishFakultet = true;
+        }
+
         $where = [];
         if (!empty($filters['yonalish_id'])) {
             $where[] = "y.id = " . (int)$filters['yonalish_id'];
+        }
+        if (!empty($filters['fakultet_id'])) {
+            $fakultetId = (int)$filters['fakultet_id'];
+            if ($hasYonalishFakultet) {
+                $where[] = "(y.fakultet_id = {$fakultetId} OR (y.fakultet_id IS NULL AND s.fakultet_id = {$fakultetId}))";
+            } else {
+                $where[] = "s.fakultet_id = {$fakultetId}";
+            }
         }
         if (!empty($filters['semestr'])) {
             $s = (int)$filters['semestr'];
