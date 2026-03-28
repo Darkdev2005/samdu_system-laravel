@@ -58,7 +58,6 @@
     $semestrlar = $db->get_semestrlar();
     $fakultetlar = $db->get_data_by_table_all('fakultetlar');
     $yonalishlar = $db->get_data_by_table_all('yonalishlar');
-    $dars_soat_turlari = $db->get_data_by_table_all('dars_soat_turlar');
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     $kafedralarSimple = array_map(static function ($row): array {
         return [
@@ -66,20 +65,10 @@
             'name' => (string)($row['name'] ?? ''),
         ];
     }, $kafedralar);
-    $darsTurlariSimple = array_map(static function ($row): array {
-        return [
-            'id' => (int)($row['id'] ?? 0),
-            'name' => (string)($row['name'] ?? ''),
-        ];
-    }, $dars_soat_turlari);
     $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
     $kafedralarJson = json_encode($kafedralarSimple, $jsonFlags);
     if ($kafedralarJson === false) {
         $kafedralarJson = '[]';
-    }
-    $darsTurlariJson = json_encode($darsTurlariSimple, $jsonFlags);
-    if ($darsTurlariJson === false) {
-        $darsTurlariJson = '[]';
     }
     $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $makeShortCode = static function (string $name): string {
@@ -933,25 +922,6 @@
                                             <i class="fas fa-times"></i> O'chirish
                                         </button>
                                     </div>
-                                </div>
-
-                                <div class="darsSoatWrapper">
-                                    <?php foreach ($dars_soat_turlari as $d): ?>
-                                        <div class="form-grid-2 dars-soat-row">
-                                            <div class="form-group">
-                                                <label>Dars turi</label>
-                                                <input type="text" class="form-control" value="<?= htmlspecialchars($d['name']) ?>" readonly tabindex="-1">
-                                                <input type="hidden" name="dars_turi[0][]" value="<?= (int)$d['id'] ?>">
-                                            </div>
-                                            <div class="form-group">
-                                                <label>Dars soati</label>
-                                                <input type="number"
-                                                    class="form-control"
-                                                    name="dars_soati[0][]"
-                                                    min="0">
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
                                 </div>
 
                                 <div class="reja-actions">
@@ -1936,7 +1906,6 @@
         });
 
         const chetKafedralarList = <?php echo $kafedralarJson; ?>;
-        const chetDarsTurlariList = <?php echo $darsTurlariJson; ?>;
 
         function buildChetKafedralarOptionsHtml() {
             let html = '';
@@ -1944,41 +1913,6 @@
                 const id = String(item.id || '');
                 if (id === '') return;
                 html += `<option value="${id}">${escapeOptionText(item.name || '')}</option>`;
-            });
-            return html;
-        }
-
-        function buildChetDarsTurlariOptionsHtml() {
-            let html = '';
-            (chetDarsTurlariList || []).forEach((item) => {
-                const id = String(item.id || '');
-                if (id === '') return;
-                html += `<option value="${id}">${escapeOptionText(item.name || '')}</option>`;
-            });
-            return html;
-        }
-
-        function buildAllChetDarsRowsHtml(index) {
-            let html = '';
-            (chetDarsTurlariList || []).forEach((item) => {
-                const id = String(item.id || '');
-                if (id === '') return;
-                html += `
-                    <div class="form-grid-2 dars-soat-row">
-                        <div class="form-group">
-                            <label>Dars turi</label>
-                            <input type="text" class="form-control" value="${escapeOptionText(item.name || '')}" readonly tabindex="-1">
-                            <input type="hidden" name="dars_turi[${index}][]" value="${id}">
-                        </div>
-                        <div class="form-group">
-                            <label>Dars soati</label>
-                            <input type="number"
-                                class="form-control"
-                                name="dars_soati[${index}][]"
-                                min="0">
-                        </div>
-                    </div>
-                `;
             });
             return html;
         }
@@ -2030,10 +1964,6 @@
                             <i class="fas fa-times"></i> O'chirish
                         </button>
                     </div>
-                </div>
-
-                <div class="darsSoatWrapper">
-                    ${buildAllChetDarsRowsHtml(index)}
                 </div>
 
                 <div class="reja-actions">
@@ -2149,8 +2079,6 @@
                 card.find('select[name^="tanlov_fan_base["]').attr('name', `tanlov_fan_base[${newIndex}]`);
                 card.find('input[name^="tanlov_fan_nomi["]').attr('name', `tanlov_fan_nomi[${newIndex}][]`);
                 card.find('select[name^="tanlov_kafedra_id["]').attr('name', `tanlov_kafedra_id[${newIndex}][]`);
-                card.find('[name^="dars_turi["]').attr('name', `dars_turi[${newIndex}][]`);
-                card.find('input[name^="dars_soati["]').attr('name', `dars_soati[${newIndex}][]`);
             });
         }
 
@@ -2158,8 +2086,6 @@
             setTimeout(() => {
                 container.find('select').each(function() {
                     const name = $(this).attr('name') || '';
-
-                    if (name.startsWith('dars_turi')) return;
 
                     if ($(this).hasClass('chet-tili-select')) {
                         if (!$(this).hasClass('select2-hidden-accessible')) {
