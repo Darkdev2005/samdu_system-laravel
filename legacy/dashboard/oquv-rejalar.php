@@ -556,6 +556,7 @@ function renderSubjectCells($subject, $side = 'left') {
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
     <script src="../assets/js/app.js"></script>
     <script>
         function updateCurrentDate() {
@@ -573,7 +574,19 @@ function renderSubjectCells($subject, $side = 'left') {
         }
 
         function exportToExcel() {
-            alert('Excel eksport funksiyasi ishga tushirilmoqda...');
+            if (typeof XLSX === 'undefined') {
+                alert("Excel kutubxonasi yuklanmadi. Sahifani Ctrl+F5 bilan yangilang.");
+                return;
+            }
+
+            const table = document.querySelector('.excel-table');
+            if (!table) {
+                alert("Eksport uchun jadval topilmadi.");
+                return;
+            }
+
+            const wb = XLSX.utils.table_to_book(table, { sheet: "O'quv rejalar" });
+            XLSX.writeFile(wb, "oquv_rejalar.xlsx");
         }
 
         function printTable() {
