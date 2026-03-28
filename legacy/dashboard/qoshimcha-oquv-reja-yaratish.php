@@ -169,6 +169,87 @@
             gap: 8px;
             flex-wrap: wrap;
         }
+        .swal2-popup .edit-q-modal {
+            text-align: left;
+        }
+        .swal2-popup .edit-q-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .swal2-popup .edit-q-field-full {
+            grid-column: 1 / -1;
+        }
+        .swal2-popup .edit-q-field label {
+            display: block;
+            font-size: 12px;
+            color: #64748b;
+            margin: 0 0 4px 0;
+        }
+        .swal2-popup .edit-q-input {
+            margin: 0;
+            width: 100%;
+        }
+        .swal2-popup .edit-q-alloc-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 12px;
+            background: #f8fafc;
+        }
+        .swal2-popup .edit-q-alloc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #334155;
+        }
+        .swal2-popup .edit-q-total-hint {
+            font-size: 12px;
+            color: #64748b;
+        }
+        .swal2-popup .edit-q-total-hint.ok {
+            color: #059669;
+            font-weight: 600;
+        }
+        .swal2-popup .edit-q-total-hint.warn {
+            color: #b45309;
+            font-weight: 600;
+        }
+        .swal2-popup .edit-q-allocation-row {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 8px;
+            background: #ffffff;
+        }
+        .swal2-popup .edit-q-row-label {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 6px;
+        }
+        .swal2-popup .edit-q-allocation-grid {
+            display: grid;
+            grid-template-columns: 1fr 140px 44px;
+            gap: 8px;
+            align-items: end;
+        }
+        .swal2-popup .edit-q-remove-row[disabled] {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        @media (max-width: 900px) {
+            .swal2-popup .edit-q-grid {
+                grid-template-columns: 1fr;
+            }
+            .swal2-popup .edit-q-allocation-grid {
+                grid-template-columns: 1fr;
+            }
+        }
         .top-filters-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(220px, 1fr));
@@ -816,18 +897,35 @@
             return html;
         }
 
-        function buildEditQoshimchaKafedraRow(allocation = {}) {
+        function buildEditQoshimchaKafedraRow(allocation = {}, rowIndex = 1) {
             const selectedKafedra = String(allocation.kafedra_id || '');
+            const selectedKafedraName = String(allocation.kafedra_name || '').trim();
             const soat = parseInt(allocation.dars_soati || 0, 10) || 0;
+            const fallbackOption = selectedKafedra !== '' && selectedKafedraName !== ''
+                ? `<option value="${escapeHtml(selectedKafedra)}" selected>${escapeHtml(selectedKafedraName)}</option>`
+                : '';
 
             return `
-                <div class="edit-q-allocation-row" style="display:flex;gap:8px;align-items:center;margin:6px 0;">
-                    <select class="swal2-input edit-q-kafedra" style="flex:1;margin:0;">
-                        <option value="">Tanlang</option>
-                        ${buildKafedralarOptionsHtml(selectedKafedra)}
-                    </select>
-                    <input type="number" min="0" step="1" class="swal2-input edit-q-soat" style="width:130px;margin:0;" value="${soat}">
-                    <button type="button" class="btn btn-danger btn-sm edit-q-remove-row"><i class="fas fa-times"></i></button>
+                <div class="edit-q-allocation-row">
+                    <div class="edit-q-row-label">Kafedra #${rowIndex}</div>
+                    <div class="edit-q-allocation-grid">
+                        <div class="edit-q-field">
+                            <label>Kafedra</label>
+                            <select class="swal2-input edit-q-kafedra edit-q-input">
+                                <option value="">Tanlang</option>
+                                ${fallbackOption}
+                                ${buildKafedralarOptionsHtml(selectedKafedra)}
+                            </select>
+                        </div>
+                        <div class="edit-q-field">
+                            <label>Soat</label>
+                            <input type="number" min="0" step="1" class="swal2-input edit-q-soat edit-q-input" value="${soat}">
+                        </div>
+                        <div class="edit-q-field">
+                            <label>&nbsp;</label>
+                            <button type="button" class="btn btn-danger btn-sm edit-q-remove-row"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
                 </div>
             `;
         }
@@ -837,23 +935,44 @@
                 title: "Qo'shimcha fan tahrirlash",
                 width: 920,
                 html: `
-                    <input type="text" id="editQFanName" class="swal2-input" placeholder="Fan nomi" value="${escapeHtml(row.fan_name || '')}">
-                    <div style="display:flex;gap:8px;">
-                        <input type="number" min="0" step="1" id="editQFanSoat" class="swal2-input" placeholder="Hisoblangan fan soati" value="${escapeHtml(row.fan_soat || 0)}" style="margin:0;flex:1;">
-                        <select id="editQQoshimchaDarsId" class="swal2-input" style="margin:0;flex:1;">
-                            ${buildEditQoshimchaTurOptions(row.qoshimcha_dars_id || '')}
-                        </select>
+                    <div class="edit-q-modal">
+                        <div class="edit-q-grid">
+                            <div class="edit-q-field edit-q-field-full">
+                                <label>Fan nomi</label>
+                                <input type="text" id="editQFanName" class="swal2-input edit-q-input" placeholder="Fan nomi" value="${escapeHtml(row.fan_name || '')}">
+                            </div>
+                            <div class="edit-q-field">
+                                <label>Hisoblangan fan soati</label>
+                                <input type="number" min="0" step="1" id="editQFanSoat" class="swal2-input edit-q-input" placeholder="Hisoblangan fan soati" value="${escapeHtml(row.fan_soat || 0)}">
+                            </div>
+                            <div class="edit-q-field">
+                                <label>Qo'shimcha dars turi</label>
+                                <select id="editQQoshimchaDarsId" class="swal2-input edit-q-input">
+                                    ${buildEditQoshimchaTurOptions(row.qoshimcha_dars_id || '')}
+                                </select>
+                            </div>
+                            <div class="edit-q-field edit-q-field-full">
+                                <label>Semestr</label>
+                                <select id="editQSemestrId" class="swal2-input edit-q-input">
+                                    ${buildEditSemestrOptions(row.semestr_id || '', row)}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="edit-q-alloc-card">
+                            <div class="edit-q-alloc-header">
+                                <strong>Kafedralar va dars soatlari</strong>
+                                <span class="edit-q-total-hint" id="editQTotalsHint">Yig'indi: 0 | Fan soati: 0</span>
+                            </div>
+                            <div id="editQAllocationsContainer"></div>
+                            <div style="display:flex;justify-content:flex-start;margin-top:6px;">
+                                <button type="button" class="btn btn-outline btn-sm" id="editQAddAllocationRow"><i class="fas fa-plus"></i> Qator qo'shish</button>
+                            </div>
+                        </div>
+                        <div class="edit-q-field">
+                            <label>Izoh</label>
+                            <textarea id="editQIzoh" class="swal2-textarea edit-q-input" placeholder="Izoh">${escapeHtml(row.izoh || '')}</textarea>
+                        </div>
                     </div>
-                    <div style="text-align:left;margin:10px 0 4px 0;font-size:13px;color:#64748b;">Semestr</div>
-                    <select id="editQSemestrId" class="swal2-input" style="margin:0;">
-                        ${buildEditSemestrOptions(row.semestr_id || '', row)}
-                    </select>
-                    <div style="text-align:left;margin:12px 0 4px 0;font-size:13px;color:#64748b;">Kafedralar va dars soatlari</div>
-                    <div id="editQAllocationsContainer"></div>
-                    <div style="display:flex;justify-content:flex-start;margin-top:6px;">
-                        <button type="button" class="btn btn-outline btn-sm" id="editQAddAllocationRow"><i class="fas fa-plus"></i> Qator qo'shish</button>
-                    </div>
-                    <textarea id="editQIzoh" class="swal2-textarea" placeholder="Izoh">${escapeHtml(row.izoh || '')}</textarea>
                 `,
                 showCancelButton: true,
                 confirmButtonText: "Saqlash",
@@ -864,15 +983,70 @@
                         ? row.allocations
                         : [{ kafedra_id: '', dars_soati: 0 }];
 
-                    container.html(allocations.map(a => buildEditQoshimchaKafedraRow(a)).join(''));
-                    container.find('select').each(function() {
-                        initSelect2Safe($(this), "Kafedrani tanlang");
+                    const updateTotalsHint = () => {
+                        const fanSoat = Number($('#editQFanSoat').val() || 0);
+                        let sum = 0;
+                        $('.edit-q-soat').each(function() {
+                            const value = Number($(this).val() || 0);
+                            if (Number.isFinite(value) && value > 0) {
+                                sum += value;
+                            }
+                        });
+
+                        const hint = $('#editQTotalsHint');
+                        hint.removeClass('ok warn');
+                        hint.text(`Yig'indi: ${sum} | Fan soati: ${fanSoat}`);
+                        if (fanSoat > 0 && sum === fanSoat) {
+                            hint.addClass('ok');
+                        } else if (sum > 0) {
+                            hint.addClass('warn');
+                        }
+                    };
+
+                    const refreshRowMeta = () => {
+                        const rows = container.find('.edit-q-allocation-row');
+                        rows.each(function(index) {
+                            $(this).find('.edit-q-row-label').text(`Kafedra #${index + 1}`);
+                        });
+                        rows.find('.edit-q-remove-row').prop('disabled', rows.length <= 1);
+                    };
+
+                    const initAllocationSelects = () => {
+                        container.find('select').each(function() {
+                            const $select = $(this);
+                            if ($select.hasClass('select2-hidden-accessible')) {
+                                $select.select2('destroy');
+                            }
+                            initSelect2Safe($select, "Kafedrani tanlang");
+                        });
+                    };
+
+                    container.html(allocations.map((a, idx) => buildEditQoshimchaKafedraRow(a, idx + 1)).join(''));
+                    initAllocationSelects();
+                    refreshRowMeta();
+                    updateTotalsHint();
+
+                    $('#editQFanSoat').on('input', function() {
+                        updateTotalsHint();
+                    });
+
+                    container.on('input', '.edit-q-soat', function() {
+                        updateTotalsHint();
+                    });
+
+                    container.on('change', '.edit-q-kafedra', function() {
+                        refreshRowMeta();
                     });
 
                     $('#editQAddAllocationRow').on('click', function() {
-                        const newRow = $(buildEditQoshimchaKafedraRow({}));
+                        const nextIndex = container.find('.edit-q-allocation-row').length + 1;
+                        const newRow = $(buildEditQoshimchaKafedraRow({}, nextIndex));
                         container.append(newRow);
-                        initSelect2Safe(newRow.find('select'), "Kafedrani tanlang");
+                        newRow.find('select').each(function() {
+                            initSelect2Safe($(this), "Kafedrani tanlang");
+                        });
+                        refreshRowMeta();
+                        updateTotalsHint();
                     });
 
                     container.on('click', '.edit-q-remove-row', function() {
@@ -888,7 +1062,12 @@
                             }
                         });
                         rowEl.remove();
+                        refreshRowMeta();
+                        updateTotalsHint();
                     });
+
+                    initSelect2Safe($('#editQQoshimchaDarsId'), "Qo'shimcha dars turini tanlang");
+                    initSelect2Safe($('#editQSemestrId'), "Semestrni tanlang");
                 },
                 preConfirm: () => {
                     const fanName = String($('#editQFanName').val() || '').trim();
