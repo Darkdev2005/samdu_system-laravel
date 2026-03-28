@@ -8,6 +8,7 @@ $fanId = (int)($_POST['fan_id'] ?? 0);
 $fanCode = trim((string)($_POST['fan_code'] ?? ''));
 $fanName = trim((string)($_POST['fan_name'] ?? ''));
 $kafedraId = (int)($_POST['kafedra_id'] ?? 0);
+$semestrIdRaw = (int)($_POST['semestr_id'] ?? 0);
 $izoh = trim((string)($_POST['izoh'] ?? ''));
 $darsJson = (string)($_POST['dars_json'] ?? '{}');
 $darsMap = json_decode($darsJson, true);
@@ -25,11 +26,24 @@ if (!$fan) {
 
 $tanlovFan = (int)($fan['tanlov_fan'] ?? 0);
 $currentKafedraId = (int)($fan['kafedra_id'] ?? 0);
+$currentSemestrId = (int)($fan['semestr_id'] ?? 0);
+$targetSemestrId = $semestrIdRaw > 0 ? $semestrIdRaw : $currentSemestrId;
 
 $lockKafedra = ($currentKafedraId === 0 && ($tanlovFan === 1 || $tanlovFan === 3));
 $targetKafedraId = $lockKafedra ? 0 : $kafedraId;
 if (!$lockKafedra && $targetKafedraId <= 0) {
     echo json_encode(['success' => false, 'message' => "Kafedra tanlanmagan"]);
+    return;
+}
+
+if ($targetSemestrId <= 0) {
+    echo json_encode(['success' => false, 'message' => "Semestr tanlanmagan"]);
+    return;
+}
+
+$semestr = $db->get_data_by_table('semestrlar', ['id' => $targetSemestrId]);
+if (!$semestr) {
+    echo json_encode(['success' => false, 'message' => "Semestr topilmadi"]);
     return;
 }
 
@@ -59,6 +73,7 @@ $ok = $ok && $db->update('fanlar', [
     'fan_code' => $fanCode,
     'fan_name' => $fanName,
     'kafedra_id' => $targetKafedraId,
+    'semestr_id' => $targetSemestrId,
 ], 'id = ' . $fanId);
 
 $existingMap = [];

@@ -1162,6 +1162,40 @@
             return `<select class="swal2-input" id="editKafedraId" ${lockKafedra ? 'disabled' : ''}>${html}</select>`;
         }
 
+        function buildSemestrOptions(row) {
+            const selectedSemestrId = String(row.semestr_id || '');
+            const rowYonalishId = String(row.yonalish_id || '');
+
+            let semestrOptions = allSemestrOptions.filter(item => {
+                if (rowYonalishId === '') {
+                    return true;
+                }
+                return String(item.yonalishId || '') === rowYonalishId;
+            });
+
+            if (semestrOptions.length === 0) {
+                semestrOptions = allSemestrOptions.slice();
+            }
+
+            const hasSelected = semestrOptions.some(item => String(item.id || '') === selectedSemestrId);
+            if (!hasSelected && selectedSemestrId !== '') {
+                const fallbackLabel = `${row.yonalish_name || '-'} - ${row.kirish_yili || '-'} / ${row.semestr_num || '-'}`;
+                semestrOptions.unshift({
+                    id: selectedSemestrId,
+                    text: fallbackLabel,
+                });
+            }
+
+            let html = '<option value="">Tanlang</option>';
+            semestrOptions.forEach(item => {
+                const id = String(item.id || '');
+                const selected = id === selectedSemestrId ? ' selected' : '';
+                html += `<option value="${id}"${selected}>${escapeHtml(item.text || '')}</option>`;
+            });
+
+            return `<select class="swal2-input" id="editSemestrId">${html}</select>`;
+        }
+
         function buildEditModalHtml(row, darsTurlari) {
             const dars = row.dars || {};
             let darsRows = '';
@@ -1182,6 +1216,8 @@
                 <input type="text" id="editFanName" class="swal2-input" placeholder="Fan nomi" value="${escapeHtml(row.fan_name || '')}">
                 <div style="text-align:left;margin:8px 0 4px 0;font-size:13px;color:#64748b;">Kafedra</div>
                 ${buildKafedraOptions(row.kafedra_id || '', lockKafedra)}
+                <div style="text-align:left;margin:10px 0 4px 0;font-size:13px;color:#64748b;">Semestr</div>
+                ${buildSemestrOptions(row)}
                 <div style="text-align:left;margin:10px 0 4px 0;font-size:13px;color:#64748b;">Dars soatlari</div>
                 <div style="max-height:220px;overflow:auto;padding-right:4px;">${darsRows}</div>
                 <textarea id="editIzoh" class="swal2-textarea" placeholder="Izoh">${escapeHtml(row.izoh || '')}</textarea>
@@ -1207,6 +1243,7 @@
                     const fanCode = String($('#editFanCode').val() || '').trim();
                     const fanName = String($('#editFanName').val() || '').trim();
                     const kafedraVal = String($('#editKafedraId').val() || '').trim();
+                    const semestrVal = String($('#editSemestrId').val() || '').trim();
                     const izoh = String($('#editIzoh').val() || '').trim();
 
                     if (fanCode === '' || fanName === '') {
@@ -1218,6 +1255,12 @@
                     const kafedraId = lockKafedra ? parseInt(row.kafedra_id || 0, 10) : parseInt(kafedraVal || 0, 10);
                     if (!lockKafedra && kafedraId <= 0) {
                         SwalApi.showValidationMessage("Kafedrani tanlang");
+                        return false;
+                    }
+
+                    const semestrId = parseInt(semestrVal || 0, 10);
+                    if (semestrId <= 0) {
+                        SwalApi.showValidationMessage("Semestrni tanlang");
                         return false;
                     }
 
@@ -1241,6 +1284,7 @@
                         fan_code: fanCode,
                         fan_name: fanName,
                         kafedra_id: kafedraId,
+                        semestr_id: semestrId,
                         izoh: izoh,
                         dars: dars,
                     };
@@ -1254,6 +1298,7 @@
                 formData.append('fan_code', payload.fan_code);
                 formData.append('fan_name', payload.fan_name);
                 formData.append('kafedra_id', String(payload.kafedra_id));
+                formData.append('semestr_id', String(payload.semestr_id));
                 formData.append('izoh', payload.izoh);
                 formData.append('dars_json', JSON.stringify(payload.dars));
 

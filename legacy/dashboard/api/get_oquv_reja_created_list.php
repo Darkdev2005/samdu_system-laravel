@@ -37,6 +37,7 @@ $res = $db->query("
         COALESCE(k.name, '-') AS kafedra_name,
         s.id AS semestr_id,
         s.semestr AS semestr_num,
+        y.id AS yonalish_id,
         y.name AS yonalish_name,
         y.kirish_yili,
         COALESCE(MAX(o.izoh), '') AS izoh
@@ -48,7 +49,7 @@ $res = $db->query("
     $whereSql
     GROUP BY
         f.id, f.fan_code, f.fan_name, f.tanlov_fan, f.kafedra_id,
-        k.name, s.id, s.semestr, y.name, y.kirish_yili
+        k.name, s.id, s.semestr, y.id, y.name, y.kirish_yili
     ORDER BY s.id DESC, f.id DESC
 ");
 
