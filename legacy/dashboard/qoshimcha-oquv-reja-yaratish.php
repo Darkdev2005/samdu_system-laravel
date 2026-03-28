@@ -615,6 +615,7 @@
         });
 
         let allSemestrOptions = [];
+        let allSemestrOptionsMaster = [];
         let allYonalishOptions = [];
         let isTopFilterSyncing = false;
         let createdQoshimchaRowsById = {};
@@ -870,14 +871,17 @@
         function buildEditSemestrOptions(selectedValue = '', row = null) {
             const selected = String(selectedValue || '');
             const rowYonalishId = String((row && row.yonalish_id) || '');
+            const semestrSource = allSemestrOptionsMaster.length
+                ? allSemestrOptionsMaster
+                : allSemestrOptions;
 
-            let options = allSemestrOptions.filter(item => {
+            let options = semestrSource.filter(item => {
                 if (rowYonalishId === '') return true;
                 return String(item.yonalishId || '') === rowYonalishId;
             });
 
             if (!options.length) {
-                options = allSemestrOptions.slice();
+                options = semestrSource.slice();
             }
 
             if (selected !== '' && !options.some(item => String(item.id || '') === selected)) {
@@ -1066,8 +1070,8 @@
                         updateTotalsHint();
                     });
 
-                    initSelect2Safe($('#editQQoshimchaDarsId'), "Qo'shimcha dars turini tanlang");
-                    initSelect2Safe($('#editQSemestrId'), "Semestrni tanlang");
+                    // Modal ichidagi ushbu ikkita select native ko'rinishda qoladi.
+                    // Hostdagi ayrim brauzerlarda select2 dropdown ochilmaslik holatini shu bilan oldini olamiz.
                 },
                 preConfirm: () => {
                     const fanName = String($('#editQFanName').val() || '').trim();
@@ -1323,6 +1327,11 @@
                     guruh: String($(this).data('guruh') || '0'),
                 });
             });
+            if (!allSemestrOptionsMaster.length) {
+                allSemestrOptionsMaster = allSemestrOptions.map(function(item) {
+                    return Object.assign({}, item);
+                });
+            }
         }
 
         function cacheYonalishOptions() {
