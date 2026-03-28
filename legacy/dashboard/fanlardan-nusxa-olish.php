@@ -189,8 +189,8 @@ if ($kafedralarJson === false) {
                         </div>
                         <div class="form-group">
                             <label>Maqsad semestr</label>
-                            <select class="form-control" id="targetSemestr">
-                                <option value="">Semestrni tanlang</option>
+                            <select class="form-control" id="targetSemestr" multiple>
+                                <option value="">Semestr(lar)ni tanlang</option>
                                 <?php foreach ($semestrlar as $s):
                                     $short = $makeShortCode((string)($s['yonalish_name'] ?? ''));
                                     $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
@@ -220,7 +220,7 @@ if ($kafedralarJson === false) {
 
                     <h3 class="section-title mt-4">Manba semestr</h3>
                     <div class="created-list-note">
-                        Manba sifatida boshqa fakultet, yo'nalish va semestrni tanlang.
+                        Manba sifatida boshqa fakultet va yo'nalishni tanlang. Semestrlar avtomatik moslanadi: 1→1, 2→2, 3→3 va hokazo.
                     </div>
                     <div class="top-filters-grid mt-2">
                         <div class="form-group">
@@ -244,33 +244,8 @@ if ($kafedralarJson === false) {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Manba semestr</label>
-                            <select class="form-control" id="sourceSemestr">
-                                <option value="">Semestrni tanlang</option>
-                                <?php foreach ($semestrlar as $s):
-                                    $short = $makeShortCode((string)($s['yonalish_name'] ?? ''));
-                                    $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
-                                    $daraja = function_exists('mb_strtolower')
-                                        ? (string)@mb_strtolower($darajaRaw, 'UTF-8')
-                                        : strtolower($darajaRaw);
-                                    $darajaPrefix = '';
-                                    if (strpos($daraja, 'magistr') !== false) {
-                                        $darajaPrefix = 'M ';
-                                    } elseif (strpos($daraja, 'bakalavr') !== false) {
-                                        $darajaPrefix = 'B ';
-                                    }
-                                    $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
-                                    $yonalishId = (int)($s['yonalish_id'] ?? 0);
-                                ?>
-                                    <option
-                                        value="<?= (int)$s['id'] ?>"
-                                        data-fakultet-id="<?= $fakultetId ?>"
-                                        data-yonalish-id="<?= $yonalishId ?>"
-                                    >
-                                        <?= $h($darajaPrefix . $short . '_' . ($s['kirish_yili'] ?? '') . ' - ' . ($s['semestr'] ?? '') . '-semestr') ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <label>Moslash qoidasi</label>
+                            <input type="text" class="form-control" value="Maqsad semestrlari manba semestrlari bilan raqam bo'yicha moslanadi (1→1, 2→2, ...)" readonly>
                         </div>
                     </div>
 
@@ -387,6 +362,16 @@ if ($kafedralarJson === false) {
                 .replace(/'/g, '&#039;');
         }
 
+        function normalizeArray(value) {
+            if (Array.isArray(value)) {
+                return value
+                    .map(item => String(item || '').trim())
+                    .filter(item => item !== '');
+            }
+            const single = String(value || '').trim();
+            return single === '' ? [] : [single];
+        }
+
         function cacheOptions() {
             allYonalishOptions = [];
             $('#targetYonalish option').each(function() {
@@ -430,6 +415,11 @@ if ($kafedralarJson === false) {
 
         function rebuildSemestrOptions(targetSelectId, fakultetValue, yonalishValue, selectedValue = '') {
             const select = $('#' + targetSelectId);
+            const selectedSet = new Set(
+                targetSelectId === 'targetSemestr'
+                    ? normalizeArray(selectedValue)
+                    : [String(selectedValue || '')]
+            );
             let html = '<option value="">Semestrni tanlang</option>';
 
             allSemestrOptions.forEach(item => {
@@ -440,7 +430,7 @@ if ($kafedralarJson === false) {
                     return;
                 }
 
-                const selected = String(item.id) === String(selectedValue) ? ' selected' : '';
+                const selected = selectedSet.has(String(item.id)) ? ' selected' : '';
                 const fakultetAttr = item.fakultetId !== '' ? ` data-fakultet-id="${item.fakultetId}"` : '';
                 const yonalishAttr = item.yonalishId !== '' ? ` data-yonalish-id="${item.yonalishId}"` : '';
                 html += `<option value="${item.id}"${fakultetAttr}${yonalishAttr}${selected}>${escapeHtml(item.text)}</option>`;
@@ -464,12 +454,21 @@ if ($kafedralarJson === false) {
             const fakultet = String($('#' + prefix + 'Fakultet').val() || '');
             const yonalish = String($('#' + prefix + 'Yonalish').val() || '');
             const current = selectedValue !== null
-                ? String(selectedValue || '')
-                : String($('#' + prefix + 'Semestr').val() || '');
+                ? (prefix === 'target' ? normalizeArray(selectedValue) : String(selectedValue || ''))
+                : (prefix === 'target'
+                    ? normalizeArray($('#' + prefix + 'Semestr').val())
+                    : String($('#' + prefix + 'Semestr').val() || ''));
 
             rebuildSemestrOptions(prefix + 'Semestr', fakultet, yonalish, current);
-            const hasCurrent = $('#' + prefix + 'Semestr option[value="' + current + '"]').length > 0;
-            $('#' + prefix + 'Semestr').val(hasCurrent ? current : '').trigger('change.select2');
+            if (prefix === 'target') {
+                const validValues = normalizeArray(current).filter(val => (
+                    $('#' + prefix + 'Semestr option[value="' + val + '"]').length > 0
+                ));
+                $('#' + prefix + 'Semestr').val(validValues).trigger('change.select2');
+            } else {
+                const hasCurrent = $('#' + prefix + 'Semestr option[value="' + current + '"]').length > 0;
+                $('#' + prefix + 'Semestr').val(hasCurrent ? current : '').trigger('change.select2');
+            }
         }
 
         function renderDarsSummary(row, darsTurlari) {
@@ -592,7 +591,8 @@ if ($kafedralarJson === false) {
         function loadCreatedRejaList() {
             const fakultetId = String($('#targetFakultet').val() || '');
             const yonalishId = String($('#targetYonalish').val() || '');
-            const semestrId = String($('#targetSemestr').val() || '');
+            const targetSemestrValues = normalizeArray($('#targetSemestr').val());
+            const semestrId = targetSemestrValues.length === 1 ? targetSemestrValues[0] : '';
             const url = `api/get_oquv_reja_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&yonalish_id=${encodeURIComponent(yonalishId)}&semestr_id=${encodeURIComponent(semestrId)}`;
 
             fetch(url)
@@ -687,12 +687,13 @@ if ($kafedralarJson === false) {
                 '#targetYonalish',
                 '#targetSemestr',
                 '#sourceFakultet',
-                '#sourceYonalish',
-                '#sourceSemestr'
+                '#sourceYonalish'
             ].forEach(selector => {
+                const isTargetSemestr = selector === '#targetSemestr';
                 $(selector).select2({
                     placeholder: "Tanlang",
                     allowClear: true,
+                    closeOnSelect: !isTargetSemestr,
                     width: '100%',
                 });
             });
@@ -743,51 +744,47 @@ if ($kafedralarJson === false) {
 
             $('#sourceFakultet').on('change', function() {
                 syncYonalish('source');
-                syncSemestr('source');
-            });
-            $('#sourceYonalish').on('change', function() {
-                syncSemestr('source');
             });
             $('#refreshCreatedRejaBtn').on('click', function() {
                 loadCreatedRejaList();
             });
 
             $('#copyResetBtn').on('click', function() {
-                $('#targetFakultet, #targetYonalish, #targetSemestr, #sourceFakultet, #sourceYonalish, #sourceSemestr').val('').trigger('change.select2');
+                $('#targetFakultet, #targetYonalish, #targetSemestr, #sourceFakultet, #sourceYonalish').val('').trigger('change.select2');
                 syncYonalish('target', '');
                 syncSemestr('target', '');
                 syncYonalish('source', '');
-                syncSemestr('source', '');
                 loadCreatedRejaList();
             });
 
             $('#copyRunBtn').on('click', function() {
-                const targetSemestrId = String($('#targetSemestr').val() || '');
-                const sourceSemestrId = String($('#sourceSemestr').val() || '');
+                const targetSemestrIds = normalizeArray($('#targetSemestr').val());
+                const sourceYonalishId = String($('#sourceYonalish').val() || '');
 
-                if (targetSemestrId === '') {
-                    Toast.fire({ icon: 'error', title: "Maqsad semestrni tanlang" });
+                if (!targetSemestrIds.length) {
+                    Toast.fire({ icon: 'error', title: "Kamida bitta maqsad semestrni tanlang" });
                     return;
                 }
-                if (sourceSemestrId === '') {
-                    Toast.fire({ icon: 'error', title: "Manba semestrni tanlang" });
-                    return;
-                }
-                if (targetSemestrId === sourceSemestrId) {
-                    Toast.fire({ icon: 'error', title: "Manba va maqsad semestr bir xil bo'lmasligi kerak" });
+                if (sourceYonalishId === '') {
+                    Toast.fire({ icon: 'error', title: "Manba yo'nalishni tanlang" });
                     return;
                 }
 
-                const targetText = String($('#targetSemestr option:selected').text() || '').trim();
-                const sourceText = String($('#sourceSemestr option:selected').text() || '').trim();
+                const targetTexts = targetSemestrIds
+                    .map(id => String($('#targetSemestr option[value="' + id + '"]').text() || '').trim())
+                    .filter(Boolean);
+                const sourceYonalishText = String($('#sourceYonalish option:selected').text() || '').trim();
+                const targetTextHtml = targetTexts.map(text => `<li>${escapeHtml(text)}</li>`).join('');
 
                 SwalApi.fire({
                     title: "Fanlarni nusxalash",
                     icon: "question",
                     html: `
                         <div style="text-align:left;">
-                            <div><b>Manba:</b> ${escapeHtml(sourceText)}</div>
-                            <div style="margin-top:6px;"><b>Maqsad:</b> ${escapeHtml(targetText)}</div>
+                            <div><b>Manba yo'nalish:</b> ${escapeHtml(sourceYonalishText)}</div>
+                            <div style="margin-top:6px;"><b>Maqsad semestrlar:</b></div>
+                            <ul style="margin:6px 0 0 16px;">${targetTextHtml || '<li>-</li>'}</ul>
+                            <div style="margin-top:8px;color:#64748b;font-size:13px;">Moslash qoidasi: 1→1, 2→2, 3→3 ...</div>
                         </div>
                     `,
                     showCancelButton: true,
@@ -797,8 +794,8 @@ if ($kafedralarJson === false) {
                     if (!result.isConfirmed) return;
 
                     const formData = new FormData();
-                    formData.append('target_semestr_id', targetSemestrId);
-                    formData.append('source_semestr_id', sourceSemestrId);
+                    formData.append('target_semestr_ids', JSON.stringify(targetSemestrIds));
+                    formData.append('source_yonalish_id', sourceYonalishId);
 
                     fetch('insert/copy_oquv_reja_items.php', {
                         method: 'POST',
@@ -831,7 +828,6 @@ if ($kafedralarJson === false) {
             syncYonalish('target');
             syncSemestr('target');
             syncYonalish('source');
-            syncSemestr('source');
             loadCreatedRejaList();
         });
 
