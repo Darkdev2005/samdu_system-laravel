@@ -156,6 +156,9 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
         $kursIshi  = (int)$row['kursIshi'];
         $kursIshiFlag = (int)($row['kursIshiFlag'] ?? 0);
         $kursIshiExtraFlag = (int)($row['kursIshiExtraFlag'] ?? 0);
+        $kursLoyiha = (int)($row['kursLoyiha'] ?? 0);
+        $kursLoyihaFlag = (int)($row['kursLoyihaFlag'] ?? 0);
+        $kursLoyihaExtraFlag = (int)($row['kursLoyihaExtraFlag'] ?? 0);
         $malaka    = (int)$row['malakaAmaliyot'];
 
         $audTotal = $lecture + $practical + $lab + $seminar;
@@ -222,6 +225,9 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
                     'kursIshi' => $kursIshi,
                     'kursIshiFlag' => $kursIshiFlag,
                     'kursIshiExtraFlag' => $kursIshiExtraFlag,
+                    'kursLoyiha' => $kursLoyiha,
+                    'kursLoyihaFlag' => $kursLoyihaFlag,
+                    'kursLoyihaExtraFlag' => $kursLoyihaExtraFlag,
                     'mustaqilTalim' => $mustaqil,
                     'department' => $row['kafedra_name']
                 ];
@@ -245,6 +251,9 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
                 'kursIshi' => $kursIshi,
                 'kursIshiFlag' => $kursIshiFlag,
                 'kursIshiExtraFlag' => $kursIshiExtraFlag,
+                'kursLoyiha' => $kursLoyiha,
+                'kursLoyihaFlag' => $kursLoyihaFlag,
+                'kursLoyihaExtraFlag' => $kursLoyihaExtraFlag,
                 'mustaqilTalim' => $mustaqil,
                 'department' => $row['kafedra_name']
             ];
@@ -364,6 +373,17 @@ function renderSubjectCells($subject, $side = 'left') {
         $fanNomiHtml = htmlspecialchars($subject['name']);
     }
     
+    $hasK = ((($subject['kursIshi'] ?? 0) > 0) || (($subject['kursIshiFlag'] ?? 0) > 0) || (($subject['kursIshiExtraFlag'] ?? 0) > 0));
+    $hasKL = ((($subject['kursLoyiha'] ?? 0) > 0) || (($subject['kursLoyihaFlag'] ?? 0) > 0) || (($subject['kursLoyihaExtraFlag'] ?? 0) > 0));
+    $kursBelgisi = '';
+    if ($hasK && $hasKL) {
+        $kursBelgisi = 'K/KL';
+    } elseif ($hasKL) {
+        $kursBelgisi = 'KL';
+    } elseif ($hasK) {
+        $kursBelgisi = 'K';
+    }
+
     return '
         <td>' . htmlspecialchars($subject['code']) . '</td>
         <td style="text-align: left;">' . $fanNomiHtml . '</td>
@@ -376,7 +396,7 @@ function renderSubjectCells($subject, $side = 'left') {
         <td>' . $subject['auditoriya']['lab'] . '</td>
         <td>' . $subject['auditoriya']['seminar'] . '</td>
         <td>' . ($subject['malakaAmaliyot'] ?? 0) . '</td>
-        <td>' . (((($subject['kursIshi'] ?? 0) > 0) || (($subject['kursIshiFlag'] ?? 0) > 0) || (($subject['kursIshiExtraFlag'] ?? 0) > 0)) ? 'K' : '') . '</td>
+        <td>' . $kursBelgisi . '</td>
         <td>' . $subject['mustaqilTalim'] . '</td>
     ';
 }

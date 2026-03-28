@@ -588,7 +588,22 @@ class Database{
             SUM(CASE WHEN dst.id = 5 THEN o.dars_soat ELSE 0 END) AS mustaqilTalim,
             SUM(CASE WHEN dst.name = 'Kurs ishi' THEN o.dars_soat ELSE 0 END) AS kursIshi,
             MAX(CASE WHEN dst.name = 'Kurs ishi' THEN 1 ELSE 0 END) AS kursIshiFlag,
+            SUM(
+                CASE
+                    WHEN dst.name IN ('Kurs loyihasi', 'Kurs loyihasi va himoyasi')
+                    THEN o.dars_soat
+                    ELSE 0
+                END
+            ) AS kursLoyiha,
+            MAX(
+                CASE
+                    WHEN dst.name IN ('Kurs loyihasi', 'Kurs loyihasi va himoyasi')
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS kursLoyihaFlag,
             COALESCE(qfext.kursIshiExtraFlag, 0) AS kursIshiExtraFlag,
+            COALESCE(qfext.kursLoyihaExtraFlag, 0) AS kursLoyihaExtraFlag,
             SUM(
                 CASE
                     WHEN dst.name IN ('Malaka amaliyoti', 'Malakaviy amaliyot')
@@ -609,7 +624,8 @@ class Database{
             SELECT
                 semestr_id,
                 fan_name,
-                MAX(CASE WHEN qoshimcha_dars_id = 1 THEN 1 ELSE 0 END) AS kursIshiExtraFlag
+                MAX(CASE WHEN qoshimcha_dars_id = 1 THEN 1 ELSE 0 END) AS kursIshiExtraFlag,
+                MAX(CASE WHEN qoshimcha_dars_id = 2 THEN 1 ELSE 0 END) AS kursLoyihaExtraFlag
             FROM qoshimcha_fanlar
             GROUP BY semestr_id, fan_name
         ) qfext ON qfext.semestr_id = f.semestr_id AND qfext.fan_name = f.fan_name
