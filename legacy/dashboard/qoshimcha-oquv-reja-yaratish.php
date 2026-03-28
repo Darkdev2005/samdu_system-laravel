@@ -122,6 +122,53 @@
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        .created-list-note {
+            color: #64748b;
+            font-size: 13px;
+            margin-top: 6px;
+        }
+        .created-list-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .created-list-controls-left,
+        .created-list-controls-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .created-list-search {
+            min-width: 220px;
+            max-width: 360px;
+        }
+        .created-list-per-page {
+            width: 95px;
+        }
+        .created-list-page-info {
+            font-size: 13px;
+            color: #64748b;
+            min-width: 110px;
+            text-align: center;
+        }
+        .compact-list {
+            margin: 0;
+            padding-left: 18px;
+            color: #334155;
+            font-size: 13px;
+        }
+        .compact-list li {
+            margin: 2px 0;
+        }
+        .table-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
         .top-filters-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(220px, 1fr));
@@ -359,6 +406,59 @@
                         </button>
                     </div>
                 </form>
+
+                <div class="card mt-4">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <h3>Yaratilgan qo'shimcha fanlar ro'yxati</h3>
+                            <span class="badge" id="createdQoshimchaCount">0 ta</span>
+                        </div>
+                        <div class="table-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="refreshCreatedQoshimchaBtn">
+                                <i class="fas fa-rotate"></i> Yangilash
+                            </button>
+                        </div>
+                    </div>
+                    <div class="created-list-note">
+                        Ro'yxat yuqoridagi fakultet, yo'nalish va semestr filtrlariga ko'ra ko'rsatiladi. "Tahrirlash" orqali fan ma'lumotlarini yangilang yoki "O'chirish" bilan fanni olib tashlang.
+                    </div>
+                    <div class="created-list-controls">
+                        <div class="created-list-controls-left">
+                            <input type="text" class="form-control created-list-search" id="createdQoshimchaSearchInput" placeholder="Jadvaldan qidirish...">
+                            <select class="form-control created-list-per-page" id="createdQoshimchaPerPage">
+                                <option value="10">10 ta</option>
+                                <option value="20" selected>20 ta</option>
+                                <option value="50">50 ta</option>
+                                <option value="100">100 ta</option>
+                            </select>
+                        </div>
+                        <div class="created-list-controls-right">
+                            <span class="created-list-page-info" id="createdQoshimchaPageInfo">0-0 / 0</span>
+                            <button type="button" class="btn btn-outline btn-sm" id="createdQoshimchaPrevPage" disabled>Oldingi</button>
+                            <button type="button" class="btn btn-outline btn-sm" id="createdQoshimchaNextPage" disabled>Keyingi</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive mt-2">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fan nomi</th>
+                                    <th>Qo'shimcha dars turi</th>
+                                    <th>Hisoblangan fan soati</th>
+                                    <th>Kafedralar</th>
+                                    <th>Dars soatlari</th>
+                                    <th>Semestr</th>
+                                    <th>Harakat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="createdQoshimchaTableBody">
+                                <tr>
+                                    <td colspan="7">Yuklanmoqda...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -436,6 +536,11 @@
         let allSemestrOptions = [];
         let allYonalishOptions = [];
         let isTopFilterSyncing = false;
+        let createdQoshimchaRowsById = {};
+        let createdQoshimchaRowsAll = [];
+        let createdQoshimchaRowsFiltered = [];
+        let createdQoshimchaPage = 1;
+        let createdQoshimchaPerPage = 20;
 
         function initSelect2Safe($el, placeholderText) {
             if (!$el || !$el.length) return;
@@ -565,6 +670,371 @@
                 html += `<option value="${id}"${selectedAttr}>${escapeOptionText(name)}</option>`;
             });
             return html;
+        }
+
+        function escapeHtml(value) {
+            return escapeOptionText(value);
+        }
+
+        function getCreatedQoshimchaSearchText(row) {
+            if (!row) return '';
+            const allocations = Array.isArray(row.allocations) ? row.allocations : [];
+            const allocText = allocations.map(a => `${a.kafedra_name || ''} ${a.dars_soati || 0}`).join(' ');
+
+            return [
+                row.fan_name || '',
+                row.qoshimcha_dars_name || '',
+                row.fan_soat || '',
+                row.yonalish_name || '',
+                row.kirish_yili || '',
+                row.semestr_num || '',
+                row.izoh || '',
+                allocText
+            ].join(' ').toLowerCase();
+        }
+
+        function renderCreatedQoshimchaTableCurrentPage() {
+            const tbody = $('#createdQoshimchaTableBody');
+            const countBadge = $('#createdQoshimchaCount');
+            const totalRows = createdQoshimchaRowsFiltered.length;
+            countBadge.text(`${totalRows} ta`);
+
+            if (!totalRows) {
+                tbody.html('<tr><td colspan="7">Tanlangan filter bo\'yicha fan topilmadi</td></tr>');
+                $('#createdQoshimchaPageInfo').text('0-0 / 0');
+                $('#createdQoshimchaPrevPage').prop('disabled', true);
+                $('#createdQoshimchaNextPage').prop('disabled', true);
+                return;
+            }
+
+            const perPage = Math.max(1, createdQoshimchaPerPage);
+            const totalPages = Math.max(1, Math.ceil(totalRows / perPage));
+            if (createdQoshimchaPage > totalPages) {
+                createdQoshimchaPage = totalPages;
+            }
+            if (createdQoshimchaPage < 1) {
+                createdQoshimchaPage = 1;
+            }
+
+            const fromIndex = (createdQoshimchaPage - 1) * perPage;
+            const pageRows = createdQoshimchaRowsFiltered.slice(fromIndex, fromIndex + perPage);
+
+            let html = '';
+            pageRows.forEach(row => {
+                const allocations = Array.isArray(row.allocations) ? row.allocations : [];
+                const kafedraNames = allocations.map(a => escapeHtml(a.kafedra_name || '-')).join(', ') || '-';
+                const darsList = allocations.length
+                    ? `<ul class="compact-list">${allocations.map(a => `<li>${escapeHtml(a.kafedra_name || '-')} : ${escapeHtml(a.dars_soati || 0)}</li>`).join('')}</ul>`
+                    : '-';
+                const semestrLabel = `${row.yonalish_name || '-'} - ${row.kirish_yili || '-'} / ${row.semestr_num || '-'}`;
+
+                html += `
+                    <tr>
+                        <td>${escapeHtml(row.fan_name || '-')}</td>
+                        <td>${escapeHtml(row.qoshimcha_dars_name || '-')}</td>
+                        <td>${escapeHtml(row.fan_soat || 0)}</td>
+                        <td>${kafedraNames}</td>
+                        <td>${darsList}</td>
+                        <td>${escapeHtml(semestrLabel)}</td>
+                        <td>
+                            <div class="table-actions">
+                                <button type="button" class="btn btn-outline btn-sm editCreatedQoshimchaBtn" data-qoshimcha-fanid="${row.qoshimcha_fanid}">
+                                    <i class="fas fa-pen"></i> Tahrirlash
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm deleteCreatedQoshimchaBtn" data-qoshimcha-fanid="${row.qoshimcha_fanid}">
+                                    <i class="fas fa-trash-alt"></i> O'chirish
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.html(html);
+            const toIndex = fromIndex + pageRows.length;
+            $('#createdQoshimchaPageInfo').text(`${fromIndex + 1}-${toIndex} / ${totalRows}`);
+            $('#createdQoshimchaPrevPage').prop('disabled', createdQoshimchaPage <= 1);
+            $('#createdQoshimchaNextPage').prop('disabled', createdQoshimchaPage >= totalPages);
+        }
+
+        function applyCreatedQoshimchaTableFilters(resetPage = false) {
+            const searchValue = String($('#createdQoshimchaSearchInput').val() || '').trim().toLowerCase();
+            if (resetPage) {
+                createdQoshimchaPage = 1;
+            }
+
+            if (!searchValue) {
+                createdQoshimchaRowsFiltered = createdQoshimchaRowsAll.slice();
+            } else {
+                createdQoshimchaRowsFiltered = createdQoshimchaRowsAll.filter(row => (
+                    getCreatedQoshimchaSearchText(row).includes(searchValue)
+                ));
+            }
+
+            renderCreatedQoshimchaTableCurrentPage();
+        }
+
+        function buildEditQoshimchaTurOptions(selectedValue = '') {
+            const selected = String(selectedValue || '');
+            let html = '<option value="">Tanlang</option>';
+            (qoshimchaDarsTurlari || []).forEach(item => {
+                const id = String(item.id || '');
+                if (!id) return;
+                const selectedAttr = id === selected ? ' selected' : '';
+                html += `<option value="${id}"${selectedAttr}>${escapeHtml(item.name || '')}</option>`;
+            });
+            return html;
+        }
+
+        function buildEditSemestrOptions(selectedValue = '', row = null) {
+            const selected = String(selectedValue || '');
+            const rowYonalishId = String((row && row.yonalish_id) || '');
+
+            let options = allSemestrOptions.filter(item => {
+                if (rowYonalishId === '') return true;
+                return String(item.yonalishId || '') === rowYonalishId;
+            });
+
+            if (!options.length) {
+                options = allSemestrOptions.slice();
+            }
+
+            if (selected !== '' && !options.some(item => String(item.id || '') === selected)) {
+                options.unshift({
+                    id: selected,
+                    text: `${row?.yonalish_name || '-'} - ${row?.kirish_yili || '-'} / ${row?.semestr_num || '-'}`,
+                });
+            }
+
+            let html = '<option value="">Tanlang</option>';
+            options.forEach(item => {
+                const id = String(item.id || '');
+                if (!id) return;
+                const selectedAttr = id === selected ? ' selected' : '';
+                html += `<option value="${id}"${selectedAttr}>${escapeHtml(item.text || '')}</option>`;
+            });
+            return html;
+        }
+
+        function buildEditQoshimchaKafedraRow(allocation = {}) {
+            const selectedKafedra = String(allocation.kafedra_id || '');
+            const soat = parseInt(allocation.dars_soati || 0, 10) || 0;
+
+            return `
+                <div class="edit-q-allocation-row" style="display:flex;gap:8px;align-items:center;margin:6px 0;">
+                    <select class="swal2-input edit-q-kafedra" style="flex:1;margin:0;">
+                        <option value="">Tanlang</option>
+                        ${buildKafedralarOptionsHtml(selectedKafedra)}
+                    </select>
+                    <input type="number" min="0" step="1" class="swal2-input edit-q-soat" style="width:130px;margin:0;" value="${soat}">
+                    <button type="button" class="btn btn-danger btn-sm edit-q-remove-row"><i class="fas fa-times"></i></button>
+                </div>
+            `;
+        }
+
+        function openEditCreatedQoshimchaModal(row) {
+            SwalApi.fire({
+                title: "Qo'shimcha fan tahrirlash",
+                width: 920,
+                html: `
+                    <input type="text" id="editQFanName" class="swal2-input" placeholder="Fan nomi" value="${escapeHtml(row.fan_name || '')}">
+                    <div style="display:flex;gap:8px;">
+                        <input type="number" min="0" step="1" id="editQFanSoat" class="swal2-input" placeholder="Hisoblangan fan soati" value="${escapeHtml(row.fan_soat || 0)}" style="margin:0;flex:1;">
+                        <select id="editQQoshimchaDarsId" class="swal2-input" style="margin:0;flex:1;">
+                            ${buildEditQoshimchaTurOptions(row.qoshimcha_dars_id || '')}
+                        </select>
+                    </div>
+                    <div style="text-align:left;margin:10px 0 4px 0;font-size:13px;color:#64748b;">Semestr</div>
+                    <select id="editQSemestrId" class="swal2-input" style="margin:0;">
+                        ${buildEditSemestrOptions(row.semestr_id || '', row)}
+                    </select>
+                    <div style="text-align:left;margin:12px 0 4px 0;font-size:13px;color:#64748b;">Kafedralar va dars soatlari</div>
+                    <div id="editQAllocationsContainer"></div>
+                    <div style="display:flex;justify-content:flex-start;margin-top:6px;">
+                        <button type="button" class="btn btn-outline btn-sm" id="editQAddAllocationRow"><i class="fas fa-plus"></i> Qator qo'shish</button>
+                    </div>
+                    <textarea id="editQIzoh" class="swal2-textarea" placeholder="Izoh">${escapeHtml(row.izoh || '')}</textarea>
+                `,
+                showCancelButton: true,
+                confirmButtonText: "Saqlash",
+                cancelButtonText: "Bekor qilish",
+                didOpen: () => {
+                    const container = $('#editQAllocationsContainer');
+                    const allocations = Array.isArray(row.allocations) && row.allocations.length
+                        ? row.allocations
+                        : [{ kafedra_id: '', dars_soati: 0 }];
+
+                    container.html(allocations.map(a => buildEditQoshimchaKafedraRow(a)).join(''));
+                    container.find('select').each(function() {
+                        initSelect2Safe($(this), "Kafedrani tanlang");
+                    });
+
+                    $('#editQAddAllocationRow').on('click', function() {
+                        const newRow = $(buildEditQoshimchaKafedraRow({}));
+                        container.append(newRow);
+                        initSelect2Safe(newRow.find('select'), "Kafedrani tanlang");
+                    });
+
+                    container.on('click', '.edit-q-remove-row', function() {
+                        const rows = container.find('.edit-q-allocation-row');
+                        if (rows.length <= 1) {
+                            return;
+                        }
+                        const rowEl = $(this).closest('.edit-q-allocation-row');
+                        rowEl.find('select').each(function() {
+                            const $select = $(this);
+                            if ($select.hasClass('select2-hidden-accessible')) {
+                                $select.select2('destroy');
+                            }
+                        });
+                        rowEl.remove();
+                    });
+                },
+                preConfirm: () => {
+                    const fanName = String($('#editQFanName').val() || '').trim();
+                    const fanSoat = Number($('#editQFanSoat').val() || 0);
+                    const qoshimchaDarsId = parseInt($('#editQQoshimchaDarsId').val() || 0, 10);
+                    const semestrId = parseInt($('#editQSemestrId').val() || 0, 10);
+                    const izoh = String($('#editQIzoh').val() || '').trim();
+
+                    if (fanName === '') {
+                        SwalApi.showValidationMessage("Fan nomi to'ldirilishi shart");
+                        return false;
+                    }
+                    if (!Number.isFinite(fanSoat) || fanSoat < 0) {
+                        SwalApi.showValidationMessage("Hisoblangan fan soati noto'g'ri");
+                        return false;
+                    }
+                    if (qoshimchaDarsId <= 0) {
+                        SwalApi.showValidationMessage("Qo'shimcha dars turini tanlang");
+                        return false;
+                    }
+                    if (semestrId <= 0) {
+                        SwalApi.showValidationMessage("Semestrni tanlang");
+                        return false;
+                    }
+
+                    const allocations = [];
+                    let totalSoat = 0;
+                    let hasPositive = false;
+                    let hasInvalid = false;
+
+                    $('#editQAllocationsContainer .edit-q-allocation-row').each(function() {
+                        const kafedraId = parseInt($(this).find('.edit-q-kafedra').val() || 0, 10);
+                        const darsSoati = Number($(this).find('.edit-q-soat').val() || 0);
+                        if (kafedraId <= 0 || !Number.isFinite(darsSoati) || darsSoati < 0) {
+                            hasInvalid = true;
+                            return;
+                        }
+
+                        allocations.push({
+                            kafedra_id: kafedraId,
+                            dars_soati: darsSoati,
+                        });
+                        totalSoat += darsSoati;
+                        if (darsSoati > 0) {
+                            hasPositive = true;
+                        }
+                    });
+
+                    if (hasInvalid || allocations.length === 0) {
+                        SwalApi.showValidationMessage("Kafedra va dars soati qatorlarini to'g'ri to'ldiring");
+                        return false;
+                    }
+                    if (!hasPositive) {
+                        SwalApi.showValidationMessage("Kamida bitta kafedra soati 0 dan katta bo'lishi kerak");
+                        return false;
+                    }
+                    if (Math.abs(totalSoat - fanSoat) > 0.0001) {
+                        SwalApi.showValidationMessage(`Hisoblangan fan soati (${fanSoat}) va kafedralar yig'indisi (${totalSoat}) teng bo'lishi kerak`);
+                        return false;
+                    }
+
+                    return {
+                        qoshimcha_fanid: parseInt(row.qoshimcha_fanid || 0, 10),
+                        fan_name: fanName,
+                        fan_soat: fanSoat,
+                        qoshimcha_dars_id: qoshimchaDarsId,
+                        semestr_id: semestrId,
+                        izoh: izoh,
+                        allocations: allocations,
+                    };
+                }
+            }).then((result) => {
+                if (!result.isConfirmed || !result.value) return;
+                const payload = result.value;
+
+                const formData = new FormData();
+                formData.append('qoshimcha_fanid', String(payload.qoshimcha_fanid));
+                formData.append('fan_name', payload.fan_name);
+                formData.append('fan_soat', String(payload.fan_soat));
+                formData.append('qoshimcha_dars_id', String(payload.qoshimcha_dars_id));
+                formData.append('semestr_id', String(payload.semestr_id));
+                formData.append('izoh', payload.izoh);
+                formData.append('allocations_json', JSON.stringify(payload.allocations));
+
+                fetch('insert/update_qoshimcha_oquv_reja_item.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success) {
+                        Toast.fire({ icon: 'success', title: data.message || "Yangilandi" });
+                        loadCreatedQoshimchaList();
+                    } else {
+                        Toast.fire({ icon: 'error', title: (data && data.message) || "Yangilashda xatolik" });
+                    }
+                })
+                .catch(() => {
+                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+                });
+            });
+        }
+
+        function loadCreatedQoshimchaList() {
+            const fakultetId = getSelectedIdWithFallback($('#fakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
+            const yonalishId = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
+            const semestrId = getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
+            const url = `api/get_qoshimcha_oquv_reja_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&yonalish_id=${encodeURIComponent(yonalishId)}&semestr_id=${encodeURIComponent(semestrId)}`;
+
+            fetch(url, { cache: 'no-store' })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data || !data.success) {
+                        createdQoshimchaRowsById = {};
+                        createdQoshimchaRowsAll = [];
+                        createdQoshimchaRowsFiltered = [];
+                        $('#createdQoshimchaTableBody').html('<tr><td colspan="7">Ro\'yxatni yuklab bo\'lmadi</td></tr>');
+                        $('#createdQoshimchaCount').text('0 ta');
+                        $('#createdQoshimchaPageInfo').text('0-0 / 0');
+                        $('#createdQoshimchaPrevPage').prop('disabled', true);
+                        $('#createdQoshimchaNextPage').prop('disabled', true);
+                        return;
+                    }
+
+                    const rows = Array.isArray(data.rows) ? data.rows : [];
+                    createdQoshimchaRowsById = {};
+                    rows.forEach(row => {
+                        const id = parseInt(row.qoshimcha_fanid || 0, 10);
+                        if (id > 0) {
+                            createdQoshimchaRowsById[String(id)] = row;
+                        }
+                    });
+
+                    createdQoshimchaRowsAll = rows;
+                    applyCreatedQoshimchaTableFilters(true);
+                })
+                .catch(() => {
+                    createdQoshimchaRowsById = {};
+                    createdQoshimchaRowsAll = [];
+                    createdQoshimchaRowsFiltered = [];
+                    $('#createdQoshimchaTableBody').html('<tr><td colspan="7">Server bilan bog\'lanib bo\'lmadi</td></tr>');
+                    $('#createdQoshimchaCount').text('0 ta');
+                    $('#createdQoshimchaPageInfo').text('0-0 / 0');
+                    $('#createdQoshimchaPrevPage').prop('disabled', true);
+                    $('#createdQoshimchaNextPage').prop('disabled', true);
+                });
         }
 
         function cacheYonalishOptionsFromServer(rows) {
@@ -969,6 +1439,7 @@
         $(document).ready(function() {
             cacheYonalishOptions();
             cacheSemestrOptions();
+            createdQoshimchaPerPage = parseInt($('#createdQoshimchaPerPage').val() || 20, 10) || 20;
 
             initSelect2Safe($('#fakultetFilter'), "Fakultetni tanlang");
             initSelect2Safe($('#yonalishFilter'), "Yo'nalishni tanlang");
@@ -1028,6 +1499,37 @@
                 const currentSemestr = getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
                 filterSemestrByFilters(currentSemestr);
             });
+
+            $('#createdQoshimchaSearchInput').on('input', function() {
+                applyCreatedQoshimchaTableFilters(true);
+            });
+
+            $('#createdQoshimchaPerPage').on('change', function() {
+                createdQoshimchaPerPage = parseInt($(this).val() || 20, 10) || 20;
+                applyCreatedQoshimchaTableFilters(true);
+            });
+
+            $('#createdQoshimchaPrevPage').on('click', function() {
+                if (createdQoshimchaPage > 1) {
+                    createdQoshimchaPage -= 1;
+                    renderCreatedQoshimchaTableCurrentPage();
+                }
+            });
+
+            $('#createdQoshimchaNextPage').on('click', function() {
+                const totalRows = createdQoshimchaRowsFiltered.length;
+                const totalPages = Math.max(1, Math.ceil(totalRows / Math.max(1, createdQoshimchaPerPage)));
+                if (createdQoshimchaPage < totalPages) {
+                    createdQoshimchaPage += 1;
+                    renderCreatedQoshimchaTableCurrentPage();
+                }
+            });
+
+            $('#refreshCreatedQoshimchaBtn').on('click', function() {
+                loadCreatedQoshimchaList();
+            });
+
+            loadCreatedQoshimchaList();
         });
 
         $('#semestrSelect').on('change', function() {
@@ -1035,6 +1537,7 @@
                 renderFanOptions($(this));
                 calculateForSingleCard($(this));
             });
+            loadCreatedQoshimchaList();
         });
         
         function initInitialSelect2() {
@@ -1269,6 +1772,56 @@
                 currentReja.remove();
             }
         });
+
+        $(document).on('click', '.editCreatedQoshimchaBtn', function() {
+            const fanId = String($(this).data('qoshimcha-fanid') || '');
+            const row = createdQoshimchaRowsById[fanId];
+            if (!row) {
+                return;
+            }
+            openEditCreatedQoshimchaModal(row);
+        });
+
+        $(document).on('click', '.deleteCreatedQoshimchaBtn', function() {
+            const fanId = String($(this).data('qoshimcha-fanid') || '');
+            const row = createdQoshimchaRowsById[fanId];
+            if (!row) {
+                return;
+            }
+
+            SwalApi.fire({
+                title: "Qo'shimcha fanni o'chirishni tasdiqlaysizmi?",
+                text: `${row.fan_name || ''}`,
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonText: "Ha, o'chirilsin",
+                cancelButtonText: "Bekor qilish"
+            }).then((result) => {
+                if (!result.isConfirmed) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('qoshimcha_fanid', fanId);
+
+                fetch('insert/delete_qoshimcha_oquv_reja_item.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success) {
+                        Toast.fire({ icon: 'success', title: data.message || "Qo'shimcha fan o'chirildi" });
+                        loadCreatedQoshimchaList();
+                    } else {
+                        Toast.fire({ icon: 'error', title: (data && data.message) || "O'chirishda xatolik" });
+                    }
+                })
+                .catch(() => {
+                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+                });
+            });
+        });
         
        $(document).on('submit', '#oquvRejaForm', function(e) {
             e.preventDefault();
@@ -1456,6 +2009,7 @@
                     });
                     
                     fanIndex = 0;
+                    loadCreatedQoshimchaList();
 
                 } else {
                     Toast.fire({
