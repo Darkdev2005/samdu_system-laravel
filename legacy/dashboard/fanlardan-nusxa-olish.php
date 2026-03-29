@@ -143,13 +143,122 @@ if ($kafedralarJson === false) {
         .compact-list li {
             margin: 2px 0;
         }
+        .copy-steps {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(220px, 1fr));
+            gap: 10px;
+            margin: 8px 0 14px 0;
+        }
+        .copy-step {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 13px;
+            color: #475569;
+        }
+        .copy-step b {
+            color: #0f172a;
+        }
+        .mapping-preview {
+            margin-top: 12px;
+            background: #f8fafc;
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            padding: 10px 12px;
+        }
+        .mapping-preview-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 8px;
+        }
+        .mapping-preview-note {
+            color: #64748b;
+            font-size: 12px;
+        }
+        .mapping-preview-list {
+            margin: 0;
+            padding-left: 18px;
+            color: #334155;
+            font-size: 13px;
+        }
+        .mapping-preview-list li {
+            margin: 4px 0;
+        }
+        .mapping-ok {
+            color: #15803d;
+        }
+        .mapping-miss {
+            color: #b91c1c;
+        }
+        .pair-rows {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .pair-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 10px;
+            align-items: end;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        .pair-row-label {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 4px;
+            display: block;
+        }
+        .pair-row-index {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 700;
+            margin-right: 8px;
+        }
+        .pair-row-header {
+            display: flex;
+            align-items: center;
+            color: #334155;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .pair-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
         @media (max-width: 1100px) {
             .top-filters-grid {
                 grid-template-columns: repeat(2, minmax(220px, 1fr));
             }
+            .copy-steps {
+                grid-template-columns: repeat(2, minmax(220px, 1fr));
+            }
+            .pair-row {
+                grid-template-columns: 1fr;
+            }
         }
         @media (max-width: 700px) {
             .top-filters-grid {
+                grid-template-columns: 1fr;
+            }
+            .copy-steps {
                 grid-template-columns: 1fr;
             }
         }
@@ -165,6 +274,11 @@ if ($kafedralarJson === false) {
             </header>
             <div class="content-container">
                 <div class="card">
+                    <div class="copy-steps">
+                        <div class="copy-step"><b>1-qadam:</b> Maqsad fakultet, yo'nalish va semestr(lar)ni tanlang.</div>
+                        <div class="copy-step"><b>2-qadam:</b> Manba fakultet va yo'nalishni tanlang.</div>
+                        <div class="copy-step"><b>3-qadam:</b> `+` bilan maqsad-manba semestr juftliklarini qo'shing va nusxalashni bosing.</div>
+                    </div>
                     <h3 class="section-title">Maqsad semestr (qabul qiluvchi)</h3>
                     <div class="top-filters-grid">
                         <div class="form-group">
@@ -210,6 +324,7 @@ if ($kafedralarJson === false) {
                                         value="<?= (int)$s['id'] ?>"
                                         data-fakultet-id="<?= $fakultetId ?>"
                                         data-yonalish-id="<?= $yonalishId ?>"
+                                        data-semestr-num="<?= (int)($s['semestr'] ?? 0) ?>"
                                     >
                                         <?= $h($darajaPrefix . $short . '_' . ($s['kirish_yili'] ?? '') . ' - ' . ($s['semestr'] ?? '') . '-semestr') ?>
                                     </option>
@@ -220,7 +335,7 @@ if ($kafedralarJson === false) {
 
                     <h3 class="section-title mt-4">Manba semestr</h3>
                     <div class="created-list-note">
-                        Manba sifatida boshqa fakultet va yo'nalishni tanlang. Semestrlar avtomatik moslanadi: 1→1, 2→2, 3→3 va hokazo.
+                        Manba sifatida fakultet va yo'nalishni tanlang. Semestrlar avtomatik emas, pastdagi juftliklarda qo'lda tanlanadi.
                     </div>
                     <div class="top-filters-grid mt-2">
                         <div class="form-group">
@@ -244,8 +359,21 @@ if ($kafedralarJson === false) {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Moslash qoidasi</label>
-                            <input type="text" class="form-control" value="Maqsad semestrlari manba semestrlari bilan raqam bo'yicha moslanadi (1→1, 2→2, ...)" readonly>
+                            <label>Juftlik rejimi</label>
+                            <input type="text" class="form-control" value="Har qatorda maqsad semestr va manba semestrni alohida tanlaysiz" readonly>
+                        </div>
+                    </div>
+
+                    <div class="mapping-preview">
+                        <div class="mapping-preview-title">Semestr juftliklari</div>
+                        <div class="mapping-preview-note">
+                            Maqsad semestr(lar)ni va manba semestr(lar)ni qatorma-qator bog'lang. Bir qator = bitta nusxalash juftligi.
+                        </div>
+                        <div class="pair-rows" id="pairRowsContainer"></div>
+                        <div class="pair-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="addPairRowBtn">
+                                <i class="fas fa-plus"></i> Juftlik qo'shish
+                            </button>
                         </div>
                     </div>
 
@@ -331,6 +459,7 @@ if ($kafedralarJson === false) {
         let createdListPage = 1;
         let createdListPerPage = 20;
         let createdListDarsTurlari = [];
+        let pairRows = [];
         const darsTurlariListDefault = <?php echo $darsSoatTurlariJson; ?>;
         const kafedralarList = <?php echo $kafedralarJson; ?>;
         const fanTypeLabels = {
@@ -393,6 +522,7 @@ if ($kafedralarJson === false) {
                     text: $(this).text(),
                     fakultetId: String($(this).data('fakultet-id') || ''),
                     yonalishId: String($(this).data('yonalish-id') || ''),
+                    semestrNum: String($(this).data('semestr-num') || ''),
                 });
             });
         }
@@ -433,7 +563,8 @@ if ($kafedralarJson === false) {
                 const selected = selectedSet.has(String(item.id)) ? ' selected' : '';
                 const fakultetAttr = item.fakultetId !== '' ? ` data-fakultet-id="${item.fakultetId}"` : '';
                 const yonalishAttr = item.yonalishId !== '' ? ` data-yonalish-id="${item.yonalishId}"` : '';
-                html += `<option value="${item.id}"${fakultetAttr}${yonalishAttr}${selected}>${escapeHtml(item.text)}</option>`;
+                const semestrNumAttr = item.semestrNum !== '' ? ` data-semestr-num="${item.semestrNum}"` : '';
+                html += `<option value="${item.id}"${fakultetAttr}${yonalishAttr}${semestrNumAttr}${selected}>${escapeHtml(item.text)}</option>`;
             });
 
             select.html(html);
@@ -469,6 +600,107 @@ if ($kafedralarJson === false) {
                 const hasCurrent = $('#' + prefix + 'Semestr option[value="' + current + '"]').length > 0;
                 $('#' + prefix + 'Semestr').val(hasCurrent ? current : '').trigger('change.select2');
             }
+        }
+
+        function getFilteredSemestrOptions(prefix) {
+            const fakultet = String($('#' + prefix + 'Fakultet').val() || '');
+            const yonalish = String($('#' + prefix + 'Yonalish').val() || '');
+            return allSemestrOptions.filter(item => {
+                if (fakultet !== '' && String(item.fakultetId) !== fakultet) {
+                    return false;
+                }
+                if (yonalish !== '' && String(item.yonalishId) !== yonalish) {
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        function getSemestrOptionTextById(id) {
+            const sid = String(id || '');
+            if (sid === '') return '';
+            const found = allSemestrOptions.find(item => String(item.id) === sid);
+            return found ? String(found.text || '') : '';
+        }
+
+        function ensurePairRowsValid() {
+            const targetValidSet = new Set(getFilteredSemestrOptions('target').map(item => String(item.id)));
+            const sourceValidSet = new Set(getFilteredSemestrOptions('source').map(item => String(item.id)));
+
+            pairRows = pairRows.map(row => {
+                const targetId = String(row.targetSemestrId || '');
+                const sourceId = String(row.sourceSemestrId || '');
+                return {
+                    targetSemestrId: targetValidSet.has(targetId) ? targetId : '',
+                    sourceSemestrId: sourceValidSet.has(sourceId) ? sourceId : '',
+                };
+            });
+        }
+
+        function buildPairSelectOptions(options, selectedId, placeholder) {
+            const selected = String(selectedId || '');
+            let html = `<option value="">${escapeHtml(placeholder)}</option>`;
+            options.forEach(item => {
+                const val = String(item.id || '');
+                if (!val) return;
+                const selectedAttr = val === selected ? ' selected' : '';
+                html += `<option value="${escapeHtml(val)}"${selectedAttr}>${escapeHtml(item.text || '')}</option>`;
+            });
+            return html;
+        }
+
+        function renderPairRows() {
+            ensurePairRowsValid();
+            const container = $('#pairRowsContainer');
+            if (!pairRows.length) {
+                pairRows = [{ targetSemestrId: '', sourceSemestrId: '' }];
+            }
+
+            const targetOptions = getFilteredSemestrOptions('target');
+            const sourceOptions = getFilteredSemestrOptions('source');
+            let html = '';
+
+            pairRows.forEach((row, index) => {
+                html += `
+                    <div class="pair-row" data-row-index="${index}">
+                        <div>
+                            <div class="pair-row-header"><span class="pair-row-index">${index + 1}</span>Juftlik</div>
+                            <label class="pair-row-label">Maqsad semestr</label>
+                            <select class="form-control pair-target-semestr" data-row-index="${index}">
+                                ${buildPairSelectOptions(targetOptions, row.targetSemestrId, "Maqsad semestrni tanlang")}
+                            </select>
+                        </div>
+                        <div>
+                            <div class="pair-row-header" style="visibility:hidden;"><span class="pair-row-index">${index + 1}</span>Juftlik</div>
+                            <label class="pair-row-label">Manba semestr</label>
+                            <select class="form-control pair-source-semestr" data-row-index="${index}">
+                                ${buildPairSelectOptions(sourceOptions, row.sourceSemestrId, "Manba semestrni tanlang")}
+                            </select>
+                        </div>
+                        <div style="padding-bottom:2px;">
+                            <button
+                                type="button"
+                                class="btn btn-danger btn-sm removePairRowBtn"
+                                data-row-index="${index}"
+                                ${pairRows.length <= 1 ? 'disabled' : ''}
+                            >
+                                <i class="fas fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.html(html);
+        }
+
+        function getPairMapPayload() {
+            return pairRows
+                .map(row => ({
+                    target_semestr_id: parseInt(row.targetSemestrId || 0, 10) || 0,
+                    source_semestr_id: parseInt(row.sourceSemestrId || 0, 10) || 0,
+                }))
+                .filter(pair => pair.target_semestr_id > 0 && pair.source_semestr_id > 0);
         }
 
         function renderDarsSummary(row, darsTurlari) {
@@ -732,10 +964,12 @@ if ($kafedralarJson === false) {
             $('#targetFakultet').on('change', function() {
                 syncYonalish('target');
                 syncSemestr('target');
+                renderPairRows();
                 loadCreatedRejaList();
             });
             $('#targetYonalish').on('change', function() {
                 syncSemestr('target');
+                renderPairRows();
                 loadCreatedRejaList();
             });
             $('#targetSemestr').on('change', function() {
@@ -744,6 +978,39 @@ if ($kafedralarJson === false) {
 
             $('#sourceFakultet').on('change', function() {
                 syncYonalish('source');
+                renderPairRows();
+            });
+            $('#sourceYonalish').on('change', function() {
+                renderPairRows();
+            });
+            $('#addPairRowBtn').on('click', function() {
+                pairRows.push({ targetSemestrId: '', sourceSemestrId: '' });
+                renderPairRows();
+            });
+            $(document).on('click', '.removePairRowBtn', function() {
+                const index = parseInt($(this).data('row-index') || -1, 10);
+                if (index < 0 || index >= pairRows.length) {
+                    return;
+                }
+                pairRows.splice(index, 1);
+                if (!pairRows.length) {
+                    pairRows = [{ targetSemestrId: '', sourceSemestrId: '' }];
+                }
+                renderPairRows();
+            });
+            $(document).on('change', '.pair-target-semestr', function() {
+                const index = parseInt($(this).data('row-index') || -1, 10);
+                if (index < 0 || index >= pairRows.length) {
+                    return;
+                }
+                pairRows[index].targetSemestrId = String($(this).val() || '');
+            });
+            $(document).on('change', '.pair-source-semestr', function() {
+                const index = parseInt($(this).data('row-index') || -1, 10);
+                if (index < 0 || index >= pairRows.length) {
+                    return;
+                }
+                pairRows[index].sourceSemestrId = String($(this).val() || '');
             });
             $('#refreshCreatedRejaBtn').on('click', function() {
                 loadCreatedRejaList();
@@ -754,27 +1021,45 @@ if ($kafedralarJson === false) {
                 syncYonalish('target', '');
                 syncSemestr('target', '');
                 syncYonalish('source', '');
+                pairRows = [{ targetSemestrId: '', sourceSemestrId: '' }];
+                renderPairRows();
                 loadCreatedRejaList();
             });
 
             $('#copyRunBtn').on('click', function() {
-                const targetSemestrIds = normalizeArray($('#targetSemestr').val());
                 const sourceYonalishId = String($('#sourceYonalish').val() || '');
-
-                if (!targetSemestrIds.length) {
-                    Toast.fire({ icon: 'error', title: "Kamida bitta maqsad semestrni tanlang" });
-                    return;
-                }
                 if (sourceYonalishId === '') {
                     Toast.fire({ icon: 'error', title: "Manba yo'nalishni tanlang" });
                     return;
                 }
 
-                const targetTexts = targetSemestrIds
-                    .map(id => String($('#targetSemestr option[value="' + id + '"]').text() || '').trim())
-                    .filter(Boolean);
+                const pairMap = getPairMapPayload();
+                if (!pairMap.length) {
+                    Toast.fire({ icon: 'error', title: "Kamida bitta maqsad-manba semestr juftligini tanlang" });
+                    return;
+                }
+
+                const duplicatedTargets = new Set();
+                const seenTargets = new Set();
+                pairMap.forEach(pair => {
+                    const targetId = String(pair.target_semestr_id || '');
+                    if (!targetId) return;
+                    if (seenTargets.has(targetId)) {
+                        duplicatedTargets.add(targetId);
+                    }
+                    seenTargets.add(targetId);
+                });
+                if (duplicatedTargets.size > 0) {
+                    Toast.fire({ icon: 'error', title: "Bitta maqsad semestr faqat bitta juftlikda bo'lishi kerak" });
+                    return;
+                }
+
                 const sourceYonalishText = String($('#sourceYonalish option:selected').text() || '').trim();
-                const targetTextHtml = targetTexts.map(text => `<li>${escapeHtml(text)}</li>`).join('');
+                const targetTextHtml = pairMap.map((pair, idx) => {
+                    const targetText = getSemestrOptionTextById(pair.target_semestr_id);
+                    const sourceText = getSemestrOptionTextById(pair.source_semestr_id);
+                    return `<li><b>${idx + 1}-juftlik:</b> ${escapeHtml(targetText || String(pair.target_semestr_id))} &larr; ${escapeHtml(sourceText || String(pair.source_semestr_id))}</li>`;
+                }).join('');
 
                 SwalApi.fire({
                     title: "Fanlarni nusxalash",
@@ -782,9 +1067,8 @@ if ($kafedralarJson === false) {
                     html: `
                         <div style="text-align:left;">
                             <div><b>Manba yo'nalish:</b> ${escapeHtml(sourceYonalishText)}</div>
-                            <div style="margin-top:6px;"><b>Maqsad semestrlar:</b></div>
+                            <div style="margin-top:6px;"><b>Semestr juftliklari:</b></div>
                             <ul style="margin:6px 0 0 16px;">${targetTextHtml || '<li>-</li>'}</ul>
-                            <div style="margin-top:8px;color:#64748b;font-size:13px;">Moslash qoidasi: 1→1, 2→2, 3→3 ...</div>
                         </div>
                     `,
                     showCancelButton: true,
@@ -794,7 +1078,7 @@ if ($kafedralarJson === false) {
                     if (!result.isConfirmed) return;
 
                     const formData = new FormData();
-                    formData.append('target_semestr_ids', JSON.stringify(targetSemestrIds));
+                    formData.append('pair_map_json', JSON.stringify(pairMap));
                     formData.append('source_yonalish_id', sourceYonalishId);
 
                     fetch('insert/copy_oquv_reja_items.php', {
@@ -828,6 +1112,8 @@ if ($kafedralarJson === false) {
             syncYonalish('target');
             syncSemestr('target');
             syncYonalish('source');
+            pairRows = [{ targetSemestrId: '', sourceSemestrId: '' }];
+            renderPairRows();
             loadCreatedRejaList();
         });
 

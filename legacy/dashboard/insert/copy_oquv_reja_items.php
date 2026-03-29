@@ -36,6 +36,47 @@ function parseSemestrIds($raw): array
     return array_values(array_unique($ids));
 }
 
+function parsePairMap($raw): array
+{
+    if (is_array($raw)) {
+        $items = $raw;
+    } else {
+        $str = trim((string)$raw);
+        if ($str === '') {
+            return [];
+        }
+        $decoded = json_decode($str, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $items = $decoded;
+    }
+
+    $pairs = [];
+    $seen = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $targetId = (int)($item['target_semestr_id'] ?? 0);
+        $sourceId = (int)($item['source_semestr_id'] ?? 0);
+        if ($targetId <= 0 || $sourceId <= 0) {
+            continue;
+        }
+
+        $key = $targetId . ':' . $sourceId;
+        if (isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $pairs[] = [
+            'target_semestr_id' => $targetId,
+            'source_semestr_id' => $sourceId,
+        ];
+    }
+    return $pairs;
+}
+
 function copySemestrPair(Database $db, int $sourceSemestrId, int $targetSemestrId, array $allowedTanlovTypes): array
 {
     $typesSql = implode(',', array_map('intval', $allowedTanlovTypes));
@@ -229,6 +270,7 @@ function copySemestrPair(Database $db, int $sourceSemestrId, int $targetSemestrI
 }
 
 $targetSemestrIds = parseSemestrIds($_POST['target_semestr_ids'] ?? '');
+$pairMap = parsePairMap($_POST['pair_map_json'] ?? '');
 $sourceYonalishId = (int)($_POST['source_yonalish_id'] ?? 0);
 
 $singleTargetSemestrId = (int)($_POST['target_semestr_id'] ?? 0);
@@ -245,6 +287,158 @@ $stats = [
     'empty_pairs' => 0,
 ];
 $pairDetails = [];
+
+if (!empty($pairMap)) {
+    $targetSeen = [];
+    foreach ($pairMap as $pair) {
+        $targetSemestrId = (int)($pair['target_semestr_id'] ?? 0);
+        if ($targetSemestrId <= 0) {
+            continue;
+        }
+        if (isset($targetSeen[$targetSemestrId])) {
+            echo json_encode([
+                'success' => false,
+                'message' => "Har bir maqsad semestr faqat bitta juftlikda qatnashishi kerak"
+            ]);
+            return;
+        }
+        $targetSeen[$targetSemestrId] = true;
+    }
+
+    $allSemestrIds = [];
+    foreach ($pairMap as $pair) {
+        $targetSemestrId = (int)($pair['target_semestr_id'] ?? 0);
+        $sourceSemestrId = (int)($pair['source_semestr_id'] ?? 0);
+        if ($targetSemestrId > 0) {
+            $allSemestrIds[] = $targetSemestrId;
+        }
+        if ($sourceSemestrId > 0) {
+            $allSemestrIds[] = $sourceSemestrId;
+        }
+    }
+    $allSemestrIds = array_values(array_unique(array_map('intval', $allSemestrIds)));
+    if (empty($allSemestrIds)) {
+        echo json_encode([
+            'success' => false,
+            'message' => "Kamida bitta juftlikni to'g'ri tanlang"
+        ]);
+        return;
+    }
+
+    $allIdsSql = implode(',', $allSemestrIds);
+    $semestrRowsResult = $db->query("SELECT id, yonalish_id, semestr FROM semestrlar WHERE id IN ({$allIdsSql})");
+    if (!$semestrRowsResult) {
+        echo json_encode([
+            'success' => false,
+            'message' => "Semestr ma'lumotlarini olishda xatolik"
+        ]);
+        return;
+    }
+
+    $semestrRows = [];
+    while ($row = mysqli_fetch_assoc($semestrRowsResult)) {
+        $sid = (int)($row['id'] ?? 0);
+        if ($sid <= 0) {
+            continue;
+        }
+        $semestrRows[$sid] = [
+            'id' => $sid,
+            'yonalish_id' => (int)($row['yonalish_id'] ?? 0),
+            'semestr' => (int)($row['semestr'] ?? 0),
+        ];
+    }
+
+    $db->query('START TRANSACTION');
+    $ok = true;
+    $errorMessage = "Nusxalash jarayonida xatolik yuz berdi";
+
+    foreach ($pairMap as $idx => $pair) {
+        $targetSemestrId = (int)($pair['target_semestr_id'] ?? 0);
+        $sourceSemestrId = (int)($pair['source_semestr_id'] ?? 0);
+        $pairLabel = ($idx + 1) . "-juftlik";
+
+        if ($targetSemestrId <= 0 || $sourceSemestrId <= 0) {
+            $stats['missing_pairs']++;
+            $pairDetails[] = "{$pairLabel}: semestr tanlovi noto'g'ri";
+            continue;
+        }
+
+        if ($targetSemestrId === $sourceSemestrId) {
+            $stats['missing_pairs']++;
+            $pairDetails[] = "{$pairLabel}: manba va maqsad bir xil";
+            continue;
+        }
+
+        $targetRow = $semestrRows[$targetSemestrId] ?? null;
+        $sourceRow = $semestrRows[$sourceSemestrId] ?? null;
+        if (!$targetRow || !$sourceRow) {
+            $stats['missing_pairs']++;
+            $pairDetails[] = "{$pairLabel}: semestr topilmadi";
+            continue;
+        }
+
+        if ($sourceYonalishId > 0 && (int)($sourceRow['yonalish_id'] ?? 0) !== $sourceYonalishId) {
+            $stats['missing_pairs']++;
+            $pairDetails[] = "{$pairLabel}: manba semestr tanlangan yo'nalishga tegishli emas";
+            continue;
+        }
+
+        $pairResult = copySemestrPair($db, $sourceSemestrId, $targetSemestrId, $allowedTanlovTypes);
+        if (!$pairResult['ok']) {
+            $ok = false;
+            $errorMessage = (string)($pairResult['message'] ?? $errorMessage);
+            break;
+        }
+
+        if (!empty($pairResult['empty'])) {
+            $stats['empty_pairs']++;
+            $pairDetails[] = "{$pairLabel}: manbada nusxalanadigan fan yo'q";
+            continue;
+        }
+
+        $stats['processed_pairs']++;
+        $stats['created_fans'] += (int)($pairResult['created_fans'] ?? 0);
+        $stats['reused_fans'] += (int)($pairResult['reused_fans'] ?? 0);
+        $stats['created_dars_rows'] += (int)($pairResult['created_dars_rows'] ?? 0);
+        $stats['updated_dars_rows'] += (int)($pairResult['updated_dars_rows'] ?? 0);
+        $stats['skipped_fans'] += (int)($pairResult['skipped_fans'] ?? 0);
+    }
+
+    if (!$ok) {
+        $db->query('ROLLBACK');
+        echo json_encode([
+            'success' => false,
+            'message' => $errorMessage
+        ]);
+        return;
+    }
+
+    $db->query('COMMIT');
+
+    $parts = [];
+    $parts[] = "{$stats['processed_pairs']} ta semestrga nusxalandi";
+    $parts[] = "{$stats['created_fans']} ta yangi fan";
+    $parts[] = "{$stats['reused_fans']} ta mavjud fan yangilandi";
+    $parts[] = "{$stats['created_dars_rows']} ta yangi dars satri";
+    $parts[] = "{$stats['updated_dars_rows']} ta dars satri yangilandi";
+    if ($stats['skipped_fans'] > 0) {
+        $parts[] = "{$stats['skipped_fans']} ta fan o'tkazib yuborildi";
+    }
+    if ($stats['missing_pairs'] > 0) {
+        $parts[] = "{$stats['missing_pairs']} ta juftlik mos kelmadi";
+    }
+    if ($stats['empty_pairs'] > 0) {
+        $parts[] = "{$stats['empty_pairs']} ta juftlikda fan topilmadi";
+    }
+
+    echo json_encode([
+        'success' => true,
+        'message' => "Nusxa olish yakunlandi: " . implode(', ', $parts),
+        'stats' => $stats,
+        'details' => $pairDetails,
+    ]);
+    return;
+}
 
 if (!empty($targetSemestrIds) && $sourceYonalishId > 0) {
     $targetIdsSql = implode(',', array_map('intval', $targetSemestrIds));
