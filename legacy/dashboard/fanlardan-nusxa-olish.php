@@ -240,8 +240,26 @@ if ($kafedralarJson === false) {
         .pair-actions {
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
             gap: 8px;
             margin-top: 10px;
+        }
+        .pair-row-status {
+            margin-top: 6px;
+            font-size: 12px;
+            line-height: 1.3;
+        }
+        .pair-row-status.ok {
+            color: #15803d;
+        }
+        .pair-row-status.warn {
+            color: #b45309;
+        }
+        .pair-row-status.info {
+            color: #475569;
+        }
+        .pair-row-status.bad {
+            color: #b91c1c;
         }
         @media (max-width: 1100px) {
             .top-filters-grid {
@@ -371,6 +389,9 @@ if ($kafedralarJson === false) {
                         </div>
                         <div class="pair-rows" id="pairRowsContainer"></div>
                         <div class="pair-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="syncPairsFromTargetBtn">
+                                <i class="fas fa-wand-magic-sparkles"></i> Tanlangan maqsad semestrlardan juftlik yaratish
+                            </button>
                             <button type="button" class="btn btn-outline btn-sm" id="addPairRowBtn">
                                 <i class="fas fa-plus"></i> Juftlik qo'shish
                             </button>
@@ -623,6 +644,87 @@ if ($kafedralarJson === false) {
             return found ? String(found.text || '') : '';
         }
 
+        function getSemestrNumById(id) {
+            const sid = String(id || '');
+            if (sid === '') return '';
+            const found = allSemestrOptions.find(item => String(item.id) === sid);
+            return found ? String(found.semestrNum || '') : '';
+        }
+
+        function suggestSourceSemestrIdForTarget(targetSemestrId, currentSourceSemestrId = '') {
+            const targetId = String(targetSemestrId || '');
+            const currentSource = String(currentSourceSemestrId || '');
+            if (targetId === '') {
+                return '';
+            }
+
+            const sourceOptions = getFilteredSemestrOptions('source');
+            const sourceValidSet = new Set(sourceOptions.map(item => String(item.id)));
+            if (currentSource !== '' && sourceValidSet.has(currentSource)) {
+                return currentSource;
+            }
+
+            const targetNum = getSemestrNumById(targetId);
+            if (targetNum === '') {
+                return '';
+            }
+
+            const matched = sourceOptions.find(item => String(item.semestrNum || '') === String(targetNum));
+            return matched ? String(matched.id || '') : '';
+        }
+
+        function buildPairStatusMeta(row, duplicatedTargetSet) {
+            const targetId = String(row.targetSemestrId || '');
+            const sourceId = String(row.sourceSemestrId || '');
+
+            if (targetId === '' && sourceId === '') {
+                return {
+                    className: 'info',
+                    text: "Maqsad va manba semestrni tanlang."
+                };
+            }
+            if (targetId === '' && sourceId !== '') {
+                return {
+                    className: 'warn',
+                    text: "Maqsad semestr tanlanmagan."
+                };
+            }
+            if (targetId !== '' && sourceId === '') {
+                return {
+                    className: 'warn',
+                    text: "Manba semestr tanlanmagan."
+                };
+            }
+
+            if (duplicatedTargetSet.has(targetId)) {
+                return {
+                    className: 'bad',
+                    text: "Bu maqsad semestr boshqa qatorda ham tanlangan."
+                };
+            }
+
+            if (targetId === sourceId) {
+                return {
+                    className: 'bad',
+                    text: "Maqsad va manba bir xil semestr bo'lmasin."
+                };
+            }
+
+            const targetNum = getSemestrNumById(targetId);
+            const sourceNum = getSemestrNumById(sourceId);
+            if (targetNum !== '' && sourceNum !== '' && targetNum !== sourceNum) {
+                return {
+                    className: 'warn',
+                    text: `Semestr raqami farq qilmoqda (maqsad: ${targetNum}, manba: ${sourceNum}).`
+                };
+            }
+
+            return {
+                className: 'ok',
+                text: "Juftlik mos."
+            };
+        }
+
         function ensurePairRowsValid() {
             const targetValidSet = new Set(getFilteredSemestrOptions('target').map(item => String(item.id)));
             const sourceValidSet = new Set(getFilteredSemestrOptions('source').map(item => String(item.id)));
@@ -658,9 +760,19 @@ if ($kafedralarJson === false) {
 
             const targetOptions = getFilteredSemestrOptions('target');
             const sourceOptions = getFilteredSemestrOptions('source');
+            const targetFreq = {};
+            pairRows.forEach(row => {
+                const tid = String(row.targetSemestrId || '');
+                if (!tid) return;
+                targetFreq[tid] = (targetFreq[tid] || 0) + 1;
+            });
+            const duplicatedTargetSet = new Set(
+                Object.keys(targetFreq).filter(tid => (targetFreq[tid] || 0) > 1)
+            );
             let html = '';
 
             pairRows.forEach((row, index) => {
+                const statusMeta = buildPairStatusMeta(row, duplicatedTargetSet);
                 html += `
                     <div class="pair-row" data-row-index="${index}">
                         <div>
@@ -676,6 +788,7 @@ if ($kafedralarJson === false) {
                             <select class="form-control pair-source-semestr" data-row-index="${index}">
                                 ${buildPairSelectOptions(sourceOptions, row.sourceSemestrId, "Manba semestrni tanlang")}
                             </select>
+                            <div class="pair-row-status ${statusMeta.className}">${escapeHtml(statusMeta.text)}</div>
                         </div>
                         <div style="padding-bottom:2px;">
                             <button
@@ -701,6 +814,27 @@ if ($kafedralarJson === false) {
                     source_semestr_id: parseInt(row.sourceSemestrId || 0, 10) || 0,
                 }))
                 .filter(pair => pair.target_semestr_id > 0 && pair.source_semestr_id > 0);
+        }
+
+        function autofillMissingPairSources() {
+            let changed = false;
+            pairRows = pairRows.map(row => {
+                const targetId = String(row.targetSemestrId || '');
+                const sourceId = String(row.sourceSemestrId || '');
+                if (targetId === '' || sourceId !== '') {
+                    return row;
+                }
+                const suggestedSourceId = suggestSourceSemestrIdForTarget(targetId, '');
+                if (suggestedSourceId !== '') {
+                    changed = true;
+                    return {
+                        targetSemestrId: targetId,
+                        sourceSemestrId: suggestedSourceId
+                    };
+                }
+                return row;
+            });
+            return changed;
         }
 
         function renderDarsSummary(row, darsTurlari) {
@@ -978,10 +1112,46 @@ if ($kafedralarJson === false) {
 
             $('#sourceFakultet').on('change', function() {
                 syncYonalish('source');
+                autofillMissingPairSources();
                 renderPairRows();
             });
             $('#sourceYonalish').on('change', function() {
+                autofillMissingPairSources();
                 renderPairRows();
+            });
+            $('#syncPairsFromTargetBtn').on('click', function() {
+                const selectedTargets = normalizeArray($('#targetSemestr').val());
+                if (!selectedTargets.length) {
+                    Toast.fire({ icon: 'error', title: "Maqsad semestr(lar)ni tanlang" });
+                    return;
+                }
+
+                const sortedTargetIds = selectedTargets.slice().sort((a, b) => {
+                    const aNum = parseInt(getSemestrNumById(a) || 0, 10) || 0;
+                    const bNum = parseInt(getSemestrNumById(b) || 0, 10) || 0;
+                    if (aNum !== bNum) {
+                        return aNum - bNum;
+                    }
+                    return parseInt(a || 0, 10) - parseInt(b || 0, 10);
+                });
+
+                let autoMatched = 0;
+                pairRows = sortedTargetIds.map(targetId => {
+                    const suggestedSourceId = suggestSourceSemestrIdForTarget(targetId, '');
+                    if (suggestedSourceId !== '') {
+                        autoMatched += 1;
+                    }
+                    return {
+                        targetSemestrId: String(targetId || ''),
+                        sourceSemestrId: suggestedSourceId
+                    };
+                });
+
+                renderPairRows();
+                Toast.fire({
+                    icon: 'success',
+                    title: `${pairRows.length} ta juftlik yaratildi, ${autoMatched} tasi avtomatik moslandi`
+                });
             });
             $('#addPairRowBtn').on('click', function() {
                 pairRows.push({ targetSemestrId: '', sourceSemestrId: '' });
@@ -1004,6 +1174,11 @@ if ($kafedralarJson === false) {
                     return;
                 }
                 pairRows[index].targetSemestrId = String($(this).val() || '');
+                pairRows[index].sourceSemestrId = suggestSourceSemestrIdForTarget(
+                    pairRows[index].targetSemestrId,
+                    pairRows[index].sourceSemestrId
+                );
+                renderPairRows();
             });
             $(document).on('change', '.pair-source-semestr', function() {
                 const index = parseInt($(this).data('row-index') || -1, 10);
@@ -1011,6 +1186,7 @@ if ($kafedralarJson === false) {
                     return;
                 }
                 pairRows[index].sourceSemestrId = String($(this).val() || '');
+                renderPairRows();
             });
             $('#refreshCreatedRejaBtn').on('click', function() {
                 loadCreatedRejaList();
@@ -1034,6 +1210,21 @@ if ($kafedralarJson === false) {
                 }
 
                 const pairMap = getPairMapPayload();
+                const incompleteRows = [];
+                (pairRows || []).forEach((row, idx) => {
+                    const t = String(row.targetSemestrId || '');
+                    const s = String(row.sourceSemestrId || '');
+                    if ((t === '' && s !== '') || (t !== '' && s === '')) {
+                        incompleteRows.push(idx + 1);
+                    }
+                });
+                if (incompleteRows.length > 0) {
+                    Toast.fire({
+                        icon: 'error',
+                        title: `Juftlik satrlarini to'liq tanlang: ${incompleteRows.join(', ')}`
+                    });
+                    return;
+                }
                 if (!pairMap.length) {
                     Toast.fire({ icon: 'error', title: "Kamida bitta maqsad-manba semestr juftligini tanlang" });
                     return;
