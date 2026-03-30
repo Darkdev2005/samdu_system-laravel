@@ -1,78 +1,78 @@
 <?php
 
-    include_once 'config.php';
-    $db = new Database();
-    $semestrlar = $db->get_semestrlar();
-    $fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
-    $yonalishlar = $db->get_data_by_table_all('yonalishlar');
-    $qoshimcha_dars_turlar = $db->get_data_by_table_all('qoshimcha_dars_turlar');
-    $kafedralar = $db->get_data_by_table_all('kafedralar');
+include_once 'config.php';
+$db = new Database();
+$semestrlar = $db->get_semestrlar();
+$fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
+$yonalishlar = $db->get_data_by_table_all('yonalishlar');
+$qoshimcha_dars_turlar = $db->get_data_by_table_all('qoshimcha_dars_turlar');
+$kafedralar = $db->get_data_by_table_all('kafedralar');
 
-    $makeShortCode = static function (string $name): string {
-        $words = preg_split('/\s+/', trim($name)) ?: [];
-        $short = '';
-        foreach ($words as $word) {
-            $word = trim((string)$word);
-            if ($word === '') {
+$makeShortCode = static function (string $name): string {
+    $words = preg_split('/\s+/', trim($name)) ?: [];
+    $short = '';
+    foreach ($words as $word) {
+        $word = trim((string)$word);
+        if ($word === '') {
+            continue;
+        }
+        if (function_exists('mb_substr') && function_exists('mb_strtoupper')) {
+            $first = @mb_substr($word, 0, 1, 'UTF-8');
+            if ($first !== false && $first !== '') {
+                $short .= (string)@mb_strtoupper($first, 'UTF-8');
                 continue;
             }
-            if (function_exists('mb_substr') && function_exists('mb_strtoupper')) {
-                $first = @mb_substr($word, 0, 1, 'UTF-8');
-                if ($first !== false && $first !== '') {
-                    $short .= (string)@mb_strtoupper($first, 'UTF-8');
-                    continue;
-                }
-            }
-            $short .= strtoupper((string)substr($word, 0, 1));
         }
-        return $short;
-    };
+        $short .= strtoupper((string)substr($word, 0, 1));
+    }
+    return $short;
+};
 
-    $yonalishFakultetMap = [];
-    foreach ($yonalishlar as $yRow) {
-        $yId = (int)($yRow['id'] ?? 0);
-        if ($yId <= 0) {
-            continue;
-        }
-        $yonalishFakultetMap[$yId] = (int)($yRow['fakultet_id'] ?? 0);
+$yonalishFakultetMap = [];
+foreach ($yonalishlar as $yRow) {
+    $yId = (int)($yRow['id'] ?? 0);
+    if ($yId <= 0) {
+        continue;
+    }
+    $yonalishFakultetMap[$yId] = (int)($yRow['fakultet_id'] ?? 0);
+}
+
+$filterYonalishlarMap = [];
+foreach ($semestrlar as $s) {
+    $yonalishId = (int)($s['yonalish_id'] ?? 0);
+    if ($yonalishId <= 0 || isset($filterYonalishlarMap[$yonalishId])) {
+        continue;
     }
 
-    $filterYonalishlarMap = [];
-    foreach ($semestrlar as $s) {
-        $yonalishId = (int)($s['yonalish_id'] ?? 0);
-        if ($yonalishId <= 0 || isset($filterYonalishlarMap[$yonalishId])) {
-            continue;
-        }
-
-        $resolvedFakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
-        if ($resolvedFakultetId <= 0) {
-            $resolvedFakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
-        }
-
-        $filterYonalishlarMap[$yonalishId] = [
-            'id' => $yonalishId,
-            'name' => (string)($s['yonalish_name'] ?? ''),
-            'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
-            'fakultet_id' => $resolvedFakultetId,
-        ];
+    $resolvedFakultetId = (int)($yonalishFakultetMap[$yonalishId] ?? 0);
+    if ($resolvedFakultetId <= 0) {
+        $resolvedFakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
     }
-    $filterYonalishlar = array_values($filterYonalishlarMap);
-    usort($filterYonalishlar, static function (array $a, array $b): int {
-        $aName = (string)($a['name'] ?? '');
-        $bName = (string)($b['name'] ?? '');
-        $nameCmp = strcmp($aName, $bName);
-        if ($nameCmp !== 0) {
-            return $nameCmp;
-        }
-        return strcmp((string)($a['kirish_yili'] ?? ''), (string)($b['kirish_yili'] ?? ''));
-    });
-    $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
-    if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
-        $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+
+    $filterYonalishlarMap[$yonalishId] = [
+        'id' => $yonalishId,
+        'name' => (string)($s['yonalish_name'] ?? ''),
+        'kirish_yili' => (string)($s['kirish_yili'] ?? ''),
+        'fakultet_id' => $resolvedFakultetId,
+    ];
+}
+$filterYonalishlar = array_values($filterYonalishlarMap);
+usort($filterYonalishlar, static function (array $a, array $b): int {
+    $aName = (string)($a['name'] ?? '');
+    $bName = (string)($b['name'] ?? '');
+    $nameCmp = strcmp($aName, $bName);
+    if ($nameCmp !== 0) {
+        return $nameCmp;
     }
-    // Izoh: Fanlar ro'yxati (kod + nom) va auditoriya soatlari selectda chiqishi uchun.
-    $fanOptions = [];
-    $fanSql = "
+    return strcmp((string)($a['kirish_yili'] ?? ''), (string)($b['kirish_yili'] ?? ''));
+});
+$jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+    $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+}
+// Izoh: Fanlar ro'yxati (kod + nom) va auditoriya soatlari selectda chiqishi uchun.
+$fanOptions = [];
+$fanSql = "
         SELECT
             f.id,
             f.semestr_id,
@@ -84,38 +84,39 @@
         LEFT JOIN dars_soat_turlar dst ON dst.id = o.dars_tur_id
         GROUP BY f.id, f.semestr_id, f.fan_code, f.fan_name
     ";
-    $fanResult = $db->query($fanSql);
-    while ($row = mysqli_fetch_assoc($fanResult)) {
-        $semestrId = (int) ($row['semestr_id'] ?? 0);
-        $code = trim($row['fan_code'] ?? '');
-        $name = trim($row['fan_name'] ?? '');
-        if ($semestrId <= 0 || $name === '') {
-            continue;
-        }
-        $label = $code !== '' ? ($code . ' - ' . $name) : $name;
-        $fanOptions[] = [
-            'semestr_id' => $semestrId,
-            'value' => (int) $row['id'],
-            'label' => $label,
-            'auditoriya_soat' => (float) $row['auditoriya_soat']
-        ];
+$fanResult = $db->query($fanSql);
+while ($row = mysqli_fetch_assoc($fanResult)) {
+    $semestrId = (int) ($row['semestr_id'] ?? 0);
+    $code = trim($row['fan_code'] ?? '');
+    $name = trim($row['fan_name'] ?? '');
+    if ($semestrId <= 0 || $name === '') {
+        continue;
     }
-    $fanOptionsJson = json_encode($fanOptions, $jsonFlags);
-    if ($fanOptionsJson === false) {
-        $fanOptionsJson = '[]';
-    }
-    $fanOptionsJsonBase64 = base64_encode($fanOptionsJson);
-    $qoshimchaDarsTurlarJson = json_encode($qoshimcha_dars_turlar ?? [], $jsonFlags);
-    if ($qoshimchaDarsTurlarJson === false) {
-        $qoshimchaDarsTurlarJson = '[]';
-    }
-    $kafedralarJson = json_encode($kafedralar ?? [], $jsonFlags);
-    if ($kafedralarJson === false) {
-        $kafedralarJson = '[]';
-    }
+    $label = $code !== '' ? ($code . ' - ' . $name) : $name;
+    $fanOptions[] = [
+        'semestr_id' => $semestrId,
+        'value' => (int) $row['id'],
+        'label' => $label,
+        'auditoriya_soat' => (float) $row['auditoriya_soat']
+    ];
+}
+$fanOptionsJson = json_encode($fanOptions, $jsonFlags);
+if ($fanOptionsJson === false) {
+    $fanOptionsJson = '[]';
+}
+$fanOptionsJsonBase64 = base64_encode($fanOptionsJson);
+$qoshimchaDarsTurlarJson = json_encode($qoshimcha_dars_turlar ?? [], $jsonFlags);
+if ($qoshimchaDarsTurlarJson === false) {
+    $qoshimchaDarsTurlarJson = '[]';
+}
+$kafedralarJson = json_encode($kafedralar ?? [], $jsonFlags);
+if ($kafedralarJson === false) {
+    $kafedralarJson = '[]';
+}
 ?>
 <!DOCTYPE html>
 <html lang="uz">
+
 <head>
     <meta charset="UTF-8">
     <title>Qo‘shimcha o‘quv reja yaratish</title>
@@ -127,6 +128,7 @@
             font-size: 13px;
             margin-top: 6px;
         }
+
         .created-list-controls {
             display: flex;
             justify-content: space-between;
@@ -135,6 +137,7 @@
             flex-wrap: wrap;
             margin-top: 10px;
         }
+
         .created-list-controls-left,
         .created-list-controls-right {
             display: flex;
@@ -142,55 +145,67 @@
             gap: 8px;
             flex-wrap: wrap;
         }
+
         .created-list-search {
             min-width: 220px;
             max-width: 360px;
         }
+
         .created-list-per-page {
             width: 95px;
         }
+
         .created-list-page-info {
             font-size: 13px;
             color: #64748b;
             min-width: 110px;
             text-align: center;
         }
+
         .compact-list {
             margin: 0;
             padding-left: 18px;
             color: #334155;
             font-size: 13px;
         }
+
         .compact-list li {
             margin: 2px 0;
         }
+
         .table-actions {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
         }
+
         .swal2-popup .edit-q-modal {
             text-align: left;
         }
+
         .swal2-popup .edit-q-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
             margin-bottom: 12px;
         }
+
         .swal2-popup .edit-q-field-full {
             grid-column: 1 / -1;
         }
+
         .swal2-popup .edit-q-field label {
             display: block;
             font-size: 12px;
             color: #64748b;
             margin: 0 0 4px 0;
         }
+
         .swal2-popup .edit-q-input {
             margin: 0;
             width: 100%;
         }
+
         .swal2-popup .edit-q-alloc-card {
             border: 1px solid #e5e7eb;
             border-radius: 8px;
@@ -198,6 +213,7 @@
             margin-bottom: 12px;
             background: #f8fafc;
         }
+
         .swal2-popup .edit-q-alloc-header {
             display: flex;
             justify-content: space-between;
@@ -208,18 +224,22 @@
             font-size: 13px;
             color: #334155;
         }
+
         .swal2-popup .edit-q-total-hint {
             font-size: 12px;
             color: #64748b;
         }
+
         .swal2-popup .edit-q-total-hint.ok {
             color: #059669;
             font-weight: 600;
         }
+
         .swal2-popup .edit-q-total-hint.warn {
             color: #b45309;
             font-weight: 600;
         }
+
         .swal2-popup .edit-q-allocation-row {
             border: 1px solid #e5e7eb;
             border-radius: 8px;
@@ -227,34 +247,41 @@
             margin-bottom: 8px;
             background: #ffffff;
         }
+
         .swal2-popup .edit-q-row-label {
             font-size: 12px;
             color: #64748b;
             margin-bottom: 6px;
         }
+
         .swal2-popup .edit-q-allocation-grid {
             display: grid;
             grid-template-columns: 1fr 140px 44px;
             gap: 8px;
             align-items: end;
         }
+
         .swal2-popup .edit-q-remove-row[disabled] {
             opacity: 0.45;
             cursor: not-allowed;
         }
+
         @media (max-width: 900px) {
             .swal2-popup .edit-q-grid {
                 grid-template-columns: 1fr;
             }
+
             .swal2-popup .edit-q-allocation-grid {
                 grid-template-columns: 1fr;
             }
         }
+
         .top-filters-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(220px, 1fr));
             gap: 12px;
         }
+
         .top-filter-actions {
             display: flex;
             justify-content: flex-end;
@@ -262,11 +289,13 @@
             margin-top: 12px;
             flex-wrap: wrap;
         }
+
         @media (max-width: 1100px) {
             .top-filters-grid {
                 grid-template-columns: repeat(2, minmax(220px, 1fr));
             }
         }
+
         @media (max-width: 700px) {
             .top-filters-grid {
                 grid-template-columns: 1fr;
@@ -274,6 +303,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <?php include 'includes/sidebar.php'; ?>
@@ -302,8 +332,7 @@
                                 <?php foreach ($filterYonalishlar as $y): ?>
                                     <option
                                         value="<?= (int)$y['id'] ?>"
-                                        data-fakultet-id="<?= (int)$y['fakultet_id'] ?>"
-                                    >
+                                        data-fakultet-id="<?= (int)$y['fakultet_id'] ?>">
                                         <?= htmlspecialchars((string)$y['name'] . (!empty($y['kirish_yili']) ? ' - ' . (string)$y['kirish_yili'] : ''), ENT_QUOTES, 'UTF-8') ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -375,7 +404,7 @@
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                                
+
                                 <div class="form-group">
                                     <label>Hisoblangan fan soati</label>
                                     <input type="number" class="form-control fan-soat-input" name="fan_soat[]" required>
@@ -477,9 +506,9 @@
                     <div class="form-group mt-3">
                         <label>Izoh</label>
                         <textarea class="form-control"
-                                name="izoh"
-                                rows="3"
-                                placeholder="O‘quv reja bo‘yicha umumiy izoh..."></textarea>
+                            name="izoh"
+                            rows="3"
+                            placeholder="O‘quv reja bo‘yicha umumiy izoh..."></textarea>
                     </div>
                     <div class="form-actions mt-3">
                         <button type="submit" class="btn btn-primary">
@@ -546,10 +575,16 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="/assets/vendor/select2/css/select2.min.css" rel="stylesheet" />
     <script src="/assets/vendor/jquery/jquery-3.6.0.min.js"></script>
-    <script>window.jQuery || document.write('<script src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>')</script>
+    <script>
+        window.jQuery || document.write('<script src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>')
+    </script>
     <script src="/assets/vendor/select2/js/select2.min.js"></script>
-    <script>if (window.jQuery && !window.jQuery.fn.select2) { document.write('<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"><\/script>'); }</script>
-                                               
+    <script>
+        if (window.jQuery && !window.jQuery.fn.select2) {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"><\/script>');
+        }
+    </script>
+
     <script>
         $(document).ready(function() {
             $(document).on('change', 'select[name="qoshimcha_dars_id[]"], select[name="fan_nomi[]"]', function() {
@@ -583,8 +618,12 @@
         };
 
         const SwalApi = window.Swal || {
-            mixin: () => ({ fire: () => {} }),
-            fire: () => Promise.resolve({ isConfirmed: false }),
+            mixin: () => ({
+                fire: () => {}
+            }),
+            fire: () => Promise.resolve({
+                isConfirmed: false
+            }),
             showValidationMessage: () => {},
         };
 
@@ -805,9 +844,9 @@
             pageRows.forEach(row => {
                 const allocations = Array.isArray(row.allocations) ? row.allocations : [];
                 const kafedraNames = allocations.map(a => escapeHtml(a.kafedra_name || '-')).join(', ') || '-';
-                const darsList = allocations.length
-                    ? `<ul class="compact-list">${allocations.map(a => `<li>${escapeHtml(a.kafedra_name || '-')} : ${escapeHtml(a.dars_soati || 0)}</li>`).join('')}</ul>`
-                    : '-';
+                const darsList = allocations.length ?
+                    `<ul class="compact-list">${allocations.map(a => `<li>${escapeHtml(a.kafedra_name || '-')} : ${escapeHtml(a.dars_soati || 0)}</li>`).join('')}</ul>` :
+                    '-';
                 const semestrLabel = `${row.yonalish_name || '-'} - ${row.kirish_yili || '-'} / ${row.semestr_num || '-'}`;
 
                 html += `
@@ -871,9 +910,9 @@
         function buildEditSemestrOptions(selectedValue = '', row = null) {
             const selected = String(selectedValue || '');
             const rowYonalishId = String((row && row.yonalish_id) || '');
-            const semestrSource = allSemestrOptionsMaster.length
-                ? allSemestrOptionsMaster
-                : allSemestrOptions;
+            const semestrSource = allSemestrOptionsMaster.length ?
+                allSemestrOptionsMaster :
+                allSemestrOptions;
 
             let options = semestrSource.filter(item => {
                 if (rowYonalishId === '') return true;
@@ -905,33 +944,55 @@
             const selectedKafedra = String(allocation.kafedra_id || '');
             const selectedKafedraName = String(allocation.kafedra_name || '').trim();
             const soat = parseInt(allocation.dars_soati || 0, 10) || 0;
-            const fallbackOption = selectedKafedra !== '' && selectedKafedraName !== ''
-                ? `<option value="${escapeHtml(selectedKafedra)}" selected>${escapeHtml(selectedKafedraName)}</option>`
-                : '';
+
+            let optionsHtml = '<option value="">Tanlang</option>';
+
+            (kafedralarList || []).forEach(item => {
+                const id = String(item.id || '');
+                if (!id) return;
+
+                const name = String(item.name || '');
+                const selectedAttr = id === selectedKafedra ? ' selected' : '';
+                optionsHtml += `<option value="${escapeHtml(id)}"${selectedAttr}>${escapeHtml(name)}</option>`;
+            });
+
+            if (
+                selectedKafedra !== '' &&
+                selectedKafedraName !== '' &&
+                !(kafedralarList || []).some(item => String(item.id || '') === selectedKafedra)
+            ) {
+                optionsHtml += `<option value="${escapeHtml(selectedKafedra)}" selected>${escapeHtml(selectedKafedraName)}</option>`;
+            }
 
             return `
-                <div class="edit-q-allocation-row">
-                    <div class="edit-q-row-label">Kafedra #${rowIndex}</div>
-                    <div class="edit-q-allocation-grid">
-                        <div class="edit-q-field">
-                            <label>Kafedra</label>
-                            <select class="swal2-input edit-q-kafedra edit-q-input">
-                                <option value="">Tanlang</option>
-                                ${fallbackOption}
-                                ${buildKafedralarOptionsHtml(selectedKafedra)}
-                            </select>
-                        </div>
-                        <div class="edit-q-field">
-                            <label>Soat</label>
-                            <input type="number" min="0" step="1" class="swal2-input edit-q-soat edit-q-input" value="${soat}">
-                        </div>
-                        <div class="edit-q-field">
-                            <label>&nbsp;</label>
-                            <button type="button" class="btn btn-danger btn-sm edit-q-remove-row"><i class="fas fa-times"></i></button>
-                        </div>
-                    </div>
+        <div class="edit-q-allocation-row">
+            <div class="edit-q-row-label">Kafedra #${rowIndex}</div>
+            <div class="edit-q-allocation-grid">
+                <div class="edit-q-field">
+                    <label>Kafedra</label>
+                    <select class="swal2-input edit-q-kafedra edit-q-input">
+                        ${optionsHtml}
+                    </select>
                 </div>
-            `;
+                <div class="edit-q-field">
+                    <label>Soat</label>
+                    <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        class="swal2-input edit-q-soat edit-q-input"
+                        value="${soat}"
+                    >
+                </div>
+                <div class="edit-q-field">
+                    <label>&nbsp;</label>
+                    <button type="button" class="btn btn-danger btn-sm edit-q-remove-row">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
         }
 
         function openEditCreatedQoshimchaModal(row) {
@@ -939,58 +1000,92 @@
                 title: "Qo'shimcha fan tahrirlash",
                 width: 920,
                 html: `
-                    <div class="edit-q-modal">
-                        <div class="edit-q-grid">
-                            <div class="edit-q-field edit-q-field-full">
-                                <label>Fan nomi</label>
-                                <input type="text" id="editQFanName" class="swal2-input edit-q-input" placeholder="Fan nomi" value="${escapeHtml(row.fan_name || '')}">
-                            </div>
-                            <div class="edit-q-field">
-                                <label>Hisoblangan fan soati</label>
-                                <input type="number" min="0" step="1" id="editQFanSoat" class="swal2-input edit-q-input" placeholder="Hisoblangan fan soati" value="${escapeHtml(row.fan_soat || 0)}">
-                            </div>
-                            <div class="edit-q-field">
-                                <label>Qo'shimcha dars turi</label>
-                                <select id="editQQoshimchaDarsId" class="swal2-input edit-q-input">
-                                    ${buildEditQoshimchaTurOptions(row.qoshimcha_dars_id || '')}
-                                </select>
-                            </div>
-                            <div class="edit-q-field edit-q-field-full">
-                                <label>Semestr</label>
-                                <select id="editQSemestrId" class="swal2-input edit-q-input">
-                                    ${buildEditSemestrOptions(row.semestr_id || '', row)}
-                                </select>
-                            </div>
-                        </div>
-                        <div class="edit-q-alloc-card">
-                            <div class="edit-q-alloc-header">
-                                <strong>Kafedralar va dars soatlari</strong>
-                                <span class="edit-q-total-hint" id="editQTotalsHint">Yig'indi: 0 | Fan soati: 0</span>
-                            </div>
-                            <div id="editQAllocationsContainer"></div>
-                            <div style="display:flex;justify-content:flex-start;margin-top:6px;">
-                                <button type="button" class="btn btn-outline btn-sm" id="editQAddAllocationRow"><i class="fas fa-plus"></i> Qator qo'shish</button>
-                            </div>
-                        </div>
-                        <div class="edit-q-field">
-                            <label>Izoh</label>
-                            <textarea id="editQIzoh" class="swal2-textarea edit-q-input" placeholder="Izoh">${escapeHtml(row.izoh || '')}</textarea>
-                        </div>
+            <div class="edit-q-modal">
+                <div class="edit-q-grid">
+                    <div class="edit-q-field edit-q-field-full">
+                        <label>Fan nomi</label>
+                        <input
+                            type="text"
+                            id="editQFanName"
+                            class="swal2-input edit-q-input"
+                            placeholder="Fan nomi"
+                            value="${escapeHtml(row.fan_name || '')}"
+                        >
                     </div>
-                `,
+
+                    <div class="edit-q-field">
+                        <label>Hisoblangan fan soati</label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            id="editQFanSoat"
+                            class="swal2-input edit-q-input"
+                            placeholder="Hisoblangan fan soati"
+                            value="${escapeHtml(row.fan_soat || 0)}"
+                        >
+                    </div>
+
+                    <div class="edit-q-field">
+                        <label>Qo'shimcha dars turi</label>
+                        <select id="editQQoshimchaDarsId" class="swal2-input edit-q-input">
+                            ${buildEditQoshimchaTurOptions(row.qoshimcha_dars_id || '')}
+                        </select>
+                    </div>
+
+                    <div class="edit-q-field edit-q-field-full">
+                        <label>Semestr</label>
+                        <select id="editQSemestrId" class="swal2-input edit-q-input">
+                            ${buildEditSemestrOptions(row.semestr_id || '', row)}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="edit-q-alloc-card">
+                    <div class="edit-q-alloc-header">
+                        <strong>Kafedralar va dars soatlari</strong>
+                        <span class="edit-q-total-hint" id="editQTotalsHint">
+                            Yig'indi: 0 | Fan soati: 0
+                        </span>
+                    </div>
+
+                    <div id="editQAllocationsContainer"></div>
+
+                    <div style="display:flex;justify-content:flex-start;margin-top:6px;">
+                        <button type="button" class="btn btn-outline btn-sm" id="editQAddAllocationRow">
+                            <i class="fas fa-plus"></i> Qator qo'shish
+                        </button>
+                    </div>
+                </div>
+
+                <div class="edit-q-field">
+                    <label>Izoh</label>
+                    <textarea
+                        id="editQIzoh"
+                        class="swal2-textarea edit-q-input"
+                        placeholder="Izoh"
+                    >${escapeHtml(row.izoh || '')}</textarea>
+                </div>
+            </div>
+        `,
                 showCancelButton: true,
                 confirmButtonText: "Saqlash",
                 cancelButtonText: "Bekor qilish",
+
                 didOpen: () => {
                     const container = $('#editQAllocationsContainer');
-                    const allocations = Array.isArray(row.allocations) && row.allocations.length
-                        ? row.allocations
-                        : [{ kafedra_id: '', dars_soati: 0 }];
+                    const allocations = Array.isArray(row.allocations) && row.allocations.length ?
+                        row.allocations :
+                        [{
+                            kafedra_id: '',
+                            dars_soati: 0
+                        }];
 
                     const updateTotalsHint = () => {
                         const fanSoat = Number($('#editQFanSoat').val() || 0);
                         let sum = 0;
-                        $('.edit-q-soat').each(function() {
+
+                        container.find('.edit-q-soat').each(function() {
                             const value = Number($(this).val() || 0);
                             if (Number.isFinite(value) && value > 0) {
                                 sum += value;
@@ -1000,7 +1095,8 @@
                         const hint = $('#editQTotalsHint');
                         hint.removeClass('ok warn');
                         hint.text(`Yig'indi: ${sum} | Fan soati: ${fanSoat}`);
-                        if (fanSoat > 0 && sum === fanSoat) {
+
+                        if (fanSoat > 0 && Math.abs(sum - fanSoat) < 0.0001) {
                             hint.addClass('ok');
                         } else if (sum > 0) {
                             hint.addClass('warn');
@@ -1009,70 +1105,75 @@
 
                     const refreshRowMeta = () => {
                         const rows = container.find('.edit-q-allocation-row');
+
                         rows.each(function(index) {
                             $(this).find('.edit-q-row-label').text(`Kafedra #${index + 1}`);
                         });
+
                         rows.find('.edit-q-remove-row').prop('disabled', rows.length <= 1);
                     };
 
-                    const initAllocationSelects = () => {
-                        container.find('select').each(function() {
+                    const destroyAllocationSelect2IfAny = () => {
+                        container.find('.edit-q-kafedra').each(function() {
                             const $select = $(this);
                             if ($select.hasClass('select2-hidden-accessible')) {
                                 $select.select2('destroy');
                             }
-                            initSelect2Safe($select, "Kafedrani tanlang");
                         });
                     };
 
-                    container.html(allocations.map((a, idx) => buildEditQoshimchaKafedraRow(a, idx + 1)).join(''));
-                    initAllocationSelects();
+                    container.html(
+                        allocations.map((a, idx) => buildEditQoshimchaKafedraRow(a, idx + 1)).join('')
+                    );
+
+                    destroyAllocationSelect2IfAny();
                     refreshRowMeta();
                     updateTotalsHint();
 
-                    $('#editQFanSoat').on('input', function() {
+                    $('#editQFanSoat').off('input.editQ').on('input.editQ', function() {
                         updateTotalsHint();
                     });
 
-                    container.on('input', '.edit-q-soat', function() {
+                    container.off('input.editQSoat').on('input.editQSoat', '.edit-q-soat', function() {
                         updateTotalsHint();
                     });
 
-                    container.on('change', '.edit-q-kafedra', function() {
+                    container.off('change.editQKafedra').on('change.editQKafedra', '.edit-q-kafedra', function() {
                         refreshRowMeta();
                     });
 
-                    $('#editQAddAllocationRow').on('click', function() {
+                    $('#editQAddAllocationRow').off('click.editQAdd').on('click.editQAdd', function() {
                         const nextIndex = container.find('.edit-q-allocation-row').length + 1;
-                        const newRow = $(buildEditQoshimchaKafedraRow({}, nextIndex));
-                        container.append(newRow);
-                        newRow.find('select').each(function() {
-                            initSelect2Safe($(this), "Kafedrani tanlang");
-                        });
+                        const newRowHtml = buildEditQoshimchaKafedraRow({}, nextIndex);
+                        container.append(newRowHtml);
+
+                        destroyAllocationSelect2IfAny();
                         refreshRowMeta();
                         updateTotalsHint();
                     });
 
-                    container.on('click', '.edit-q-remove-row', function() {
+                    container.off('click.editQRemove').on('click.editQRemove', '.edit-q-remove-row', function() {
                         const rows = container.find('.edit-q-allocation-row');
+
                         if (rows.length <= 1) {
                             return;
                         }
+
                         const rowEl = $(this).closest('.edit-q-allocation-row');
-                        rowEl.find('select').each(function() {
+
+                        rowEl.find('.edit-q-kafedra').each(function() {
                             const $select = $(this);
                             if ($select.hasClass('select2-hidden-accessible')) {
                                 $select.select2('destroy');
                             }
                         });
+
                         rowEl.remove();
                         refreshRowMeta();
                         updateTotalsHint();
                     });
-
-                    // Modal ichidagi ushbu ikkita select native ko'rinishda qoladi.
-                    // Hostdagi ayrim brauzerlarda select2 dropdown ochilmaslik holatini shu bilan oldini olamiz.
                 },
+
                 preConfirm: () => {
                     const fanName = String($('#editQFanName').val() || '').trim();
                     const fanSoat = Number($('#editQFanSoat').val() || 0);
@@ -1084,14 +1185,17 @@
                         SwalApi.showValidationMessage("Fan nomi to'ldirilishi shart");
                         return false;
                     }
+
                     if (!Number.isFinite(fanSoat) || fanSoat < 0) {
                         SwalApi.showValidationMessage("Hisoblangan fan soati noto'g'ri");
                         return false;
                     }
+
                     if (qoshimchaDarsId <= 0) {
                         SwalApi.showValidationMessage("Qo'shimcha dars turini tanlang");
                         return false;
                     }
+
                     if (semestrId <= 0) {
                         SwalApi.showValidationMessage("Semestrni tanlang");
                         return false;
@@ -1105,6 +1209,7 @@
                     $('#editQAllocationsContainer .edit-q-allocation-row').each(function() {
                         const kafedraId = parseInt($(this).find('.edit-q-kafedra').val() || 0, 10);
                         const darsSoati = Number($(this).find('.edit-q-soat').val() || 0);
+
                         if (kafedraId <= 0 || !Number.isFinite(darsSoati) || darsSoati < 0) {
                             hasInvalid = true;
                             return;
@@ -1112,9 +1217,11 @@
 
                         allocations.push({
                             kafedra_id: kafedraId,
-                            dars_soati: darsSoati,
+                            dars_soati: darsSoati
                         });
+
                         totalSoat += darsSoati;
+
                         if (darsSoati > 0) {
                             hasPositive = true;
                         }
@@ -1124,12 +1231,16 @@
                         SwalApi.showValidationMessage("Kafedra va dars soati qatorlarini to'g'ri to'ldiring");
                         return false;
                     }
+
                     if (!hasPositive) {
                         SwalApi.showValidationMessage("Kamida bitta kafedra soati 0 dan katta bo'lishi kerak");
                         return false;
                     }
+
                     if (Math.abs(totalSoat - fanSoat) > 0.0001) {
-                        SwalApi.showValidationMessage(`Hisoblangan fan soati (${fanSoat}) va kafedralar yig'indisi (${totalSoat}) teng bo'lishi kerak`);
+                        SwalApi.showValidationMessage(
+                            `Hisoblangan fan soati (${fanSoat}) va kafedralar yig'indisi (${totalSoat}) teng bo'lishi kerak`
+                        );
                         return false;
                     }
 
@@ -1140,14 +1251,15 @@
                         qoshimcha_dars_id: qoshimchaDarsId,
                         semestr_id: semestrId,
                         izoh: izoh,
-                        allocations: allocations,
+                        allocations: allocations
                     };
                 }
             }).then((result) => {
                 if (!result.isConfirmed || !result.value) return;
-                const payload = result.value;
 
+                const payload = result.value;
                 const formData = new FormData();
+
                 formData.append('qoshimcha_fanid', String(payload.qoshimcha_fanid));
                 formData.append('fan_name', payload.fan_name);
                 formData.append('fan_soat', String(payload.fan_soat));
@@ -1157,21 +1269,30 @@
                 formData.append('allocations_json', JSON.stringify(payload.allocations));
 
                 fetch('insert/update_qoshimcha_oquv_reja_item.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data && data.success) {
-                        Toast.fire({ icon: 'success', title: data.message || "Yangilandi" });
-                        loadCreatedQoshimchaList();
-                    } else {
-                        Toast.fire({ icon: 'error', title: (data && data.message) || "Yangilashda xatolik" });
-                    }
-                })
-                .catch(() => {
-                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
-                });
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.success) {
+                            Toast.fire({
+                                icon: 'success',
+                                title: data.message || "Yangilandi"
+                            });
+                            loadCreatedQoshimchaList();
+                        } else {
+                            Toast.fire({
+                                icon: 'error',
+                                title: (data && data.message) || "Yangilashda xatolik"
+                            });
+                        }
+                    })
+                    .catch(() => {
+                        Toast.fire({
+                            icon: 'error',
+                            title: "Server bilan bog'lanib bo'lmadi"
+                        });
+                    });
             });
         }
 
@@ -1181,7 +1302,9 @@
             const semestrId = getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
             const url = `api/get_qoshimcha_oquv_reja_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&yonalish_id=${encodeURIComponent(yonalishId)}&semestr_id=${encodeURIComponent(semestrId)}`;
 
-            fetch(url, { cache: 'no-store' })
+            fetch(url, {
+                    cache: 'no-store'
+                })
                 .then(res => res.json())
                 .then(data => {
                     if (!data || !data.success) {
@@ -1249,12 +1372,12 @@
             }
 
             const fakultetId = getSelectedIdWithFallback($('#fakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']);
-            const currentYonalish = preferredYonalish !== null
-                ? String(preferredYonalish || '')
-                : getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
-            const currentSemestr = preferredSemestr !== null
-                ? String(preferredSemestr || '')
-                : getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
+            const currentYonalish = preferredYonalish !== null ?
+                String(preferredYonalish || '') :
+                getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
+            const currentSemestr = preferredSemestr !== null ?
+                String(preferredSemestr || '') :
+                getSelectedIdWithFallback($('#semestrSelect'), ['Tanlang', 'Semestrni tanlang']);
 
             isTopFilterSyncing = true;
 
@@ -1365,9 +1488,9 @@
         }
 
         function filterYonalishByFakultet(selectedValue = null) {
-            const currentYonalish = selectedValue !== null
-                ? String(selectedValue || '')
-                : getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
+            const currentYonalish = selectedValue !== null ?
+                String(selectedValue || '') :
+                getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]);
 
             rebuildYonalishOptions(currentYonalish);
             const hasCurrent = $('#yonalishFilter option[value="' + currentYonalish + '"]').length > 0;
@@ -1549,7 +1672,7 @@
                     fanSoat = Math.round(semestrMeta.talaba * (isExternal ? 0.4 : 2));
                     hintText = `${semestrMeta.talaba} × ${isExternal ? 0.4 : 2} = ${fanSoat}`;
                     break;
-                case QOSHIMCHA_IDS.OQUV_PED:            
+                case QOSHIMCHA_IDS.OQUV_PED:
                 case QOSHIMCHA_IDS.DALA_OTM:
                 case QOSHIMCHA_IDS.DALA_TASH:
                 case QOSHIMCHA_IDS.ISHLAB_CHIQARISH: {
@@ -1632,7 +1755,7 @@
             initSelect2Safe($('#fakultetFilter'), "Fakultetni tanlang");
             initSelect2Safe($('#yonalishFilter'), "Yo'nalishni tanlang");
             initSelect2Safe($('#semestrSelect'), "Semestrni tanlang");
-            
+
             initInitialSelect2();
 
             // Dastlabki holatni serverdan qayta sinxronlash (hostda barqaror ishlashi uchun)
@@ -1727,7 +1850,7 @@
             });
             loadCreatedQoshimchaList();
         });
-        
+
         function initInitialSelect2() {
             initSelect2Safe($('select[name="qoshimcha_dars_id[]"]'), "Qo'shimcha dars turini tanlang");
             initSelect2Safe($('select[name="fan_nomi[]"]'), "Fan (kod + nomi) tanlang");
@@ -1765,10 +1888,10 @@
             });
             select.val(null).trigger('change');
         }
-        
+
         function createNewReja() {
             fanIndex++;
-            
+
             const originalHtml = `
                 <div class="reja-card" data-index="${fanIndex}">
                     <div class="form-grid-3">
@@ -1870,10 +1993,10 @@
                     </div>
                 </div>
             `;
-            
+
             const newReja = $(originalHtml);
             $('#rejaWrapper').append(newReja);
-            
+
             setTimeout(() => {
                 initSelect2Safe(newReja.find('.qoshimcha-select'), "Qo'shimcha dars turini tanlang");
                 initSelect2Safe(newReja.find('.fan-select'), "Fan (kod + nomi) tanlang");
@@ -1881,18 +2004,18 @@
             }, 50);
 
             renderFanOptions(newReja);
-            
+
             return newReja;
         }
-        
+
         $(document).on('click', '.addDarsSoat', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const wrapper = $(this).closest('.darsSoatWrapper');
             const card = $(this).closest('.reja-card');
             const index = card.data('index');
-            
+
             const newRowHtml = `
                 <div class="form-grid-2 dars-soat-row">
                     <div class="form-group">
@@ -1908,55 +2031,55 @@
                     </div>
                 </div>
             `;
-            
+
             const newRow = $(newRowHtml);
             wrapper.find('.dars-soat-actions').before(newRow);
-            
+
             setTimeout(() => {
                 initSelect2Safe(newRow.find('.kafedra-select'), "Kafedrani tanlang");
             }, 50);
         });
-        
+
         $(document).on('click', '.removeDarsSoat', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const wrapper = $(this).closest('.darsSoatWrapper');
             const rows = wrapper.find('.dars-soat-row');
-            
+
             if (rows.length > 1) {
                 const lastRow = rows.last();
-                
+
                 const select = lastRow.find('.kafedra-select');
                 if (select.hasClass('select2-hidden-accessible')) {
                     select.select2('destroy');
                 }
-                
+
                 lastRow.remove();
             }
         });
-        
+
         $(document).on('click', '.addReja', function(e) {
             e.preventDefault();
             e.stopPropagation();
             createNewReja();
         });
-        
+
         $(document).on('click', '.removeReja', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const rejas = $('.reja-card');
             const currentReja = $(this).closest('.reja-card');
             const currentIndex = currentReja.data('index');
-            
+
             if (rejas.length > 1 && currentIndex !== 0) {
                 currentReja.find('select').each(function() {
                     if ($(this).hasClass('select2-hidden-accessible')) {
                         $(this).select2('destroy');
                     }
                 });
-                
+
                 currentReja.remove();
             }
         });
@@ -1993,27 +2116,36 @@
                 formData.append('qoshimcha_fanid', fanId);
 
                 fetch('insert/delete_qoshimcha_oquv_reja_item.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data && data.success) {
-                        Toast.fire({ icon: 'success', title: data.message || "Qo'shimcha fan o'chirildi" });
-                        loadCreatedQoshimchaList();
-                    } else {
-                        Toast.fire({ icon: 'error', title: (data && data.message) || "O'chirishda xatolik" });
-                    }
-                })
-                .catch(() => {
-                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
-                });
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.success) {
+                            Toast.fire({
+                                icon: 'success',
+                                title: data.message || "Qo'shimcha fan o'chirildi"
+                            });
+                            loadCreatedQoshimchaList();
+                        } else {
+                            Toast.fire({
+                                icon: 'error',
+                                title: (data && data.message) || "O'chirishda xatolik"
+                            });
+                        }
+                    })
+                    .catch(() => {
+                        Toast.fire({
+                            icon: 'error',
+                            title: "Server bilan bog'lanib bo'lmadi"
+                        });
+                    });
             });
         });
-        
-       $(document).on('submit', '#oquvRejaForm', function(e) {
+
+        $(document).on('submit', '#oquvRejaForm', function(e) {
             e.preventDefault();
-            
+
             let isValid = true;
             const errors = [];
             if (!$('#semestrSelect').val()) {
@@ -2023,11 +2155,11 @@
             } else {
                 $('#semestrSelect').next('.select2-container').css('border-color', '');
             }
-            
+
             $('.reja-card').each(function(index) {
                 const card = $(this);
                 const cardIndex = index + 1;
-                
+
                 const fanNomi = card.find('select[name="fan_nomi[]"]');
                 if (!fanNomi.val()) {
                     isValid = false;
@@ -2036,7 +2168,7 @@
                 } else {
                     fanNomi.next('.select2-container').css('border-color', '');
                 }
-                
+
                 const fanSoat = card.find('input[name="fan_soat[]"]');
                 const fanSoatVal = fanSoat.val();
                 if (fanSoatVal === '' || parseFloat(fanSoatVal) < 0) {
@@ -2046,7 +2178,7 @@
                 } else {
                     fanSoat.css('border-color', '');
                 }
-                
+
                 const qoshimchaSelect = card.find('select[name="qoshimcha_dars_id[]"]');
                 if (!qoshimchaSelect.val()) {
                     isValid = false;
@@ -2091,7 +2223,7 @@
                 } else {
                     ochiqCount.css('border-color', '');
                 }
-                
+
                 card.find('select[name^="kafedra_id"]').each(function(kafedraIndex) {
                     if (!$(this).val()) {
                         isValid = false;
@@ -2101,7 +2233,7 @@
                         $(this).next('.select2-container').css('border-color', '');
                     }
                 });
-                
+
                 card.find('input[name^="dars_soati"]').each(function(soatIndex) {
                     const soatVal = $(this).val();
                     if (soatVal === '' || parseFloat(soatVal) < 0) {
@@ -2113,7 +2245,7 @@
                     }
                 });
             });
-            
+
             if (!isValid) {
                 Toast.fire({
                     icon: 'error',
@@ -2121,10 +2253,10 @@
                 });
                 return;
             }
-            
+
             let hourMismatch = false;
             let mismatchMessage = "";
-            
+
             $('.reja-card').each(function(index) {
                 const card = $(this);
                 const cardIndex = index + 1;
@@ -2132,19 +2264,19 @@
                 const fanSoat = card.find('input[name="fan_soat[]"]');
                 const fanSoatValue = parseFloat(fanSoat.val()) || 0;
                 let kafedraSoatlariYigindisi = 0;
-                
+
                 card.find('input[name^="dars_soati"]').each(function() {
                     const soatValue = parseFloat($(this).val()) || 0;
                     kafedraSoatlariYigindisi += soatValue;
                 });
-                
+
                 if (fanSoatValue !== kafedraSoatlariYigindisi) {
                     hourMismatch = true;
                     mismatchMessage = `${cardIndex}-fan soati (${fanSoatValue}) kafedralarga bo'lingan soatlar yig'indisiga (${kafedraSoatlariYigindisi}) teng emas!`;
-                    return false; 
+                    return false;
                 }
             });
-            
+
             if (hourMismatch) {
                 SwalApi.fire({
                     icon: 'warning',
@@ -2154,66 +2286,66 @@
                 });
                 return;
             }
-            
+
             const form = $(this);
             const formData = new FormData(this);
-            
+
             fetch('insert/add_qoshimcha_oquv_reja.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    Toast.fire({
-                        icon: 'success',
-                        title: data.message || 'Qo\'shimcha o\'quv reja muvaffaqiyatli saqlandi'
-                    });
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        Toast.fire({
+                            icon: 'success',
+                            title: data.message || 'Qo\'shimcha o\'quv reja muvaffaqiyatli saqlandi'
+                        });
 
-                    form[0].reset();
+                        form[0].reset();
 
-                    $('#fakultetFilter').val('').trigger('change');
-                    $('#yonalishFilter').val('').trigger('change');
+                        $('#fakultetFilter').val('').trigger('change');
+                        $('#yonalishFilter').val('').trigger('change');
 
-                    $('select[name="qoshimcha_dars_id[]"]').each(function() {
-                        $(this).val(null).trigger('change');
-                    });
-                    $('select[name="fan_nomi[]"]').each(function() {
-                        $(this).val(null).trigger('change');
-                    });
-                    $('select[name^="kafedra_id"]').each(function() {
-                        $(this).val(null).trigger('change');
-                    });
-                    
-                    $('.reja-card').each(function(index) {
-                        if (index > 0) {
-                            $(this).find('select').each(function() {
-                                if ($(this).hasClass('select2-hidden-accessible')) {
-                                    $(this).select2('destroy');
-                                }
-                            });
-                            $(this).remove();
-                        }
-                    });
-                    
-                    fanIndex = 0;
-                    loadCreatedQoshimchaList();
+                        $('select[name="qoshimcha_dars_id[]"]').each(function() {
+                            $(this).val(null).trigger('change');
+                        });
+                        $('select[name="fan_nomi[]"]').each(function() {
+                            $(this).val(null).trigger('change');
+                        });
+                        $('select[name^="kafedra_id"]').each(function() {
+                            $(this).val(null).trigger('change');
+                        });
 
-                } else {
+                        $('.reja-card').each(function(index) {
+                            if (index > 0) {
+                                $(this).find('select').each(function() {
+                                    if ($(this).hasClass('select2-hidden-accessible')) {
+                                        $(this).select2('destroy');
+                                    }
+                                });
+                                $(this).remove();
+                            }
+                        });
+
+                        fanIndex = 0;
+                        loadCreatedQoshimchaList();
+
+                    } else {
+                        Toast.fire({
+                            icon: 'error',
+                            title: data.message || 'Xatolik yuz berdi'
+                        });
+                    }
+                })
+                .catch(() => {
                     Toast.fire({
                         icon: 'error',
-                        title: data.message || 'Xatolik yuz berdi'
+                        title: 'Server bilan bog\'lanib bo\'lmadi'
                     });
-                }
-            })
-            .catch(() => {
-                Toast.fire({
-                    icon: 'error',
-                    title: 'Server bilan bog\'lanib bo\'lmadi'
                 });
-            });
         });
-        
     </script>
 </body>
+
 </html>
