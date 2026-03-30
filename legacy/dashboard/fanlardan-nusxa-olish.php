@@ -143,140 +143,13 @@ if ($kafedralarJson === false) {
         .compact-list li {
             margin: 2px 0;
         }
-        .copy-steps {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(220px, 1fr));
-            gap: 10px;
-            margin: 8px 0 14px 0;
-        }
-        .copy-step {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 10px 12px;
-            font-size: 13px;
-            color: #475569;
-        }
-        .copy-step b {
-            color: #0f172a;
-        }
-        .mapping-preview {
-            margin-top: 12px;
-            background: #f8fafc;
-            border: 1px solid #dbeafe;
-            border-radius: 10px;
-            padding: 10px 12px;
-        }
-        .mapping-preview-title {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            font-weight: 600;
-            color: #0f172a;
-            margin-bottom: 8px;
-        }
-        .mapping-preview-note {
-            color: #64748b;
-            font-size: 12px;
-        }
-        .mapping-preview-list {
-            margin: 0;
-            padding-left: 18px;
-            color: #334155;
-            font-size: 13px;
-        }
-        .mapping-preview-list li {
-            margin: 4px 0;
-        }
-        .mapping-ok {
-            color: #15803d;
-        }
-        .mapping-miss {
-            color: #b91c1c;
-        }
-        .pair-rows {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 8px;
-        }
-        .pair-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr auto;
-            gap: 10px;
-            align-items: end;
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 10px;
-        }
-        .pair-row-label {
-            font-size: 12px;
-            color: #64748b;
-            margin-bottom: 4px;
-            display: block;
-        }
-        .pair-row-index {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 24px;
-            height: 24px;
-            border-radius: 999px;
-            background: #e2e8f0;
-            color: #0f172a;
-            font-size: 12px;
-            font-weight: 700;
-            margin-right: 8px;
-        }
-        .pair-row-header {
-            display: flex;
-            align-items: center;
-            color: #334155;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .pair-actions {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
-        }
-        .pair-row-status {
-            margin-top: 6px;
-            font-size: 12px;
-            line-height: 1.3;
-        }
-        .pair-row-status.ok {
-            color: #15803d;
-        }
-        .pair-row-status.warn {
-            color: #b45309;
-        }
-        .pair-row-status.info {
-            color: #475569;
-        }
-        .pair-row-status.bad {
-            color: #b91c1c;
-        }
         @media (max-width: 1100px) {
             .top-filters-grid {
                 grid-template-columns: repeat(2, minmax(220px, 1fr));
             }
-            .copy-steps {
-                grid-template-columns: repeat(2, minmax(220px, 1fr));
-            }
-            .pair-row {
-                grid-template-columns: 1fr;
-            }
         }
         @media (max-width: 700px) {
             .top-filters-grid {
-                grid-template-columns: 1fr;
-            }
-            .copy-steps {
                 grid-template-columns: 1fr;
             }
         }
@@ -292,11 +165,6 @@ if ($kafedralarJson === false) {
             </header>
             <div class="content-container">
                 <div class="card">
-                    <div class="copy-steps">
-                        <div class="copy-step"><b>1-qadam:</b> Maqsad fakultet, yo'nalish va semestr(lar)ni tanlang.</div>
-                        <div class="copy-step"><b>2-qadam:</b> Manba fakultet va yo'nalishni tanlang.</div>
-                        <div class="copy-step"><b>3-qadam:</b> `+` bilan maqsad-manba semestr juftliklarini qo'shing va nusxalashni bosing.</div>
-                    </div>
                     <h3 class="section-title">Maqsad semestr (qabul qiluvchi)</h3>
                     <div class="top-filters-grid">
                         <div class="form-group">
@@ -321,8 +189,8 @@ if ($kafedralarJson === false) {
                         </div>
                         <div class="form-group">
                             <label>Maqsad semestr</label>
-                            <select class="form-control" id="targetSemestr" multiple>
-                                <option value="">Semestr(lar)ni tanlang</option>
+                            <select class="form-control" id="targetSemestr">
+                                <option value="">Semestrni tanlang</option>
                                 <?php foreach ($semestrlar as $s):
                                     $short = $makeShortCode((string)($s['yonalish_name'] ?? ''));
                                     $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
@@ -342,7 +210,6 @@ if ($kafedralarJson === false) {
                                         value="<?= (int)$s['id'] ?>"
                                         data-fakultet-id="<?= $fakultetId ?>"
                                         data-yonalish-id="<?= $yonalishId ?>"
-                                        data-semestr-num="<?= (int)($s['semestr'] ?? 0) ?>"
                                     >
                                         <?= $h($darajaPrefix . $short . '_' . ($s['kirish_yili'] ?? '') . ' - ' . ($s['semestr'] ?? '') . '-semestr') ?>
                                     </option>
@@ -353,7 +220,7 @@ if ($kafedralarJson === false) {
 
                     <h3 class="section-title mt-4">Manba semestr</h3>
                     <div class="created-list-note">
-                        Manba sifatida fakultet va yo'nalishni tanlang. Semestrlar avtomatik emas, pastdagi juftliklarda qo'lda tanlanadi.
+                        Manba sifatida boshqa fakultet, yo'nalish va semestrni tanlang.
                     </div>
                     <div class="top-filters-grid mt-2">
                         <div class="form-group">
@@ -377,24 +244,33 @@ if ($kafedralarJson === false) {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Juftlik rejimi</label>
-                            <input type="text" class="form-control" value="Har qatorda maqsad semestr va manba semestrni alohida tanlaysiz" readonly>
-                        </div>
-                    </div>
-
-                    <div class="mapping-preview">
-                        <div class="mapping-preview-title">Semestr juftliklari</div>
-                        <div class="mapping-preview-note">
-                            Maqsad semestr(lar)ni va manba semestr(lar)ni qatorma-qator bog'lang. Bir qator = bitta nusxalash juftligi.
-                        </div>
-                        <div class="pair-rows" id="pairRowsContainer"></div>
-                        <div class="pair-actions">
-                            <button type="button" class="btn btn-outline btn-sm" id="syncPairsFromTargetBtn">
-                                <i class="fas fa-wand-magic-sparkles"></i> Tanlangan maqsad semestrlardan juftlik yaratish
-                            </button>
-                            <button type="button" class="btn btn-outline btn-sm" id="addPairRowBtn">
-                                <i class="fas fa-plus"></i> Juftlik qo'shish
-                            </button>
+                            <label>Manba semestr</label>
+                            <select class="form-control" id="sourceSemestr">
+                                <option value="">Semestrni tanlang</option>
+                                <?php foreach ($semestrlar as $s):
+                                    $short = $makeShortCode((string)($s['yonalish_name'] ?? ''));
+                                    $darajaRaw = trim((string)($s['akademik_daraja_name'] ?? ''));
+                                    $daraja = function_exists('mb_strtolower')
+                                        ? (string)@mb_strtolower($darajaRaw, 'UTF-8')
+                                        : strtolower($darajaRaw);
+                                    $darajaPrefix = '';
+                                    if (strpos($daraja, 'magistr') !== false) {
+                                        $darajaPrefix = 'M ';
+                                    } elseif (strpos($daraja, 'bakalavr') !== false) {
+                                        $darajaPrefix = 'B ';
+                                    }
+                                    $fakultetId = (int)($s['yonalish_fakultet_id'] ?? ($s['fakultet_id'] ?? 0));
+                                    $yonalishId = (int)($s['yonalish_id'] ?? 0);
+                                ?>
+                                    <option
+                                        value="<?= (int)$s['id'] ?>"
+                                        data-fakultet-id="<?= $fakultetId ?>"
+                                        data-yonalish-id="<?= $yonalishId ?>"
+                                    >
+                                        <?= $h($darajaPrefix . $short . '_' . ($s['kirish_yili'] ?? '') . ' - ' . ($s['semestr'] ?? '') . '-semestr') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                     </div>
 
@@ -480,7 +356,6 @@ if ($kafedralarJson === false) {
         let createdListPage = 1;
         let createdListPerPage = 20;
         let createdListDarsTurlari = [];
-        let pairRows = [];
         const darsTurlariListDefault = <?php echo $darsSoatTurlariJson; ?>;
         const kafedralarList = <?php echo $kafedralarJson; ?>;
         const fanTypeLabels = {
@@ -512,16 +387,6 @@ if ($kafedralarJson === false) {
                 .replace(/'/g, '&#039;');
         }
 
-        function normalizeArray(value) {
-            if (Array.isArray(value)) {
-                return value
-                    .map(item => String(item || '').trim())
-                    .filter(item => item !== '');
-            }
-            const single = String(value || '').trim();
-            return single === '' ? [] : [single];
-        }
-
         function cacheOptions() {
             allYonalishOptions = [];
             $('#targetYonalish option').each(function() {
@@ -543,7 +408,6 @@ if ($kafedralarJson === false) {
                     text: $(this).text(),
                     fakultetId: String($(this).data('fakultet-id') || ''),
                     yonalishId: String($(this).data('yonalish-id') || ''),
-                    semestrNum: String($(this).data('semestr-num') || ''),
                 });
             });
         }
@@ -566,11 +430,6 @@ if ($kafedralarJson === false) {
 
         function rebuildSemestrOptions(targetSelectId, fakultetValue, yonalishValue, selectedValue = '') {
             const select = $('#' + targetSelectId);
-            const selectedSet = new Set(
-                targetSelectId === 'targetSemestr'
-                    ? normalizeArray(selectedValue)
-                    : [String(selectedValue || '')]
-            );
             let html = '<option value="">Semestrni tanlang</option>';
 
             allSemestrOptions.forEach(item => {
@@ -581,11 +440,10 @@ if ($kafedralarJson === false) {
                     return;
                 }
 
-                const selected = selectedSet.has(String(item.id)) ? ' selected' : '';
+                const selected = String(item.id) === String(selectedValue) ? ' selected' : '';
                 const fakultetAttr = item.fakultetId !== '' ? ` data-fakultet-id="${item.fakultetId}"` : '';
                 const yonalishAttr = item.yonalishId !== '' ? ` data-yonalish-id="${item.yonalishId}"` : '';
-                const semestrNumAttr = item.semestrNum !== '' ? ` data-semestr-num="${item.semestrNum}"` : '';
-                html += `<option value="${item.id}"${fakultetAttr}${yonalishAttr}${semestrNumAttr}${selected}>${escapeHtml(item.text)}</option>`;
+                html += `<option value="${item.id}"${fakultetAttr}${yonalishAttr}${selected}>${escapeHtml(item.text)}</option>`;
             });
 
             select.html(html);
@@ -606,235 +464,12 @@ if ($kafedralarJson === false) {
             const fakultet = String($('#' + prefix + 'Fakultet').val() || '');
             const yonalish = String($('#' + prefix + 'Yonalish').val() || '');
             const current = selectedValue !== null
-                ? (prefix === 'target' ? normalizeArray(selectedValue) : String(selectedValue || ''))
-                : (prefix === 'target'
-                    ? normalizeArray($('#' + prefix + 'Semestr').val())
-                    : String($('#' + prefix + 'Semestr').val() || ''));
+                ? String(selectedValue || '')
+                : String($('#' + prefix + 'Semestr').val() || '');
 
             rebuildSemestrOptions(prefix + 'Semestr', fakultet, yonalish, current);
-            if (prefix === 'target') {
-                const validValues = normalizeArray(current).filter(val => (
-                    $('#' + prefix + 'Semestr option[value="' + val + '"]').length > 0
-                ));
-                $('#' + prefix + 'Semestr').val(validValues).trigger('change.select2');
-            } else {
-                const hasCurrent = $('#' + prefix + 'Semestr option[value="' + current + '"]').length > 0;
-                $('#' + prefix + 'Semestr').val(hasCurrent ? current : '').trigger('change.select2');
-            }
-        }
-
-        function getFilteredSemestrOptions(prefix) {
-            const fakultet = String($('#' + prefix + 'Fakultet').val() || '');
-            const yonalish = String($('#' + prefix + 'Yonalish').val() || '');
-            return allSemestrOptions.filter(item => {
-                if (fakultet !== '' && String(item.fakultetId) !== fakultet) {
-                    return false;
-                }
-                if (yonalish !== '' && String(item.yonalishId) !== yonalish) {
-                    return false;
-                }
-                return true;
-            });
-        }
-
-        function getSemestrOptionTextById(id) {
-            const sid = String(id || '');
-            if (sid === '') return '';
-            const found = allSemestrOptions.find(item => String(item.id) === sid);
-            return found ? String(found.text || '') : '';
-        }
-
-        function getSemestrNumById(id) {
-            const sid = String(id || '');
-            if (sid === '') return '';
-            const found = allSemestrOptions.find(item => String(item.id) === sid);
-            return found ? String(found.semestrNum || '') : '';
-        }
-
-        function suggestSourceSemestrIdForTarget(targetSemestrId, currentSourceSemestrId = '') {
-            const targetId = String(targetSemestrId || '');
-            const currentSource = String(currentSourceSemestrId || '');
-            if (targetId === '') {
-                return '';
-            }
-
-            const sourceOptions = getFilteredSemestrOptions('source');
-            const sourceValidSet = new Set(sourceOptions.map(item => String(item.id)));
-            if (currentSource !== '' && sourceValidSet.has(currentSource)) {
-                return currentSource;
-            }
-
-            const targetNum = getSemestrNumById(targetId);
-            if (targetNum === '') {
-                return '';
-            }
-
-            const matched = sourceOptions.find(item => String(item.semestrNum || '') === String(targetNum));
-            return matched ? String(matched.id || '') : '';
-        }
-
-        function buildPairStatusMeta(row, duplicatedTargetSet) {
-            const targetId = String(row.targetSemestrId || '');
-            const sourceId = String(row.sourceSemestrId || '');
-
-            if (targetId === '' && sourceId === '') {
-                return {
-                    className: 'info',
-                    text: "Maqsad va manba semestrni tanlang."
-                };
-            }
-            if (targetId === '' && sourceId !== '') {
-                return {
-                    className: 'warn',
-                    text: "Maqsad semestr tanlanmagan."
-                };
-            }
-            if (targetId !== '' && sourceId === '') {
-                return {
-                    className: 'warn',
-                    text: "Manba semestr tanlanmagan."
-                };
-            }
-
-            if (duplicatedTargetSet.has(targetId)) {
-                return {
-                    className: 'bad',
-                    text: "Bu maqsad semestr boshqa qatorda ham tanlangan."
-                };
-            }
-
-            if (targetId === sourceId) {
-                return {
-                    className: 'bad',
-                    text: "Maqsad va manba bir xil semestr bo'lmasin."
-                };
-            }
-
-            const targetNum = getSemestrNumById(targetId);
-            const sourceNum = getSemestrNumById(sourceId);
-            if (targetNum !== '' && sourceNum !== '' && targetNum !== sourceNum) {
-                return {
-                    className: 'warn',
-                    text: `Semestr raqami farq qilmoqda (maqsad: ${targetNum}, manba: ${sourceNum}).`
-                };
-            }
-
-            return {
-                className: 'ok',
-                text: "Juftlik mos."
-            };
-        }
-
-        function ensurePairRowsValid() {
-            const targetValidSet = new Set(getFilteredSemestrOptions('target').map(item => String(item.id)));
-            const sourceValidSet = new Set(getFilteredSemestrOptions('source').map(item => String(item.id)));
-
-            pairRows = pairRows.map(row => {
-                const targetId = String(row.targetSemestrId || '');
-                const sourceId = String(row.sourceSemestrId || '');
-                return {
-                    targetSemestrId: targetValidSet.has(targetId) ? targetId : '',
-                    sourceSemestrId: sourceValidSet.has(sourceId) ? sourceId : '',
-                };
-            });
-        }
-
-        function buildPairSelectOptions(options, selectedId, placeholder) {
-            const selected = String(selectedId || '');
-            let html = `<option value="">${escapeHtml(placeholder)}</option>`;
-            options.forEach(item => {
-                const val = String(item.id || '');
-                if (!val) return;
-                const selectedAttr = val === selected ? ' selected' : '';
-                html += `<option value="${escapeHtml(val)}"${selectedAttr}>${escapeHtml(item.text || '')}</option>`;
-            });
-            return html;
-        }
-
-        function renderPairRows() {
-            ensurePairRowsValid();
-            const container = $('#pairRowsContainer');
-            if (!pairRows.length) {
-                pairRows = [{ targetSemestrId: '', sourceSemestrId: '' }];
-            }
-
-            const targetOptions = getFilteredSemestrOptions('target');
-            const sourceOptions = getFilteredSemestrOptions('source');
-            const targetFreq = {};
-            pairRows.forEach(row => {
-                const tid = String(row.targetSemestrId || '');
-                if (!tid) return;
-                targetFreq[tid] = (targetFreq[tid] || 0) + 1;
-            });
-            const duplicatedTargetSet = new Set(
-                Object.keys(targetFreq).filter(tid => (targetFreq[tid] || 0) > 1)
-            );
-            let html = '';
-
-            pairRows.forEach((row, index) => {
-                const statusMeta = buildPairStatusMeta(row, duplicatedTargetSet);
-                html += `
-                    <div class="pair-row" data-row-index="${index}">
-                        <div>
-                            <div class="pair-row-header"><span class="pair-row-index">${index + 1}</span>Juftlik</div>
-                            <label class="pair-row-label">Maqsad semestr</label>
-                            <select class="form-control pair-target-semestr" data-row-index="${index}">
-                                ${buildPairSelectOptions(targetOptions, row.targetSemestrId, "Maqsad semestrni tanlang")}
-                            </select>
-                        </div>
-                        <div>
-                            <div class="pair-row-header" style="visibility:hidden;"><span class="pair-row-index">${index + 1}</span>Juftlik</div>
-                            <label class="pair-row-label">Manba semestr</label>
-                            <select class="form-control pair-source-semestr" data-row-index="${index}">
-                                ${buildPairSelectOptions(sourceOptions, row.sourceSemestrId, "Manba semestrni tanlang")}
-                            </select>
-                            <div class="pair-row-status ${statusMeta.className}">${escapeHtml(statusMeta.text)}</div>
-                        </div>
-                        <div style="padding-bottom:2px;">
-                            <button
-                                type="button"
-                                class="btn btn-danger btn-sm removePairRowBtn"
-                                data-row-index="${index}"
-                                ${pairRows.length <= 1 ? 'disabled' : ''}
-                            >
-                                <i class="fas fa-xmark"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-            });
-
-            container.html(html);
-        }
-
-        function getPairMapPayload() {
-            return pairRows
-                .map(row => ({
-                    target_semestr_id: parseInt(row.targetSemestrId || 0, 10) || 0,
-                    source_semestr_id: parseInt(row.sourceSemestrId || 0, 10) || 0,
-                }))
-                .filter(pair => pair.target_semestr_id > 0 && pair.source_semestr_id > 0);
-        }
-
-        function autofillMissingPairSources() {
-            let changed = false;
-            pairRows = pairRows.map(row => {
-                const targetId = String(row.targetSemestrId || '');
-                const sourceId = String(row.sourceSemestrId || '');
-                if (targetId === '' || sourceId !== '') {
-                    return row;
-                }
-                const suggestedSourceId = suggestSourceSemestrIdForTarget(targetId, '');
-                if (suggestedSourceId !== '') {
-                    changed = true;
-                    return {
-                        targetSemestrId: targetId,
-                        sourceSemestrId: suggestedSourceId
-                    };
-                }
-                return row;
-            });
-            return changed;
+            const hasCurrent = $('#' + prefix + 'Semestr option[value="' + current + '"]').length > 0;
+            $('#' + prefix + 'Semestr').val(hasCurrent ? current : '').trigger('change.select2');
         }
 
         function renderDarsSummary(row, darsTurlari) {
@@ -957,8 +592,7 @@ if ($kafedralarJson === false) {
         function loadCreatedRejaList() {
             const fakultetId = String($('#targetFakultet').val() || '');
             const yonalishId = String($('#targetYonalish').val() || '');
-            const targetSemestrValues = normalizeArray($('#targetSemestr').val());
-            const semestrId = targetSemestrValues.length === 1 ? targetSemestrValues[0] : '';
+            const semestrId = String($('#targetSemestr').val() || '');
             const url = `api/get_oquv_reja_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&yonalish_id=${encodeURIComponent(yonalishId)}&semestr_id=${encodeURIComponent(semestrId)}`;
 
             fetch(url)
@@ -1053,13 +687,12 @@ if ($kafedralarJson === false) {
                 '#targetYonalish',
                 '#targetSemestr',
                 '#sourceFakultet',
-                '#sourceYonalish'
+                '#sourceYonalish',
+                '#sourceSemestr'
             ].forEach(selector => {
-                const isTargetSemestr = selector === '#targetSemestr';
                 $(selector).select2({
                     placeholder: "Tanlang",
                     allowClear: true,
-                    closeOnSelect: !isTargetSemestr,
                     width: '100%',
                 });
             });
@@ -1098,12 +731,10 @@ if ($kafedralarJson === false) {
             $('#targetFakultet').on('change', function() {
                 syncYonalish('target');
                 syncSemestr('target');
-                renderPairRows();
                 loadCreatedRejaList();
             });
             $('#targetYonalish').on('change', function() {
                 syncSemestr('target');
-                renderPairRows();
                 loadCreatedRejaList();
             });
             $('#targetSemestr').on('change', function() {
@@ -1112,154 +743,51 @@ if ($kafedralarJson === false) {
 
             $('#sourceFakultet').on('change', function() {
                 syncYonalish('source');
-                autofillMissingPairSources();
-                renderPairRows();
+                syncSemestr('source');
             });
             $('#sourceYonalish').on('change', function() {
-                autofillMissingPairSources();
-                renderPairRows();
-            });
-            $('#syncPairsFromTargetBtn').on('click', function() {
-                const selectedTargets = normalizeArray($('#targetSemestr').val());
-                if (!selectedTargets.length) {
-                    Toast.fire({ icon: 'error', title: "Maqsad semestr(lar)ni tanlang" });
-                    return;
-                }
-
-                const sortedTargetIds = selectedTargets.slice().sort((a, b) => {
-                    const aNum = parseInt(getSemestrNumById(a) || 0, 10) || 0;
-                    const bNum = parseInt(getSemestrNumById(b) || 0, 10) || 0;
-                    if (aNum !== bNum) {
-                        return aNum - bNum;
-                    }
-                    return parseInt(a || 0, 10) - parseInt(b || 0, 10);
-                });
-
-                let autoMatched = 0;
-                pairRows = sortedTargetIds.map(targetId => {
-                    const suggestedSourceId = suggestSourceSemestrIdForTarget(targetId, '');
-                    if (suggestedSourceId !== '') {
-                        autoMatched += 1;
-                    }
-                    return {
-                        targetSemestrId: String(targetId || ''),
-                        sourceSemestrId: suggestedSourceId
-                    };
-                });
-
-                renderPairRows();
-                Toast.fire({
-                    icon: 'success',
-                    title: `${pairRows.length} ta juftlik yaratildi, ${autoMatched} tasi avtomatik moslandi`
-                });
-            });
-            $('#addPairRowBtn').on('click', function() {
-                pairRows.push({ targetSemestrId: '', sourceSemestrId: '' });
-                renderPairRows();
-            });
-            $(document).on('click', '.removePairRowBtn', function() {
-                const index = parseInt($(this).data('row-index') || -1, 10);
-                if (index < 0 || index >= pairRows.length) {
-                    return;
-                }
-                pairRows.splice(index, 1);
-                if (!pairRows.length) {
-                    pairRows = [{ targetSemestrId: '', sourceSemestrId: '' }];
-                }
-                renderPairRows();
-            });
-            $(document).on('change', '.pair-target-semestr', function() {
-                const index = parseInt($(this).data('row-index') || -1, 10);
-                if (index < 0 || index >= pairRows.length) {
-                    return;
-                }
-                pairRows[index].targetSemestrId = String($(this).val() || '');
-                pairRows[index].sourceSemestrId = suggestSourceSemestrIdForTarget(
-                    pairRows[index].targetSemestrId,
-                    pairRows[index].sourceSemestrId
-                );
-                renderPairRows();
-            });
-            $(document).on('change', '.pair-source-semestr', function() {
-                const index = parseInt($(this).data('row-index') || -1, 10);
-                if (index < 0 || index >= pairRows.length) {
-                    return;
-                }
-                pairRows[index].sourceSemestrId = String($(this).val() || '');
-                renderPairRows();
+                syncSemestr('source');
             });
             $('#refreshCreatedRejaBtn').on('click', function() {
                 loadCreatedRejaList();
             });
 
             $('#copyResetBtn').on('click', function() {
-                $('#targetFakultet, #targetYonalish, #targetSemestr, #sourceFakultet, #sourceYonalish').val('').trigger('change.select2');
+                $('#targetFakultet, #targetYonalish, #targetSemestr, #sourceFakultet, #sourceYonalish, #sourceSemestr').val('').trigger('change.select2');
                 syncYonalish('target', '');
                 syncSemestr('target', '');
                 syncYonalish('source', '');
-                pairRows = [{ targetSemestrId: '', sourceSemestrId: '' }];
-                renderPairRows();
+                syncSemestr('source', '');
                 loadCreatedRejaList();
             });
 
             $('#copyRunBtn').on('click', function() {
-                const sourceYonalishId = String($('#sourceYonalish').val() || '');
-                if (sourceYonalishId === '') {
-                    Toast.fire({ icon: 'error', title: "Manba yo'nalishni tanlang" });
+                const targetSemestrId = String($('#targetSemestr').val() || '');
+                const sourceSemestrId = String($('#sourceSemestr').val() || '');
+
+                if (targetSemestrId === '') {
+                    Toast.fire({ icon: 'error', title: "Maqsad semestrni tanlang" });
+                    return;
+                }
+                if (sourceSemestrId === '') {
+                    Toast.fire({ icon: 'error', title: "Manba semestrni tanlang" });
+                    return;
+                }
+                if (targetSemestrId === sourceSemestrId) {
+                    Toast.fire({ icon: 'error', title: "Manba va maqsad semestr bir xil bo'lmasligi kerak" });
                     return;
                 }
 
-                const pairMap = getPairMapPayload();
-                const incompleteRows = [];
-                (pairRows || []).forEach((row, idx) => {
-                    const t = String(row.targetSemestrId || '');
-                    const s = String(row.sourceSemestrId || '');
-                    if ((t === '' && s !== '') || (t !== '' && s === '')) {
-                        incompleteRows.push(idx + 1);
-                    }
-                });
-                if (incompleteRows.length > 0) {
-                    Toast.fire({
-                        icon: 'error',
-                        title: `Juftlik satrlarini to'liq tanlang: ${incompleteRows.join(', ')}`
-                    });
-                    return;
-                }
-                if (!pairMap.length) {
-                    Toast.fire({ icon: 'error', title: "Kamida bitta maqsad-manba semestr juftligini tanlang" });
-                    return;
-                }
-
-                const duplicatedTargets = new Set();
-                const seenTargets = new Set();
-                pairMap.forEach(pair => {
-                    const targetId = String(pair.target_semestr_id || '');
-                    if (!targetId) return;
-                    if (seenTargets.has(targetId)) {
-                        duplicatedTargets.add(targetId);
-                    }
-                    seenTargets.add(targetId);
-                });
-                if (duplicatedTargets.size > 0) {
-                    Toast.fire({ icon: 'error', title: "Bitta maqsad semestr faqat bitta juftlikda bo'lishi kerak" });
-                    return;
-                }
-
-                const sourceYonalishText = String($('#sourceYonalish option:selected').text() || '').trim();
-                const targetTextHtml = pairMap.map((pair, idx) => {
-                    const targetText = getSemestrOptionTextById(pair.target_semestr_id);
-                    const sourceText = getSemestrOptionTextById(pair.source_semestr_id);
-                    return `<li><b>${idx + 1}-juftlik:</b> ${escapeHtml(targetText || String(pair.target_semestr_id))} &larr; ${escapeHtml(sourceText || String(pair.source_semestr_id))}</li>`;
-                }).join('');
+                const targetText = String($('#targetSemestr option:selected').text() || '').trim();
+                const sourceText = String($('#sourceSemestr option:selected').text() || '').trim();
 
                 SwalApi.fire({
                     title: "Fanlarni nusxalash",
                     icon: "question",
                     html: `
                         <div style="text-align:left;">
-                            <div><b>Manba yo'nalish:</b> ${escapeHtml(sourceYonalishText)}</div>
-                            <div style="margin-top:6px;"><b>Semestr juftliklari:</b></div>
-                            <ul style="margin:6px 0 0 16px;">${targetTextHtml || '<li>-</li>'}</ul>
+                            <div><b>Manba:</b> ${escapeHtml(sourceText)}</div>
+                            <div style="margin-top:6px;"><b>Maqsad:</b> ${escapeHtml(targetText)}</div>
                         </div>
                     `,
                     showCancelButton: true,
@@ -1269,8 +797,8 @@ if ($kafedralarJson === false) {
                     if (!result.isConfirmed) return;
 
                     const formData = new FormData();
-                    formData.append('pair_map_json', JSON.stringify(pairMap));
-                    formData.append('source_yonalish_id', sourceYonalishId);
+                    formData.append('target_semestr_id', targetSemestrId);
+                    formData.append('source_semestr_id', sourceSemestrId);
 
                     fetch('insert/copy_oquv_reja_items.php', {
                         method: 'POST',
@@ -1303,8 +831,7 @@ if ($kafedralarJson === false) {
             syncYonalish('target');
             syncSemestr('target');
             syncYonalish('source');
-            pairRows = [{ targetSemestrId: '', sourceSemestrId: '' }];
-            renderPairRows();
+            syncSemestr('source');
             loadCreatedRejaList();
         });
 
