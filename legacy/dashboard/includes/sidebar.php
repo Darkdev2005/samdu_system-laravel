@@ -239,3 +239,4 @@
     </nav>
 </aside>
 <script src="../assets/js/sidebar-active.js"></script>
+<script src="../assets/js/select2-autofocus.js"></script>
