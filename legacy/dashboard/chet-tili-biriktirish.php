@@ -1833,7 +1833,7 @@ foreach ($guruhRows as $rowIndex => $row) {
             $(document).on('change', '#biriktirishFakultetFilter', function() {
                 refreshBiriktirishSemestrRows();
             });
-
+ 
 
             cacheChetTopFilterOptions();
 

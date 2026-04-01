@@ -129,6 +129,72 @@
                 grid-template-columns: 1fr;
             }
         }
+        .created-list-note {
+            margin-top: 8px;
+            color: #64748b;
+            font-size: 13px;
+        }
+        .created-list-controls {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .created-list-controls-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 220px;
+        }
+        .created-list-search {
+            max-width: 360px;
+            width: 100%;
+        }
+        .created-list-empty {
+            text-align: center;
+            color: #64748b;
+            padding: 18px 12px;
+        }
+        .table-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .created-list-footer {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .created-list-pagination {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .created-list-page-size {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #334155;
+            font-size: 13px;
+        }
+        .created-list-page-size select {
+            width: auto;
+            min-width: 72px;
+        }
+        .created-list-page-info {
+            color: #64748b;
+            font-size: 13px;
+            min-width: 100px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -285,6 +351,68 @@
                         </button>
                     </div>
                 </form>
+
+                <div class="card mt-4">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <h3>Yaratilgan tanlov fanlar ro'yxati</h3>
+                            <span class="badge" id="createdTanlovCount">0 ta</span>
+                        </div>
+                        <div class="table-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="refreshCreatedTanlovBtn">
+                                <i class="fas fa-rotate"></i> Yangilash
+                            </button>
+                        </div>
+                    </div>
+                    <div class="created-list-note">
+                        Jadvalda faqat kiritilgan tanlov fan variantlari ko'rsatiladi. Yuqoridagi filtrlar bo'yicha ro'yxatni toraytirishingiz mumkin.
+                    </div>
+                    <div class="created-list-controls">
+                        <div class="created-list-controls-left">
+                            <input
+                                type="text"
+                                class="form-control created-list-search"
+                                id="createdTanlovSearchInput"
+                                placeholder="Jadvaldan qidirish..."
+                            >
+                        </div>
+                    </div>
+                    <div class="table-responsive mt-2">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fan kodi</th>
+                                    <th>Asosiy fan</th>
+                                    <th>Tanlov varianti</th>
+                                    <th>Kafedra</th>
+                                    <th>Semestr</th>
+                                    <th>Harakat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="createdTanlovTableBody">
+                                <tr>
+                                    <td colspan="6" class="created-list-empty">Yuklanmoqda...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="created-list-footer">
+                        <div class="created-list-page-size">
+                            <label for="createdTanlovRowsPerPage">Sahifada:</label>
+                            <select id="createdTanlovRowsPerPage" class="form-control form-control-sm">
+                                <option value="10" selected>10 ta</option>
+                                <option value="25">25 ta</option>
+                                <option value="50">50 ta</option>
+                                <option value="100">100 ta</option>
+                            </select>
+                        </div>
+                        <div class="created-list-pagination">
+                            <button type="button" class="btn btn-outline btn-sm" id="createdTanlovPrevPage">Oldingi</button>
+                            <span class="created-list-page-info" id="createdTanlovPageInfo">0-0 / 0</span>
+                            <button type="button" class="btn btn-outline btn-sm" id="createdTanlovNextPage">Keyingi</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -305,6 +433,11 @@
         let fanIndex = 0;
         const allYonalishFilterOptions = [];
         const allSemestrFilterOptions = [];
+        let createdTanlovRowsById = {};
+        let createdTanlovRowsAll = [];
+        let createdTanlovRowsFiltered = [];
+        let createdTanlovPage = 1;
+        let createdTanlovRowsPerPage = 10;
 
         function triggerSelectRefresh($select) {
             if ($select && $select.length && $select.hasClass('select2-hidden-accessible')) {
@@ -489,6 +622,153 @@
             });
         }
 
+        function getCreatedTanlovSemestrLabel(row) {
+            const yonalishName = String(row.yonalish_name || '-');
+            const kirishYili = String(row.kirish_yili || '-');
+            const semestrNum = String(row.semestr_num || '-');
+            return `${yonalishName} - ${kirishYili} / ${semestrNum}`;
+        }
+
+        function getCreatedTanlovRowSearchText(row) {
+            return [
+                row.fan_code || '',
+                row.base_fan_name || '',
+                row.fan_name || '',
+                row.kafedra_name || '',
+                row.yonalish_name || '',
+                row.kirish_yili || '',
+                row.semestr_num || ''
+            ].join(' ').toLowerCase();
+        }
+
+        function renderCreatedTanlovTable() {
+            const tbody = $('#createdTanlovTableBody');
+            const countBadge = $('#createdTanlovCount');
+            const rows = createdTanlovRowsFiltered;
+            const totalRows = rows.length;
+            countBadge.text(`${totalRows} ta`);
+
+            if (!totalRows) {
+                tbody.html('<tr><td colspan="6" class="created-list-empty">Tanlangan filter bo\'yicha tanlov fan topilmadi</td></tr>');
+                $('#createdTanlovPageInfo').text('0-0 / 0');
+                $('#createdTanlovPrevPage').prop('disabled', true);
+                $('#createdTanlovNextPage').prop('disabled', true);
+                return;
+            }
+
+            const totalPages = Math.max(1, Math.ceil(totalRows / createdTanlovRowsPerPage));
+            if (createdTanlovPage > totalPages) {
+                createdTanlovPage = totalPages;
+            }
+            if (createdTanlovPage < 1) {
+                createdTanlovPage = 1;
+            }
+
+            const fromIndex = (createdTanlovPage - 1) * createdTanlovRowsPerPage;
+            const pageRows = rows.slice(fromIndex, fromIndex + createdTanlovRowsPerPage);
+            let html = '';
+            pageRows.forEach((row) => {
+                html += `
+                    <tr>
+                        <td>${escapeOptionText(row.fan_code || '-')}</td>
+                        <td>${escapeOptionText(row.base_fan_name || '-')}</td>
+                        <td>${escapeOptionText(row.fan_name || '-')}</td>
+                        <td>${escapeOptionText(row.kafedra_name || '-')}</td>
+                        <td>${escapeOptionText(getCreatedTanlovSemestrLabel(row))}</td>
+                        <td>
+                            <div class="table-actions">
+                                <button type="button" class="btn btn-outline btn-sm editCreatedTanlovBtn" data-fan-id="${row.fan_id}">
+                                    <i class="fas fa-pen"></i> Tahrirlash
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm deleteCreatedTanlovBtn" data-fan-id="${row.fan_id}">
+                                    <i class="fas fa-trash-alt"></i> O'chirish
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.html(html);
+            const toIndex = Math.min(fromIndex + pageRows.length, totalRows);
+            $('#createdTanlovPageInfo').text(`${fromIndex + 1}-${toIndex} / ${totalRows}`);
+            $('#createdTanlovPrevPage').prop('disabled', createdTanlovPage <= 1);
+            $('#createdTanlovNextPage').prop('disabled', createdTanlovPage >= totalPages);
+        }
+
+        function applyCreatedTanlovSearch(resetPage = true) {
+            const query = String($('#createdTanlovSearchInput').val() || '').trim().toLowerCase();
+            if (query === '') {
+                createdTanlovRowsFiltered = createdTanlovRowsAll.slice();
+            } else {
+                createdTanlovRowsFiltered = createdTanlovRowsAll.filter((row) => {
+                    return getCreatedTanlovRowSearchText(row).includes(query);
+                });
+            }
+            if (resetPage) {
+                createdTanlovPage = 1;
+            }
+            renderCreatedTanlovTable();
+        }
+
+        function loadCreatedTanlovList(resetPage = true) {
+            const fakultetId = getSelectedIdWithFallback($('#fakultetFilter'), ['Barcha fakultetlar', 'Fakultetni tanlang']) || '';
+            const yonalishId = getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang", "Barcha yo'nalishlar"]) || '';
+            const semestrId = getSelectedIdWithFallback($('#semestrSelect'), ['Semestrni tanlang', 'Barcha semestrlar']) || '';
+            const url = `api/get_tanlov_fan_created_list.php?fakultet_id=${encodeURIComponent(fakultetId)}&yonalish_id=${encodeURIComponent(yonalishId)}&semestr_id=${encodeURIComponent(semestrId)}`;
+
+            fetch(url)
+                .then((res) => res.json())
+                .then((data) => {
+                    if (!data || !data.success) {
+                        createdTanlovRowsById = {};
+                        createdTanlovRowsAll = [];
+                        createdTanlovRowsFiltered = [];
+                        const message = (data && data.message) ? String(data.message) : "Ro'yxatni yuklab bo'lmadi";
+                        $('#createdTanlovTableBody').html(`<tr><td colspan="6" class="created-list-empty">${escapeOptionText(message)}</td></tr>`);
+                        $('#createdTanlovCount').text('0 ta');
+                        $('#createdTanlovPageInfo').text('0-0 / 0');
+                        $('#createdTanlovPrevPage').prop('disabled', true);
+                        $('#createdTanlovNextPage').prop('disabled', true);
+                        return;
+                    }
+
+                    const rows = Array.isArray(data.rows) ? data.rows : [];
+                    createdTanlovRowsById = {};
+                    rows.forEach((row) => {
+                        const fanId = parseInt(row.fan_id || 0, 10);
+                        if (fanId > 0) {
+                            createdTanlovRowsById[String(fanId)] = row;
+                        }
+                    });
+
+                    createdTanlovRowsAll = rows;
+                    applyCreatedTanlovSearch(resetPage);
+                })
+                .catch(() => {
+                    createdTanlovRowsById = {};
+                    createdTanlovRowsAll = [];
+                    createdTanlovRowsFiltered = [];
+                    $('#createdTanlovTableBody').html('<tr><td colspan="6" class="created-list-empty">Server bilan bog\'lanib bo\'lmadi</td></tr>');
+                    $('#createdTanlovCount').text('0 ta');
+                    $('#createdTanlovPageInfo').text('0-0 / 0');
+                    $('#createdTanlovPrevPage').prop('disabled', true);
+                    $('#createdTanlovNextPage').prop('disabled', true);
+                });
+        }
+
+        function buildEditKafedraOptions(selectedId) {
+            const selected = String(selectedId || '');
+            let html = '<option value="">Tanlang</option>';
+            (kafedralarList || []).forEach((item) => {
+                const id = String(item.id || '');
+                if (!id) return;
+                const selectedAttr = id === selected ? ' selected' : '';
+                html += `<option value="${id}"${selectedAttr}>${escapeOptionText(item.name || '')}</option>`;
+            });
+            return `<select id="editTanlovKafedraId" class="swal2-input">${html}</select>`;
+        }
+
         $(document).ready(function() {
             cacheTopFilterOptions();
 
@@ -526,12 +806,14 @@
             $('#applyTopFiltersBtn').on('click', function() {
                 rebuildYonalishFilter(getSelectedIdWithFallback($('#yonalishFilter'), ["Yo'nalishni tanlang"]));
                 rebuildSemestrFilter(getSelectedIdWithFallback($('#semestrSelect'), ['Semestrni tanlang']));
+                loadCreatedTanlovList(true);
             });
 
             $('#resetTopFiltersBtn').on('click', function() {
                 $('#fakultetFilter').val('').trigger('change');
                 rebuildYonalishFilter('');
                 rebuildSemestrFilter('');
+                loadCreatedTanlovList(true);
             });
 
             const syncTopFilters = () => {
@@ -552,11 +834,41 @@
                 rebuildYonalishFilter(currentYonalish);
                 rebuildSemestrFilter(getSelectedIdWithFallback($('#semestrSelect'), ['Semestrni tanlang']));
             });
+
+            $('#createdTanlovSearchInput').on('input', function() {
+                applyCreatedTanlovSearch(true);
+            });
+            $('#refreshCreatedTanlovBtn').on('click', function() {
+                loadCreatedTanlovList(false);
+            });
+            $('#createdTanlovRowsPerPage').on('change', function() {
+                const val = parseInt($(this).val() || '10', 10);
+                createdTanlovRowsPerPage = Number.isNaN(val) || val <= 0 ? 10 : val;
+                createdTanlovPage = 1;
+                renderCreatedTanlovTable();
+            });
+            $('#createdTanlovPrevPage').on('click', function() {
+                if (createdTanlovPage > 1) {
+                    createdTanlovPage--;
+                    renderCreatedTanlovTable();
+                }
+            });
+            $('#createdTanlovNextPage').on('click', function() {
+                const total = createdTanlovRowsFiltered.length;
+                const totalPages = Math.max(1, Math.ceil(total / createdTanlovRowsPerPage));
+                if (createdTanlovPage < totalPages) {
+                    createdTanlovPage++;
+                    renderCreatedTanlovTable();
+                }
+            });
+
+            loadCreatedTanlovList(true);
         });
 
         // Izoh: Semestr tanlanganda tanlov fanlar ro'yxatini yangilash.
         $('#semestrSelect').on('change', function() {
             refreshTanlovOptionsBySemestr();
+            loadCreatedTanlovList(true);
         });
 
         const kafedralarList = <?php echo $kafedralarJson; ?>;
@@ -791,6 +1103,99 @@
             timerProgressBar: true
         });
 
+        $(document).on('click', '.editCreatedTanlovBtn', function() {
+            const fanId = String($(this).data('fan-id') || '');
+            const row = createdTanlovRowsById[fanId];
+            if (!row) return;
+
+            Swal.fire({
+                title: "Tanlov fanini tahrirlash",
+                html: `
+                    <input id="editTanlovFanName" class="swal2-input" placeholder="Tanlov varianti nomi" value="${escapeOptionText(row.fan_name || '')}">
+                    <div style="text-align:left;margin:8px 0 4px 0;font-size:13px;color:#64748b;">Kafedra</div>
+                    ${buildEditKafedraOptions(row.kafedra_id || '')}
+                `,
+                showCancelButton: true,
+                confirmButtonText: "Saqlash",
+                cancelButtonText: "Bekor qilish",
+                preConfirm: () => {
+                    const fanName = String($('#editTanlovFanName').val() || '').trim();
+                    const kafedraId = parseInt($('#editTanlovKafedraId').val() || '0', 10);
+                    if (fanName === '') {
+                        Swal.showValidationMessage("Tanlov varianti nomini kiriting");
+                        return false;
+                    }
+                    if (!kafedraId || kafedraId <= 0) {
+                        Swal.showValidationMessage("Kafedrani tanlang");
+                        return false;
+                    }
+                    return { fanName, kafedraId };
+                }
+            }).then((result) => {
+                if (!result.isConfirmed || !result.value) return;
+
+                const payload = result.value;
+                const formData = new FormData();
+                formData.append('fan_id', fanId);
+                formData.append('fan_name', payload.fanName);
+                formData.append('kafedra_id', String(payload.kafedraId));
+
+                fetch('insert/update_tanlov_fan_item.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success) {
+                        Toast.fire({ icon: 'success', title: data.message || "Tanlov fan yangilandi" });
+                        loadCreatedTanlovList(false);
+                    } else {
+                        Toast.fire({ icon: 'error', title: (data && data.message) || "Yangilashda xatolik" });
+                    }
+                })
+                .catch(() => {
+                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+                });
+            });
+        });
+
+        $(document).on('click', '.deleteCreatedTanlovBtn', function() {
+            const fanId = String($(this).data('fan-id') || '');
+            const row = createdTanlovRowsById[fanId];
+            if (!row) return;
+
+            Swal.fire({
+                title: "Tanlov fanini o'chirasizmi?",
+                text: `${row.fan_code || ''} - ${row.fan_name || ''}`,
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonText: "Ha, o'chirish",
+                cancelButtonText: "Bekor qilish"
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+
+                const formData = new FormData();
+                formData.append('fan_id', fanId);
+
+                fetch('insert/delete_oquv_reja_item.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success) {
+                        Toast.fire({ icon: 'success', title: data.message || "Tanlov fan o'chirildi" });
+                        loadCreatedTanlovList(false);
+                    } else {
+                        Toast.fire({ icon: 'error', title: (data && data.message) || "O'chirishda xatolik" });
+                    }
+                })
+                .catch(() => {
+                    Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+                });
+            });
+        });
+
         $('#tanlovFanForm').on('submit', function(e) {
             e.preventDefault();
             // Izoh: Tanlov fan kodi va nomi select change hodisasida hidden inputga yoziladi.
@@ -827,6 +1232,7 @@
                     firstCard.data('index', 0);
                     firstCard.html(buildTanlovCard(0));
                     initializeSelect2(firstCard);
+                    loadCreatedTanlovList(false);
                     
                 } else {
                     Toast.fire({
