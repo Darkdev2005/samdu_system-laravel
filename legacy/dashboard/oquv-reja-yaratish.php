@@ -130,6 +130,16 @@
             color: #b45309;
             font-weight: 600;
         }
+        /* Izoh: Dars soati inputlarida brauzer spinner (up/down) tugmalarini yashiramiz. */
+        .soat-input::-webkit-outer-spin-button,
+        .soat-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .soat-input[type="number"] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
         .compact-list {
             margin: 0;
             padding-left: 18px;
@@ -303,9 +313,11 @@
                                         <div class="form-group">
                                             <label>Dars soati</label>
                                             <input type="number"
-                                                class="form-control"
+                                                class="form-control soat-input"
                                                 name="dars_soati[0][]"
-                                                min="0">
+                                                min="0"
+                                                step="1"
+                                                inputmode="numeric">
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
@@ -585,7 +597,7 @@
                         </div>
                         <div class="form-group">
                             <label>Dars soati</label>
-                            <input type="number" class="form-control" name="dars_soati[${index}][]" min="0">
+                            <input type="number" class="form-control soat-input" name="dars_soati[${index}][]" min="0" step="1" inputmode="numeric">
                         </div>
                     </div>
                 `;
@@ -622,7 +634,8 @@
                 }
             });
 
-            const credit = Math.round(totalHours / 30);
+            const creditRaw = totalHours / 30;
+            const credit = Number.isInteger(creditRaw) ? creditRaw : creditRaw.toFixed(2);
             card.find('.jami-soat-input').val(totalHours);
             card.find('.kredit-input').val(credit);
 
@@ -631,7 +644,7 @@
 
             if (totalHours > 0 && totalHours % 30 !== 0) {
                 note
-                    .text(`30 soat = 1 kredit. Joriy jami ${totalHours} soat, kredit round(${totalHours}/30) = ${credit}`)
+                    .text(`Jami ${totalHours} soat 30 ga qoldiqsiz bo'linishi shart. Shu holatda saqlash bloklanadi.`)
                     .addClass('is-warning');
             } else {
                 note
@@ -932,15 +945,16 @@
                     return;
                 }
 
-                const rawSoat = String(soatInput.val() ?? '').trim();
-                const soatValue = rawSoat === '' ? 0 : Number(rawSoat);
+                // Izoh: Bo'sh qolgan soatlarni avtomatik 0 ga tenglaymiz.
+                if (String(soatInput.val() ?? '').trim() === '') {
+                    soatInput.val('0');
+                }
 
-                if (rawSoat === '' || !Number.isFinite(soatValue) || soatValue <= 0) {
-                    typeSelect.prop('disabled', true);
-                    soatInput.prop('disabled', true);
-                    tempDisabledFields.push(typeSelect[0], soatInput[0]);
-                    if (typeSelect.is('select')) {
-                        typeSelect.removeClass('is-invalid');
+                const soatValue = Number(String(soatInput.val() ?? '').trim());
+                if (!Number.isFinite(soatValue) || soatValue < 0) {
+                    hasInvalidRow = true;
+                    if (document.activeElement !== soatInput[0]) {
+                        soatInput.trigger('focus');
                     }
                     return;
                 }
@@ -961,6 +975,46 @@
             });
 
             return { tempDisabledFields, hasInvalidRow };
+        }
+
+        function getCardTitleForValidation(card, cardNumber) {
+            const fanNameInput = card.find('input[name^="fan_nomi["], input[name^="tanlov_fan_nomi["]').first();
+            const fanName = String(fanNameInput.val() || '').trim();
+            if (fanName !== '') {
+                return fanName;
+            }
+            return `Fan #${cardNumber}`;
+        }
+
+        function validateThirtyRuleOnForm(formElement) {
+            const invalidCards = [];
+
+            $(formElement).find('.reja-card').each(function(index) {
+                const card = $(this);
+                let totalHours = 0;
+                let hasPositive = false;
+
+                card.find('input[name^="dars_soati["]').each(function() {
+                    const raw = String($(this).val() ?? '').trim();
+                    if (raw === '') {
+                        return;
+                    }
+                    const value = parseInt(raw, 10);
+                    if (Number.isInteger(value) && value > 0) {
+                        totalHours += value;
+                        hasPositive = true;
+                    }
+                });
+
+                if (hasPositive && totalHours % 30 !== 0) {
+                    invalidCards.push({
+                        title: getCardTitleForValidation(card, index + 1),
+                        totalHours
+                    });
+                }
+            });
+
+            return invalidCards;
         }
 
         function restoreTemporarilyDisabledFields(fields) {
@@ -1205,7 +1259,7 @@
                 darsRows += `
                     <div style="display:flex;gap:8px;align-items:center;margin:6px 0;">
                         <label style="flex:1;text-align:left;">${escapeHtml(tur.name || '')}</label>
-                        <input type="number" min="0" step="1" class="swal2-input edit-dars-input" data-dars-tur-id="${tid}" value="${soat}" style="width:120px;margin:0;">
+                        <input type="number" min="0" step="1" inputmode="numeric" class="swal2-input edit-dars-input soat-input" data-dars-tur-id="${tid}" value="${soat}" style="width:120px;margin:0;">
                     </div>
                 `;
             });
@@ -1265,17 +1319,17 @@
                     }
 
                     const dars = {};
-                    let hasPositive = false;
+                    let totalHours = 0;
                     $('.edit-dars-input').each(function() {
                         const darsTurId = String($(this).data('dars-tur-id') || '');
                         let value = parseInt($(this).val() || 0, 10);
                         if (Number.isNaN(value) || value < 0) value = 0;
                         dars[darsTurId] = value;
-                        if (value > 0) hasPositive = true;
+                        totalHours += value;
                     });
 
-                    if (!hasPositive) {
-                        SwalApi.showValidationMessage("Kamida bitta dars soati 0 dan katta bo'lishi kerak");
+                    if (totalHours % 30 !== 0) {
+                        SwalApi.showValidationMessage(`Jami soat (${totalHours}) 30 ga qoldiqsiz bo'linishi shart`);
                         return false;
                     }
 
@@ -1370,12 +1424,22 @@
         $('#oquvRejaForm').on('submit', function(e) {
             e.preventDefault();
 
+            const invalidCards = validateThirtyRuleOnForm(this);
+            if (invalidCards.length > 0) {
+                const first = invalidCards[0];
+                Toast.fire({
+                    icon: 'error',
+                    title: `${first.title}: jami soat (${first.totalHours}) 30 ga qoldiqsiz bo'linishi shart`
+                });
+                return;
+            }
+
             const { tempDisabledFields, hasInvalidRow } = prepareDarsRowsForSubmit(this);
             if (hasInvalidRow) {
                 restoreTemporarilyDisabledFields(tempDisabledFields);
                 Toast.fire({
                     icon: 'error',
-                    title: "Dars soati kiritilgan qatorlarda dars turi tanlanishi shart"
+                    title: "Dars soatida manfiy yoki noto'g'ri qiymat bor"
                 });
                 return;
             }
@@ -1440,6 +1504,20 @@
 
         $(document).on('input', 'input[name^="dars_soati["]', function() {
             updateCardCalculator($(this).closest('.reja-card'));
+        });
+
+        // Izoh: Number input fokusda turganda mouse wheel bilan qiymat o'zgarib ketmasin.
+        $(document).on('wheel', 'input.soat-input[type="number"]', function() {
+            if (document.activeElement === this) {
+                this.blur();
+            }
+        });
+
+        // Izoh: ArrowUp/ArrowDown tugmalari bilan number input qiymati o'zgarib ketmasin.
+        $(document).on('keydown', 'input.soat-input[type="number"]', function(e) {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+            }
         });
 
         updateAllCardCalculators();

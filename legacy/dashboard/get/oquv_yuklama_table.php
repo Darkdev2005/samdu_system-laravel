@@ -151,9 +151,11 @@ $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
                             }
                         }
                         $yakuniy = (!$isExternal && $talaba > 0) ? round($talaba * 0.3) : 0;
-                        $kursIshi = $talaba > 0 ? round($talaba * 2.4) : 0;
-                        $kursLoyiha = $talaba > 0 ? round($talaba * 3.6) : 0;
-                        $uzluksiz = $talaba > 0 ? round($talaba * ($isExternal ? 0.4 : 2)) : 0;
+                        // Izoh: Kurs ishi/kurs loyihasi faqat qo'shimcha o'quv rejadan kiritilganda ko'rsatiladi.
+                        $kursIshi = 0;
+                        $kursLoyiha = 0;
+                        // Izoh: Uzluksiz malakaviy amaliyot faqat qo'shimcha o'quv rejadan kiritilganda ko'rsatiladi.
+                        $uzluksiz = 0;
                         $amaldaMaruza = (float)($row['maruza_soat'] ?? 0) * (int)($row['patok_soni'] ?? 0);
                         $amaldaAmaliy = (float)($row['amaliy_soat'] ?? 0) * (int)($row['kattaguruh_soni'] ?? 0);
                         $amaldaLab = (float)($row['laboratoriya_soat'] ?? 0) * (int)($row['kichikguruh_soni'] ?? 0);

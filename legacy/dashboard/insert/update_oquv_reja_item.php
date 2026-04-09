@@ -48,7 +48,6 @@ if (!$semestr) {
 }
 
 $normalizedDars = [];
-$hasPositive = false;
 foreach ($darsMap as $darsTurIdRaw => $soatRaw) {
     $darsTurId = (int)$darsTurIdRaw;
     $soat = (int)$soatRaw;
@@ -56,13 +55,21 @@ foreach ($darsMap as $darsTurIdRaw => $soatRaw) {
         continue;
     }
     $normalizedDars[$darsTurId] = $soat;
-    if ($soat > 0) {
-        $hasPositive = true;
-    }
 }
 
-if (count($normalizedDars) === 0 || !$hasPositive) {
-    echo json_encode(['success' => false, 'message' => "Kamida bitta dars soati 0 dan katta bo'lishi kerak"]);
+if (count($normalizedDars) === 0) {
+    echo json_encode(['success' => false, 'message' => "Kamida bitta dars soati kiritilishi kerak"]);
+    return;
+}
+
+$totalHours = 0;
+foreach ($normalizedDars as $value) {
+    if ((int)$value > 0) {
+        $totalHours += (int)$value;
+    }
+}
+if ($totalHours % 30 !== 0) {
+    echo json_encode(['success' => false, 'message' => "Jami soat ({$totalHours}) 30 ga qoldiqsiz bo'linishi shart"]);
     return;
 }
 

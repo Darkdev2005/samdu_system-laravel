@@ -326,9 +326,7 @@ $completedSubjectsCount = 0;
 foreach (($data['semesters'] ?? []) as $semester) {
     foreach (($semester['subjects'] ?? []) as $subject) {
         $totalSubjectsCount++;
-        if ((int)($subject['totalHours'] ?? 0) > 0) {
-            $completedSubjectsCount++;
-        }
+        $completedSubjectsCount++;
     }
 }
 $completionPercent = $totalSubjectsCount > 0
@@ -360,15 +358,9 @@ function renderSubjectCells($subject, $side = 'left') {
     $fanNomiHtml = '';
     
     if (isset($subject['isTanlovFan']) && $subject['isTanlovFan'] && isset($subject['variants'])) {
-        $fanNomiHtml = '<ol class="tanlov-fan-list">';
-
-        // Izoh: O'quv rejada tanlov fan variant nomlari ko'rsatilmaydi, har biri "Tanlov fan" deb chiqadi.
-        // Bu yerda nechta variant bo'lsa, shuncha band chiqaramiz.
-        foreach ($subject['variants'] as $variant) {
-            $fanNomiHtml .= '<li>Tanlov fan</li>';
-        }
-
-        $fanNomiHtml .= '</ol>';
+        // Izoh: O'quv reja jadvalida tanlov fan bitta satr sifatida ko'rsatiladi.
+        // Variantlar soni bu sahifada takror chiqarilmaydi (ishchi reja sahifasida alohida ko'rinadi).
+        $fanNomiHtml = 'Tanlov fan';
     } else {
         $fanNomiHtml = htmlspecialchars($subject['name']);
     }
@@ -432,82 +424,91 @@ function renderSubjectCells($subject, $side = 'left') {
             </header>
 
             <div class="content-container">
-                <div class="controls-panel">
-                    <form class="filter-form" method="get" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                        <select class="form-control" name="fakultet_id" style="min-width:220px;" data-placeholder="Barcha fakultetlar">
-                            <option value="">Barcha fakultetlar</option>
-                            <?php foreach ($fakultetlar as $f): ?>
-                                <option value="<?= (int)$f['id'] ?>" <?= (!empty($filters['fakultet_id']) && (int)$filters['fakultet_id'] === (int)$f['id']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($f['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <select class="form-control" name="yonalish_id" style="min-width:200px;" data-placeholder="Barcha yo'nalishlar">
-                            <option value="">Barcha yo'nalishlar</option>
-                            <?php foreach ($yonalishlar as $y): ?>
-                                <option
-                                    value="<?= (int)$y['id'] ?>"
-                                    data-fakultet-id="<?= (int)($y['fakultet_id'] ?? 0) ?>"
-                                    <?= (!empty($filters['yonalish_id']) && (int)$filters['yonalish_id'] === (int)$y['id']) ? 'selected' : '' ?>
-                                >
-                                    <?= htmlspecialchars($y['name']) ?> - <?= htmlspecialchars($y['kirish_yili']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <select class="form-control" name="semestr" style="min-width:150px;" data-placeholder="Barcha semestrlar">
-                            <option value="">Barcha semestrlar</option>
-                            <?php foreach ($semestrPairs as $pairStart): ?>
-                                <option value="<?= $pairStart ?>" <?= (!empty($filters['semestr']) && (int)$filters['semestr'] === (int)$pairStart) ? 'selected' : '' ?>>
-                                    <?= $pairStart ?>-<?= $pairStart + 1 ?>-semestr
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <button class="btn btn-primary" type="submit">
-                            <i class="fas fa-filter"></i> Filtrlash
-                        </button>
-                        <a class="btn btn-secondary" href="oquv-rejalar.php">
-                            <i class="fas fa-rotate-left"></i> Tozalash
-                        </a>
-                    </form>
-                    <div class="action-buttons" style="display: flex; gap: 10px;">
-                        <button class="btn btn-success" id="exportExcel">
-                            <i class="fas fa-file-excel"></i> Excel ga eksport
-                        </button>
-                        <button class="btn btn-info" id="printTable">
-                            <i class="fas fa-print"></i> Chop etish
-                        </button>
-                    </div>
+                <div class="overview-toggle-row">
+                    <button type="button" class="btn btn-outline btn-sm overview-toggle-btn" id="toggleOverviewBtn" aria-expanded="false">
+                        <i class="fas fa-angles-down" aria-hidden="true"></i>
+                        <span data-role="toggle-overview-text">Filtr va statistikani ochish</span>
+                    </button>
                 </div>
 
-                <div class="stats-cards">
-                    <div class="stat-card-excel">
-                        <h4>Jami Fanlar</h4>
-                        <div class="value"><?php echo array_sum(array_map(function($sem) { return count($sem['subjects']); }, $data['semesters'])); ?></div>
-                        <div class="label">Barcha semestrlar bo'yicha</div>
-                    </div>
-                    
-                    <div class="stat-card-excel">
-                        <h4>Umumiy Kreditlar</h4>
-                        <div class="value"><?php echo $data['yearlyTotal']['credit']; ?></div>
-                        <div class="label">Jami kredit soatlari</div>
-                    </div>
-                    
-                    <div class="stat-card-excel">
-                        <h4>Jami Soatlar</h4>
-                        <div class="value"><?php echo $data['yearlyTotal']['totalHours']; ?></div>
-                        <div class="label">Barcha fanlar uchun</div>
-                    </div>
-                    
-                    <div class="stat-card-excel">
-                        <h4>Semestrlar</h4>
-                        <div class="value"><?php echo count($data['semesters']); ?></div>
-                        <div class="label">Umumiy semestrlar soni</div>
+                <div class="overview-content is-collapsed" id="overviewContent">
+                    <div class="controls-panel">
+                        <form class="filter-form" method="get" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                            <select class="form-control" name="fakultet_id" style="min-width:220px;" data-placeholder="Barcha fakultetlar">
+                                <option value="">Barcha fakultetlar</option>
+                                <?php foreach ($fakultetlar as $f): ?>
+                                    <option value="<?= (int)$f['id'] ?>" <?= (!empty($filters['fakultet_id']) && (int)$filters['fakultet_id'] === (int)$f['id']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($f['name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <select class="form-control" name="yonalish_id" style="min-width:200px;" data-placeholder="Barcha yo'nalishlar">
+                                <option value="">Barcha yo'nalishlar</option>
+                                <?php foreach ($yonalishlar as $y): ?>
+                                    <option
+                                        value="<?= (int)$y['id'] ?>"
+                                        data-fakultet-id="<?= (int)($y['fakultet_id'] ?? 0) ?>"
+                                        <?= (!empty($filters['yonalish_id']) && (int)$filters['yonalish_id'] === (int)$y['id']) ? 'selected' : '' ?>
+                                    >
+                                        <?= htmlspecialchars($y['name']) ?> - <?= htmlspecialchars($y['kirish_yili']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <select class="form-control" name="semestr" style="min-width:150px;" data-placeholder="Barcha semestrlar">
+                                <option value="">Barcha semestrlar</option>
+                                <?php foreach ($semestrPairs as $pairStart): ?>
+                                    <option value="<?= $pairStart ?>" <?= (!empty($filters['semestr']) && (int)$filters['semestr'] === (int)$pairStart) ? 'selected' : '' ?>>
+                                        <?= $pairStart ?>-<?= $pairStart + 1 ?>-semestr
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button class="btn btn-primary" type="submit">
+                                <i class="fas fa-filter"></i> Filtrlash
+                            </button>
+                            <a class="btn btn-secondary" href="oquv-rejalar.php">
+                                <i class="fas fa-rotate-left"></i> Tozalash
+                            </a>
+                        </form>
+                        <div class="action-buttons" style="display: flex; gap: 10px;">
+                            <button class="btn btn-success" id="exportExcel">
+                                <i class="fas fa-file-excel"></i> Excel ga eksport
+                            </button>
+                            <button class="btn btn-info" id="printTable">
+                                <i class="fas fa-print"></i> Chop etish
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="stat-card-excel">
-                        <h4>Reja Bajarilishi</h4>
-                        <div class="value"><?php echo $completionPercentText; ?>%</div>
-                        <div class="label"><?php echo $completedSubjectsCount; ?> / <?php echo $totalSubjectsCount; ?> fan to'ldirilgan</div>
+                    <div class="stats-cards">
+                        <div class="stat-card-excel">
+                            <h4>Jami Fanlar</h4>
+                            <div class="value"><?php echo array_sum(array_map(function($sem) { return count($sem['subjects']); }, $data['semesters'])); ?></div>
+                            <div class="label">Barcha semestrlar bo'yicha</div>
+                        </div>
+                        
+                        <div class="stat-card-excel">
+                            <h4>Umumiy Kreditlar</h4>
+                            <div class="value"><?php echo $data['yearlyTotal']['credit']; ?></div>
+                            <div class="label">Jami kredit soatlari</div>
+                        </div>
+                        
+                        <div class="stat-card-excel">
+                            <h4>Jami Soatlar</h4>
+                            <div class="value"><?php echo $data['yearlyTotal']['totalHours']; ?></div>
+                            <div class="label">Barcha fanlar uchun</div>
+                        </div>
+                        
+                        <div class="stat-card-excel">
+                            <h4>Semestrlar</h4>
+                            <div class="value"><?php echo count($data['semesters']); ?></div>
+                            <div class="label">Umumiy semestrlar soni</div>
+                        </div>
+
+                        <div class="stat-card-excel">
+                            <h4>Reja Bajarilishi</h4>
+                            <div class="value"><?php echo $completionPercentText; ?>%</div>
+                            <div class="label"><?php echo $completedSubjectsCount; ?> / <?php echo $totalSubjectsCount; ?> fan to'ldirilgan</div>
+                        </div>
                     </div>
                 </div>
 
@@ -702,8 +703,58 @@ function renderSubjectCells($subject, $side = 'left') {
             window.print();
         }
 
+        function initOverviewToggle() {
+            const toggleBtn = document.getElementById('toggleOverviewBtn');
+            const overviewContent = document.getElementById('overviewContent');
+            const contentContainer = document.querySelector('.content-container');
+            if (!toggleBtn || !overviewContent || !contentContainer) {
+                return;
+            }
+
+            const toggleIcon = toggleBtn.querySelector('i');
+            const toggleText = toggleBtn.querySelector('[data-role="toggle-overview-text"]');
+            const storageKey = 'oquvRejaOverviewCollapsed';
+
+            const applyState = (collapsed) => {
+                overviewContent.classList.toggle('is-collapsed', collapsed);
+                contentContainer.classList.toggle('compact-mode', collapsed);
+                toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                if (toggleIcon) {
+                    toggleIcon.classList.toggle('fa-angles-down', collapsed);
+                    toggleIcon.classList.toggle('fa-angles-up', !collapsed);
+                }
+                if (toggleText) {
+                    toggleText.textContent = collapsed
+                        ? "Filtr va statistikani ochish"
+                        : "Filtr va statistikani yig'ish";
+                }
+            };
+
+            let startCollapsed = true;
+            try {
+                const saved = localStorage.getItem(storageKey);
+                if (saved !== null) {
+                    startCollapsed = saved === '1';
+                }
+            } catch (e) {
+                startCollapsed = true;
+            }
+
+            applyState(startCollapsed);
+
+            toggleBtn.addEventListener('click', function() {
+                const collapsed = !overviewContent.classList.contains('is-collapsed');
+                applyState(collapsed);
+                try {
+                    localStorage.setItem(storageKey, collapsed ? '1' : '0');
+                } catch (e) {
+                }
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             updateCurrentDate();
+            initOverviewToggle();
             
             document.getElementById('exportExcel')?.addEventListener('click', exportToExcel);
             document.getElementById('printTable')?.addEventListener('click', printTable);

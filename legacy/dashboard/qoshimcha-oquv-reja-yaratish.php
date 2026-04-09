@@ -1564,7 +1564,7 @@ if ($kafedralarJson === false) {
         function updateExtraFields(card, qoshimchaId) {
             card.find('.extra-field').hide();
 
-            if ([QOSHIMCHA_IDS.OQUV_PED, QOSHIMCHA_IDS.DALA_OTM, QOSHIMCHA_IDS.DALA_TASH, QOSHIMCHA_IDS.ISHLAB_CHIQARISH].includes(qoshimchaId)) {
+            if ([QOSHIMCHA_IDS.DALA_OTM, QOSHIMCHA_IDS.DALA_TASH, QOSHIMCHA_IDS.ISHLAB_CHIQARISH].includes(qoshimchaId)) {
                 card.find('.extra-hafta').show();
             }
 
@@ -1661,18 +1661,21 @@ if ($kafedralarJson === false) {
                     break;
                 }
                 case QOSHIMCHA_IDS.KURS_ISHI:
-                    fanSoat = Math.round(semestrMeta.talaba * 2.4);
-                    hintText = `${semestrMeta.talaba} × 2.4 = ${fanSoat}`;
+                    auto = false;
+                    hintText = "Kurs ishi soatini qo'lda kiriting";
                     break;
                 case QOSHIMCHA_IDS.KURS_LOYIHA:
-                    fanSoat = Math.round(semestrMeta.talaba * 3.6);
-                    hintText = `${semestrMeta.talaba} × 3.6 = ${fanSoat}`;
+                    auto = false;
+                    hintText = "Kurs loyihasi soatini qo'lda kiriting";
                     break;
                 case QOSHIMCHA_IDS.UZLUKSIZ_MALAKA:
-                    fanSoat = Math.round(semestrMeta.talaba * (isExternal ? 0.4 : 2));
-                    hintText = `${semestrMeta.talaba} × ${isExternal ? 0.4 : 2} = ${fanSoat}`;
+                    auto = false;
+                    hintText = "Uzluksiz malakaviy amaliyot soatini qo'lda kiriting";
                     break;
                 case QOSHIMCHA_IDS.OQUV_PED:
+                    auto = false;
+                    hintText = "O'quv-pedagogik amaliyot soatini qo'lda kiriting";
+                    break;
                 case QOSHIMCHA_IDS.DALA_OTM:
                 case QOSHIMCHA_IDS.DALA_TASH:
                 case QOSHIMCHA_IDS.ISHLAB_CHIQARISH: {
@@ -1727,9 +1730,13 @@ if ($kafedralarJson === false) {
             }
 
             if (fanSoat === null || Number.isNaN(fanSoat)) {
-                fanSoatInput.val('');
-                fanSoatInput.prop('readonly', !auto ? false : true);
-                setCalcHint(card, '');
+                if (auto) {
+                    fanSoatInput.val('');
+                    setCalcHint(card, '');
+                } else {
+                    setCalcHint(card, hintText);
+                }
+                fanSoatInput.prop('readonly', false);
                 return;
             }
 
@@ -2349,3 +2356,5 @@ if ($kafedralarJson === false) {
 </body>
 
 </html>
+
+

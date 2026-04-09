@@ -6,7 +6,7 @@
             <i class="fas fa-graduation-cap"></i>
             <h2>O'quv Qo'lanma</h2>
         </div>
-        <button class="sidebar-toggle" id="sidebarToggle">
+        <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Menyuni ochish yoki yig'ish" aria-expanded="true">
             <i class="fas fa-bars"></i>
         </button>
     </div>

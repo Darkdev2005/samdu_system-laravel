@@ -88,21 +88,63 @@ function setupSidebarToggle() {
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebar = document.querySelector('.sidebar');
     const appContainer = document.querySelector('.app-container');
-    
-    if (sidebarToggle && sidebar) {
-        sidebarToggle.addEventListener('click', function() {
-            sidebar.classList.toggle('show');
-            appContainer.classList.toggle('sidebar-open');
-        });
+    const desktopBreakpoint = 1024;
+    const storageKey = 'sidebarCollapsedDesktop';
+
+    if (!sidebarToggle || !sidebar || !appContainer) {
+        return;
     }
-    
-    // Mobil versiyada sidebar ni yopish
-    window.addEventListener('resize', function() {
-        if (window.innerWidth > 1024) {
-            sidebar.classList.remove('show');
-            appContainer?.classList.remove('sidebar-open');
+
+    function isMobileView() {
+        return window.innerWidth <= desktopBreakpoint;
+    }
+
+    function setDesktopCollapsed(collapsed) {
+        appContainer.classList.toggle('sidebar-collapsed', collapsed);
+        sidebarToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        try {
+            localStorage.setItem(storageKey, collapsed ? '1' : '0');
+        } catch (e) {
         }
+    }
+
+    function getDesktopCollapsedSaved() {
+        try {
+            return localStorage.getItem(storageKey) === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function syncSidebarByViewport() {
+        // Avval mobil classlarni tozalaymiz.
+        sidebar.classList.remove('show');
+        appContainer.classList.remove('sidebar-open');
+
+        if (isMobileView()) {
+            // Mobil holatda desktop collapse ishlatilmaydi.
+            appContainer.classList.remove('sidebar-collapsed');
+            sidebarToggle.setAttribute('aria-expanded', 'false');
+            return;
+        }
+
+        setDesktopCollapsed(getDesktopCollapsedSaved());
+    }
+
+    sidebarToggle.addEventListener('click', function() {
+        if (isMobileView()) {
+            const isOpen = sidebar.classList.toggle('show');
+            appContainer.classList.toggle('sidebar-open', isOpen);
+            sidebarToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            return;
+        }
+
+        const willCollapse = !appContainer.classList.contains('sidebar-collapsed');
+        setDesktopCollapsed(willCollapse);
     });
+
+    window.addEventListener('resize', syncSidebarByViewport);
+    syncSidebarByViewport();
 }
 
 // function updateStats() {

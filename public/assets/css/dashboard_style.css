@@ -621,6 +621,7 @@ body {
 /* 4. Sidebar */
 .sidebar {
     width: 260px;
+    min-width: 260px;
     background: white;
     box-shadow: var(--shadow);
     display: flex;
@@ -660,7 +661,17 @@ body {
     font-size: 1.2rem;
     color: var(--gray-color);
     cursor: pointer;
-    display: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    transition: var(--transition);
+}
+
+.sidebar-toggle:hover {
+    background-color: var(--gray-light);
 }
 
 .sidebar-nav {
@@ -758,6 +769,44 @@ body {
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
+}
+
+@media (min-width: 1025px) {
+    .app-container.sidebar-collapsed .sidebar {
+        width: 0;
+        min-width: 0;
+        overflow: visible;
+        box-shadow: none;
+    }
+
+    .app-container.sidebar-collapsed .sidebar > *:not(.sidebar-header) {
+        display: none;
+    }
+
+    .app-container.sidebar-collapsed .sidebar .sidebar-header {
+        padding: 0;
+        border-bottom: none;
+        height: 0;
+        overflow: visible;
+    }
+
+    .app-container.sidebar-collapsed .sidebar .sidebar-header .logo {
+        display: none;
+    }
+
+    .app-container.sidebar-collapsed .sidebar .sidebar-header .sidebar-toggle {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 1100;
+        background: var(--primary-color);
+        color: #fff;
+        box-shadow: var(--shadow);
+    }
+
+    .app-container.sidebar-collapsed .main-content .top-navbar {
+        padding-left: 80px;
+    }
 }
 
 .top-navbar {
@@ -1251,7 +1300,7 @@ body {
     }
     
     .sidebar-toggle {
-        display: block;
+        display: flex;
         position: fixed;
         top: 20px;
         left: 20px;

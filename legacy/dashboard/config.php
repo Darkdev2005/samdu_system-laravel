@@ -7,6 +7,13 @@ class Database{
     private $username = 'root';
     private $password = '';
     private $link;
+    private $auditTable = 'system_audit_logs';
+    private $suppressQueryAudit = false;
+    private $auditInProgress = false;
+    private $auditEnabled = true;
+    private $auditRetentionDays = 90;
+    private $auditMaxRows = 200000;
+    private $auditCleanupChance = 100;
 
     private function readEnv(string $key, string $default = ''): string
     {
@@ -47,18 +54,63 @@ class Database{
         return $default;
     }
 
+    private function readEnvBool(string $key, bool $default): bool
+    {
+        $raw = $this->readEnv($key, $default ? 'true' : 'false');
+        $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        return $parsed === null ? $default : $parsed;
+    }
+
+    private function readEnvInt(string $key, int $default): int
+    {
+        $raw = trim($this->readEnv($key, (string)$default));
+        if ($raw === '' || !is_numeric($raw)) {
+            return $default;
+        }
+        return (int)$raw;
+    }
+
     function __construct() {
         $this->host = $this->readEnv('DB_HOST', $this->host);
         $this->port = (int)$this->readEnv('DB_PORT', (string)$this->port);
         $this->db_name = $this->readEnv('DB_DATABASE', $this->db_name);
         $this->username = $this->readEnv('DB_USERNAME', $this->username);
         $this->password = $this->readEnv('DB_PASSWORD', $this->password);
+        $this->auditEnabled = $this->readEnvBool('AUDIT_LOG_ENABLED', true);
+        $this->auditRetentionDays = max(0, $this->readEnvInt('AUDIT_LOG_RETENTION_DAYS', 90));
+        $this->auditMaxRows = max(0, $this->readEnvInt('AUDIT_LOG_MAX_ROWS', 200000));
+        $this->auditCleanupChance = max(1, $this->readEnvInt('AUDIT_LOG_CLEANUP_CHANCE', 100));
 
         $this->link = mysqli_connect($this->host, $this->username, $this->password, $this->db_name, $this->port);
         if (!$this->link) {
             exit("Bazaga ulanmadi!");
         }
         mysqli_set_charset($this->link, 'utf8mb4');
+
+        // Izoh: Foydalanuvchi harakatlarini kuzatish uchun audit jadvali.
+        mysqli_query($this->link, "
+            CREATE TABLE IF NOT EXISTS {$this->auditTable} (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NULL,
+                username VARCHAR(255) NULL,
+                action VARCHAR(20) NOT NULL,
+                table_name VARCHAR(191) NULL,
+                row_id BIGINT NULL,
+                request_method VARCHAR(10) NULL,
+                request_uri VARCHAR(1000) NULL,
+                source_file VARCHAR(500) NULL,
+                ip_address VARCHAR(64) NULL,
+                user_agent VARCHAR(1024) NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'success',
+                error_message TEXT NULL,
+                payload LONGTEXT NULL,
+                sql_text LONGTEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_audit_user (user_id),
+                INDEX idx_audit_table (table_name),
+                INDEX idx_audit_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
         // Izoh: Umumta'lim fanlar jadvali mavjud bo'lmasa avtomatik yaratish.
         mysqli_query($this->link, "
             CREATE TABLE IF NOT EXISTS umumtalim_fanlar (
@@ -307,8 +359,322 @@ class Database{
             ");
         }
     }
+    private function isMutatingQuery(string $query): ?string
+    {
+        $trimmed = ltrim($query);
+        if (preg_match('/^(INSERT|UPDATE|DELETE|REPLACE)\b/i', $trimmed, $m)) {
+            return strtoupper($m[1]);
+        }
+        return null;
+    }
+
+    private function extractTableNameFromSql(string $query, string $action): ?string
+    {
+        $patterns = [
+            'INSERT' => '/^INSERT\s+INTO\s+`?([a-zA-Z0-9_]+)`?/i',
+            'REPLACE' => '/^REPLACE\s+INTO\s+`?([a-zA-Z0-9_]+)`?/i',
+            'UPDATE' => '/^UPDATE\s+`?([a-zA-Z0-9_]+)`?/i',
+            'DELETE' => '/^DELETE\s+(?:[a-zA-Z0-9_`]+\s+)?FROM\s+`?([a-zA-Z0-9_]+)`?/i',
+        ];
+
+        $pattern = $patterns[$action] ?? null;
+        if ($pattern === null) {
+            return null;
+        }
+        if (!preg_match($pattern, ltrim($query), $m)) {
+            return null;
+        }
+        return $m[1] ?? null;
+    }
+
+    private function isSensitiveKey(string $key): bool
+    {
+        return (bool)preg_match('/(password|parol|token|secret|app_key|remember)/i', $key);
+    }
+
+    private function sanitizeAuditValue($value)
+    {
+        if (is_array($value)) {
+            $clean = [];
+            foreach ($value as $k => $v) {
+                if (is_string($k) && $this->isSensitiveKey($k)) {
+                    $clean[$k] = '***';
+                    continue;
+                }
+                $clean[$k] = $this->sanitizeAuditValue($v);
+            }
+            return $clean;
+        }
+
+        if (is_object($value)) {
+            return '[object]';
+        }
+
+        if (is_string($value) && strlen($value) > 5000) {
+            return substr($value, 0, 5000) . '...[truncated]';
+        }
+
+        return $value;
+    }
+
+    private function encodeAuditPayload($payload): ?string
+    {
+        if ($payload === null) {
+            return null;
+        }
+        $sanitized = $this->sanitizeAuditValue($payload);
+        $json = json_encode($sanitized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+        return $json === false ? null : $json;
+    }
+
+    private function getRequestUserId(): ?int
+    {
+        if (isset($_SESSION['id']) && is_numeric($_SESSION['id'])) {
+            return (int)$_SESSION['id'];
+        }
+
+        if (function_exists('session')) {
+            try {
+                $val = session('id');
+                if (is_numeric($val)) {
+                    return (int)$val;
+                }
+            } catch (Throwable $e) {
+            }
+        }
+
+        if (function_exists('auth')) {
+            try {
+                $user = auth()->user();
+                if ($user && isset($user->id)) {
+                    return (int)$user->id;
+                }
+            } catch (Throwable $e) {
+            }
+        }
+
+        return null;
+    }
+
+    private function getRequestUsername(): ?string
+    {
+        if (isset($_SESSION['username']) && $_SESSION['username'] !== '') {
+            return (string)$_SESSION['username'];
+        }
+
+        if (function_exists('session')) {
+            try {
+                $val = session('username');
+                if (is_string($val) && $val !== '') {
+                    return $val;
+                }
+            } catch (Throwable $e) {
+            }
+        }
+
+        if (function_exists('auth')) {
+            try {
+                $user = auth()->user();
+                if ($user) {
+                    if (isset($user->username) && $user->username !== '') {
+                        return (string)$user->username;
+                    }
+                    if (isset($user->name) && $user->name !== '') {
+                        return (string)$user->name;
+                    }
+                }
+            } catch (Throwable $e) {
+            }
+        }
+
+        return null;
+    }
+
+    private function getClientIpAddress(): ?string
+    {
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $parts = explode(',', (string)$_SERVER['HTTP_X_FORWARDED_FOR']);
+            $ip = trim($parts[0]);
+            if ($ip !== '') {
+                return $ip;
+            }
+        }
+
+        if (!empty($_SERVER['REMOTE_ADDR'])) {
+            return (string)$_SERVER['REMOTE_ADDR'];
+        }
+
+        return null;
+    }
+
+    private function getAuditSourceFile(): ?string
+    {
+        $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 20);
+        foreach ($trace as $frame) {
+            if (empty($frame['file'])) {
+                continue;
+            }
+            $file = str_replace('\\', '/', (string)$frame['file']);
+            if (substr($file, -strlen('/legacy/dashboard/config.php')) === '/legacy/dashboard/config.php') {
+                continue;
+            }
+            $marker = '/legacy/dashboard/';
+            $pos = strpos($file, $marker);
+            if ($pos !== false) {
+                return substr($file, $pos + strlen($marker));
+            }
+        }
+
+        return isset($_SERVER['SCRIPT_NAME']) ? (string)$_SERVER['SCRIPT_NAME'] : null;
+    }
+
+    private function maybeCleanupAuditLogs(): void
+    {
+        if (!$this->link || !$this->auditEnabled) {
+            return;
+        }
+
+        // Izoh: Har yozuvda cleanup qilmaslik uchun ehtimoliy ishga tushirish.
+        if (mt_rand(1, $this->auditCleanupChance) !== 1) {
+            return;
+        }
+
+        try {
+            if ($this->auditRetentionDays > 0) {
+                $days = (int)$this->auditRetentionDays;
+                mysqli_query(
+                    $this->link,
+                    "DELETE FROM {$this->auditTable} WHERE created_at < (NOW() - INTERVAL {$days} DAY)"
+                );
+            }
+
+            if ($this->auditMaxRows > 0) {
+                $maxRows = (int)$this->auditMaxRows;
+                $cutoffRes = mysqli_query(
+                    $this->link,
+                    "SELECT id FROM {$this->auditTable} ORDER BY id DESC LIMIT {$maxRows}, 1"
+                );
+                if ($cutoffRes) {
+                    $cutoffRow = mysqli_fetch_assoc($cutoffRes);
+                    if (!empty($cutoffRow['id'])) {
+                        $cutoffId = (int)$cutoffRow['id'];
+                        if ($cutoffId > 0) {
+                            mysqli_query(
+                                $this->link,
+                                "DELETE FROM {$this->auditTable} WHERE id <= {$cutoffId}"
+                            );
+                        }
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            // Izoh: Cleanup xatoligi asosiy ish jarayonini to'xtatmasin.
+        }
+    }
+
+    private function writeAuditLog(array $data): void
+    {
+        if (!$this->auditEnabled || $this->auditInProgress || !$this->link) {
+            return;
+        }
+
+        $tableName = (string)($data['table_name'] ?? '');
+        if ($tableName === $this->auditTable) {
+            return;
+        }
+
+        $this->maybeCleanupAuditLogs();
+
+        $this->auditInProgress = true;
+        try {
+            $userId = $data['user_id'] ?? $this->getRequestUserId();
+            $username = $data['username'] ?? $this->getRequestUsername();
+            $action = (string)($data['action'] ?? 'UNKNOWN');
+            $rowId = $data['row_id'] ?? null;
+            $requestMethod = $data['request_method'] ?? ($_SERVER['REQUEST_METHOD'] ?? null);
+            $requestUri = $data['request_uri'] ?? ($_SERVER['REQUEST_URI'] ?? null);
+            $sourceFile = $data['source_file'] ?? $this->getAuditSourceFile();
+            $ip = $data['ip_address'] ?? $this->getClientIpAddress();
+            $userAgent = $data['user_agent'] ?? ($_SERVER['HTTP_USER_AGENT'] ?? null);
+            $status = (string)($data['status'] ?? 'success');
+            $errorMessage = $data['error_message'] ?? null;
+            $payloadJson = array_key_exists('payload', $data) ? $this->encodeAuditPayload($data['payload']) : null;
+            $sqlText = $data['sql_text'] ?? null;
+
+            $esc = function ($val): string {
+                return mysqli_real_escape_string($this->link, (string)$val);
+            };
+            $nullable = function ($val) use ($esc): string {
+                if ($val === null || $val === '') {
+                    return 'NULL';
+                }
+                return "'" . $esc($val) . "'";
+            };
+
+            $sql = "
+                INSERT INTO {$this->auditTable}
+                (user_id, username, action, table_name, row_id, request_method, request_uri, source_file, ip_address, user_agent, status, error_message, payload, sql_text)
+                VALUES (
+                    " . ($userId === null ? 'NULL' : (int)$userId) . ",
+                    " . $nullable($username) . ",
+                    '" . $esc($action) . "',
+                    " . $nullable($tableName) . ",
+                    " . ($rowId === null ? 'NULL' : (int)$rowId) . ",
+                    " . $nullable($requestMethod) . ",
+                    " . $nullable($requestUri) . ",
+                    " . $nullable($sourceFile) . ",
+                    " . $nullable($ip) . ",
+                    " . $nullable($userAgent) . ",
+                    '" . $esc($status) . "',
+                    " . $nullable($errorMessage) . ",
+                    " . $nullable($payloadJson) . ",
+                    " . $nullable($sqlText) . "
+                )
+            ";
+            mysqli_query($this->link, $sql);
+        } catch (Throwable $e) {
+            // Audit logdagi xatolik asosiy ish jarayonini to'xtatmasin.
+        } finally {
+            $this->auditInProgress = false;
+        }
+    }
+
     public function query($query) {
-        return mysqli_query($this->link, $query);
+        $result = false;
+        $errorMessage = null;
+        $thrown = null;
+
+        try {
+            $result = mysqli_query($this->link, $query);
+            if ($result === false) {
+                $errorMessage = mysqli_error($this->link);
+            }
+        } catch (Throwable $e) {
+            $errorMessage = $e->getMessage();
+            $thrown = $e;
+        }
+
+        if (!$this->suppressQueryAudit) {
+            $action = $this->isMutatingQuery((string)$query);
+            if ($action !== null) {
+                $tableName = $this->extractTableNameFromSql((string)$query, $action) ?? '';
+                if ($tableName !== $this->auditTable) {
+                    $this->writeAuditLog([
+                        'action' => $action,
+                        'table_name' => $tableName,
+                        'status' => ($result !== false && $thrown === null) ? 'success' : 'error',
+                        'error_message' => $errorMessage,
+                        'sql_text' => substr((string)$query, 0, 10000),
+                    ]);
+                }
+            }
+        }
+
+        if ($thrown !== null) {
+            throw $thrown;
+        }
+
+        return $result;
     }
     public function get_data_by_table($table, $arr, $con = 'no'){
         $sql = "SELECT * FROM ".$table. " WHERE ";
@@ -368,11 +734,33 @@ class Database{
             }
         }
         $sql .= "($t1) VALUES ($t2);";
-        $result = $this->query($sql);
+        $this->suppressQueryAudit = true;
+        try {
+            $result = $this->query($sql);
+        } finally {
+            $this->suppressQueryAudit = false;
+        }
 
         if ($result) {
-            return mysqli_insert_id($this->link);
+            $insertId = mysqli_insert_id($this->link);
+            $this->writeAuditLog([
+                'action' => 'INSERT',
+                'table_name' => $table,
+                'row_id' => $insertId,
+                'payload' => $arr,
+                'sql_text' => substr($sql, 0, 10000),
+                'status' => 'success',
+            ]);
+            return $insertId;
         } else {
+            $this->writeAuditLog([
+                'action' => 'INSERT',
+                'table_name' => $table,
+                'payload' => $arr,
+                'sql_text' => substr($sql, 0, 10000),
+                'status' => 'error',
+                'error_message' => mysqli_error($this->link),
+            ]);
             return 0;
         }
     }
@@ -396,7 +784,26 @@ class Database{
             $sql .= " WHERE ".$con;
         }
 
-        return $this->query($sql);
+        $this->suppressQueryAudit = true;
+        try {
+            $result = $this->query($sql);
+        } finally {
+            $this->suppressQueryAudit = false;
+        }
+
+        $this->writeAuditLog([
+            'action' => 'UPDATE',
+            'table_name' => $table,
+            'payload' => [
+                'values' => $arr,
+                'where' => $con,
+            ],
+            'sql_text' => substr($sql, 0, 10000),
+            'status' => $result ? 'success' : 'error',
+            'error_message' => $result ? null : mysqli_error($this->link),
+        ]);
+
+        return $result;
     }
 
     public function delete($table, $con = 'no'){
@@ -404,7 +811,102 @@ class Database{
         if ($con != 'no'){
             $sql .= " WHERE ".$con;
         }
-        return $this -> query($sql);
+        $this->suppressQueryAudit = true;
+        try {
+            $result = $this -> query($sql);
+        } finally {
+            $this->suppressQueryAudit = false;
+        }
+
+        $this->writeAuditLog([
+            'action' => 'DELETE',
+            'table_name' => $table,
+            'payload' => [
+                'where' => $con,
+            ],
+            'sql_text' => substr($sql, 0, 10000),
+            'status' => $result ? 'success' : 'error',
+            'error_message' => $result ? null : mysqli_error($this->link),
+        ]);
+
+        return $result;
+    }
+
+    public function get_audit_logs(array $filters = [], int $limit = 300): array
+    {
+        $limit = max(1, min(1000, (int)$limit));
+        $where = [];
+
+        if (!empty($filters['user_id'])) {
+            $where[] = "user_id = " . (int)$filters['user_id'];
+        }
+
+        if (!empty($filters['action'])) {
+            $action = mysqli_real_escape_string($this->link, strtoupper((string)$filters['action']));
+            $where[] = "action = '{$action}'";
+        }
+
+        if (!empty($filters['table_name'])) {
+            $table = mysqli_real_escape_string($this->link, (string)$filters['table_name']);
+            $where[] = "table_name LIKE '%{$table}%'";
+        }
+
+        if (!empty($filters['source_file'])) {
+            $source = mysqli_real_escape_string($this->link, (string)$filters['source_file']);
+            $where[] = "source_file LIKE '%{$source}%'";
+        }
+
+        if (!empty($filters['status'])) {
+            $status = mysqli_real_escape_string($this->link, strtolower((string)$filters['status']));
+            $where[] = "status = '{$status}'";
+        }
+
+        if (!empty($filters['date_from'])) {
+            $from = mysqli_real_escape_string($this->link, (string)$filters['date_from']);
+            $where[] = "DATE(created_at) >= '{$from}'";
+        }
+
+        if (!empty($filters['date_to'])) {
+            $to = mysqli_real_escape_string($this->link, (string)$filters['date_to']);
+            $where[] = "DATE(created_at) <= '{$to}'";
+        }
+
+        $whereSql = '';
+        if (!empty($where)) {
+            $whereSql = 'WHERE ' . implode(' AND ', $where);
+        }
+
+        $sql = "
+            SELECT
+                id,
+                user_id,
+                username,
+                action,
+                table_name,
+                row_id,
+                source_file,
+                ip_address,
+                status,
+                request_method,
+                request_uri,
+                error_message,
+                payload,
+                sql_text,
+                created_at
+            FROM {$this->auditTable}
+            {$whereSql}
+            ORDER BY id DESC
+            LIMIT {$limit}
+        ";
+
+        $result = mysqli_query($this->link, $sql);
+        $rows = [];
+        if ($result) {
+            while ($row = mysqli_fetch_assoc($result)) {
+                $rows[] = $row;
+            }
+        }
+        return $rows;
     }
     public function get_yunalishlar_with_details($filters = []){
         $where = [];
@@ -579,7 +1081,7 @@ class Database{
             f.fan_code,
             f.fan_name,
             f.tanlov_fan,
-            k.name AS kafedra_name,
+            COALESCE(NULLIF(qkafedra.kafedra_names, ''), k.name) AS kafedra_name,
 
             SUM(CASE WHEN dst.id = 1 THEN o.dars_soat ELSE 0 END) AS lecture,
             SUM(CASE WHEN dst.id = 2 THEN o.dars_soat ELSE 0 END) AS practical,
@@ -629,6 +1131,16 @@ class Database{
             FROM qoshimcha_fanlar
             GROUP BY semestr_id, fan_name
         ) qfext ON qfext.semestr_id = f.semestr_id AND qfext.fan_name = f.fan_name
+        LEFT JOIN (
+            SELECT
+                qf.semestr_id,
+                qf.fan_name,
+                GROUP_CONCAT(DISTINCT kq.name ORDER BY kq.name SEPARATOR ', ') AS kafedra_names
+            FROM qoshimcha_oquv_rejalar q
+            JOIN qoshimcha_fanlar qf ON qf.id = q.qoshimcha_fanid
+            LEFT JOIN kafedralar kq ON kq.id = q.kafedra_id
+            GROUP BY qf.semestr_id, qf.fan_name
+        ) qkafedra ON qkafedra.semestr_id = f.semestr_id AND qkafedra.fan_name = f.fan_name
         $whereSQL
         GROUP BY
             f.id,
@@ -639,7 +1151,8 @@ class Database{
             f.fan_code,
             f.fan_name,
             f.tanlov_fan,
-            k.name
+            k.name,
+            qkafedra.kafedra_names
 
         ORDER BY
             s.semestr,

@@ -17,6 +17,50 @@
     // variantlarni faqat bir marta tozalaymiz (har blokda qayta tozalanmaydi).
     $clearedIshchiVariantIds = [];
 
+    // Izoh: Har bir fan kartasi uchun dars soatlari yig'indisini hisoblaymiz.
+    $getCardHoursMeta = static function (int $index): array {
+        $rows = $_POST['dars_soati'][$index] ?? [];
+        if (!is_array($rows)) {
+            $rows = [$rows];
+        }
+
+        $total = 0;
+        foreach ($rows as $raw) {
+            $rawText = trim((string)$raw);
+            if ($rawText === '') {
+                continue;
+            }
+            $value = (int)$rawText;
+            if ($value < 0) {
+                continue;
+            }
+            if ($value > 0) $total += $value;
+        }
+
+        return [
+            'total' => $total,
+        ];
+    };
+
+    // Izoh: Soatlar yig'indisi 30 ga bo'linmasa saqlashni to'xtatamiz.
+    foreach ($tanlov_fanlar as $index => $_fanType) {
+        $meta = $getCardHoursMeta((int)$index);
+        if (((int)$meta['total']) % 30 !== 0) {
+            $fanTitle = trim((string)($_POST['fan_nomi'][$index] ?? $_POST['tanlov_fan_nomi'][$index] ?? ''));
+            if (is_array($fanTitle)) {
+                $fanTitle = '';
+            }
+            if ($fanTitle === '') {
+                $fanTitle = 'Fan #' . ((int)$index + 1);
+            }
+            echo json_encode([
+                'success' => false,
+                'message' => "{$fanTitle}: jami soat ({$meta['total']}) 30 ga qoldiqsiz bo'linishi shart"
+            ]);
+            return;
+        }
+    }
+
     foreach ($tanlov_fanlar as $index => $tanlov_fan_value) {
         $tanlov_fan = (int) $tanlov_fan_value;
         
@@ -79,14 +123,12 @@
             if (isset($_POST['dars_turi'][$index], $_POST['dars_soati'][$index])) {
                 foreach ($_POST['dars_turi'][$index] as $i => $darsTurId) {
                     $darsTurId = (int) $darsTurId;
-                    $rawDarsSoat = trim((string) ($_POST['dars_soati'][$index][$i] ?? ''));
-                    if ($rawDarsSoat === '') {
-                        continue;
-                    }
+                    $rawDarsSoat = trim((string) ($_POST['dars_soati'][$index][$i] ?? '0'));
+                    if ($rawDarsSoat === '') $rawDarsSoat = '0';
 
                     $darsSoat = (int) $rawDarsSoat;
 
-                    if ($darsTurId <= 0 || $darsSoat <= 0) {
+                    if ($darsTurId <= 0 || $darsSoat < 0) {
                         continue;
                     }
                     
@@ -170,14 +212,12 @@
                 if ($baseFanId > 0 && isset($_POST['dars_turi'][$index])) {
                     foreach ($_POST['dars_turi'][$index] as $i => $darsTurId) {
                         $darsTurId = (int) $darsTurId;
-                        $rawDarsSoat = trim((string) ($_POST['dars_soati'][$index][$i] ?? ''));
-                        if ($rawDarsSoat === '') {
-                            continue;
-                        }
+                        $rawDarsSoat = trim((string) ($_POST['dars_soati'][$index][$i] ?? '0'));
+                        if ($rawDarsSoat === '') $rawDarsSoat = '0';
 
                         $darsSoat = (int) $rawDarsSoat;
 
-                        if ($darsTurId <= 0 || $darsSoat <= 0) {
+                        if ($darsTurId <= 0 || $darsSoat < 0) {
                             continue;
                         }
 
