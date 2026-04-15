@@ -3,6 +3,17 @@
     $db = new Database();
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     $yonalishlar = $db->get_data_by_table_all('yonalishlar');
+    $kursSet = [];
+    $semestrlar = $db->get_semestrlar();
+    foreach ($semestrlar as $s) {
+        $semestrNum = (int)($s['semestr'] ?? 0);
+        if ($semestrNum <= 0) {
+            continue;
+        }
+        $kursSet[(int)ceil($semestrNum / 2)] = true;
+    }
+    $kursOptions = array_keys($kursSet);
+    sort($kursOptions, SORT_NUMERIC);
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -61,6 +72,16 @@
                         </div>
 
                         <div class="form-group">
+                            <label><i class="fas fa-layer-group me-2"></i>Kurs</label>
+                            <select class="form-control" id="kursFilter">
+                                <option value="">Barcha kurslar</option>
+                                <?php foreach ($kursOptions as $kurs): ?>
+                                    <option value="<?= (int)$kurs ?>"><?= (int)$kurs ?>-kurs</option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
                             <label><i class="fas fa-calendar-check me-2"></i>Semestr turi</label>
                             <select class="form-control" id="semestrTypeFilter">
                                 <option value="">Barcha semestr turlari</option>
@@ -103,7 +124,7 @@
     <script>
         let currentZoom = 1;
         $(document).ready(function() {
-            $('#kafedraFilter, #semestrFilter, #semestrTypeFilter, #yonalishFilter').select2({
+            $('#kafedraFilter, #semestrFilter, #kursFilter, #semestrTypeFilter, #yonalishFilter').select2({
                 placeholder: "Tanlang",
                 allowClear: true,
                 width: '100%'
@@ -132,6 +153,8 @@
                 const year = now.getFullYear();
                 const isFall = (month >= 9 || month === 1);
                 const currentAcademicStart = isFall ? year : (year - 1);
+                // Izoh: Keyingi o'quv yilini ham oldindan rejalash uchun ko'rsatamiz (masalan, 2026-2027).
+                const maxAcademicStart = currentAcademicStart + 1;
 
                 let options = '<option value="">Tanlang</option>';
                 const buildYearOptions = (startYearFrom, startYearTo) => {
@@ -141,9 +164,9 @@
                 };
 
                 if (kirishYili) {
-                    buildYearOptions(kirishYili, currentAcademicStart);
+                    buildYearOptions(kirishYili, maxAcademicStart);
                 } else {
-                    buildYearOptions(currentAcademicStart - 5, currentAcademicStart);
+                    buildYearOptions(currentAcademicStart - 5, maxAcademicStart);
                 }
 
                 $('#semestrFilter').html(options);
@@ -180,7 +203,7 @@
             });
         });
 
-        function loadTableData(kafedraId = '', oquvYilStart = '', yonalishId = '', semestrType = '') {
+        function loadTableData(kafedraId = '', oquvYilStart = '', yonalishId = '', semestrType = '', kurs = '') {
             // Loading ko'rsatish
             const container = $('#yuklamaTableContainer');
             container.html(`
@@ -199,7 +222,8 @@
                     kafedra_id: kafedraId,
                     oquv_yil_start: oquvYilStart,
                     yonalish_id: yonalishId,
-                    semestr_turi: semestrType
+                    semestr_turi: semestrType,
+                    kurs: kurs
                 },
                 success: function(response) {
                     container.html(response);
@@ -224,6 +248,7 @@
             const oquvYilStart = $('#semestrFilter').val();
             const yonalishId = $('#yonalishFilter').val();
             const semestrType = $('#semestrTypeFilter').val();
+            const kurs = $('#kursFilter').val();
             
             // Loading ko'rsatish
             const filterBtn = $('.filter-actions .btn-primary');
@@ -231,7 +256,7 @@
             filterBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Filtrlash...');
             filterBtn.prop('disabled', true);
             
-            loadTableData(kafedraId, oquvYilStart, yonalishId, semestrType);
+            loadTableData(kafedraId, oquvYilStart, yonalishId, semestrType, kurs);
             
             setTimeout(() => {
                 filterBtn.html(originalText);
@@ -255,6 +280,7 @@
         function resetFilters() {
             $('#kafedraFilter').val(null).trigger('change');
             $('#semestrFilter').val(null).trigger('change');
+            $('#kursFilter').val(null).trigger('change');
             $('#yonalishFilter').val(null).trigger('change');
             $('#semestrTypeFilter').val(null).trigger('change');
             
