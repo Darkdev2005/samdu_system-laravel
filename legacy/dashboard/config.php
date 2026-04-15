@@ -1314,6 +1314,8 @@ class Database{
         $filterSemestrTypeLecture = '';
         $filterOquvYil = '';
         $filterOquvYilLecture = '';
+        $filterKurs = '';
+        $filterKursLecture = '';
         if (!empty($filters['kafedra_id'])) {
             $kid = (int)$filters['kafedra_id'];
             $filterKafedraBase = " AND (
@@ -1358,6 +1360,13 @@ class Database{
         } else {
             // Izoh: Hech qanday semestr filtri berilmasa barcha semestrlar ko'rsatiladi.
             // $filterCurrentSemestr bo'sh qoladi.
+        }
+        if (!empty($filters['kurs'])) {
+            $kurs = (int)$filters['kurs'];
+            if ($kurs > 0) {
+                $filterKurs = " AND FLOOR((s.semestr + 1)/2) = {$kurs}";
+                $filterKursLecture = " AND ul.kurs = {$kurs}";
+            }
         }
 
         // Izoh: Umumta'lim biriktirishda ma'ruza bitta, qolgan darslar yo'nalish bo'yicha alohida chiqishi uchun UNION ishlatiladi.
@@ -1587,6 +1596,7 @@ class Database{
                 $filterCurrentSemestr
                 $filterSemestrType
                 $filterOquvYil
+                $filterKurs
 
                 UNION ALL
 
@@ -1641,6 +1651,7 @@ class Database{
                 $filterSemestrTypeLecture
                 $filterOquvYilLecture
                 $filterCurrentLecture
+                $filterKursLecture
             ) AS yuklama
             ORDER BY yuklama.semestr, yuklama.fan_name;
         ";
@@ -1683,6 +1694,12 @@ class Database{
             }
         } else {
             // Izoh: Hech qanday semestr filtri berilmasa barcha semestrlar ko'rsatiladi.
+        }
+        if (!empty($filters['kurs'])) {
+            $kurs = (int)$filters['kurs'];
+            if ($kurs > 0) {
+                $where[] = "FLOOR((s.semestr + 1)/2) = {$kurs}";
+            }
         }
         $whereSQL = '';
         if (!empty($where)) {

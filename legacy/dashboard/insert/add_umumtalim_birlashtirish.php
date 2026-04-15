@@ -8,6 +8,16 @@
     $fanIdsRaw = $_POST['fan_ids'] ?? [];
     $masterFanId = (int) ($_POST['master_fan_id'] ?? 0);
     $semestrIdsRaw = $_POST['semestr_ids'] ?? [];
+    $mergeByNameOnly = ((int)($_POST['merge_by_name_only'] ?? 0) === 1);
+
+    $normalizeFanName = static function (string $value): string {
+        $value = trim($value);
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        if (function_exists('mb_strtolower')) {
+            return (string) mb_strtolower($value, 'UTF-8');
+        }
+        return strtolower($value);
+    };
 
     if (!is_array($fanIdsRaw) || !is_array($semestrIdsRaw) || count($fanIdsRaw) === 0 || count($semestrIdsRaw) === 0) {
         echo json_encode(['success' => false, 'message' => 'Yo\'nalish+semestr va fan tanlanmagan']);
@@ -72,31 +82,70 @@
     ]);
     $semestrNum = (int) ($semestrRow['semestr'] ?? 0);
 
-    $masterUmumtalim = null;
-    if ($semestrNum > 0) {
-        // Izoh: Umumta'lim fanlar bazasida (fan_code+fan_name+semestr) bo'yicha topamiz.
+    $masterFanCode = trim((string) ($masterFanRow['fan_code'] ?? ''));
+    $masterFanName = trim((string) ($masterFanRow['fan_name'] ?? ''));
+    $masterFanNameNorm = $normalizeFanName($masterFanName);
+
+    if ((!$mergeByNameOnly && ($masterFanCode === '' || $masterFanName === '')) || ($mergeByNameOnly && $masterFanName === '')) {
+        echo json_encode(['success' => false, 'message' => 'Master fan ma\'lumoti to\'liq emas']);
+        return;
+    }
+    if ($semestrNum <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Master fan semestri noto\'g\'ri']);
+        return;
+    }
+
+    // Izoh: Umumta'lim fanlar bazasida (fan_code+fan_name+semestr) bo'yicha topamiz.
+    // Izoh: Agar topilmasa, tanlangan master fandan avtomatik yaratib olamiz.
+    if ($mergeByNameOnly) {
+        $masterUmumtalim = null;
+        $candidateRes = $db->query("SELECT id, fan_name FROM umumtalim_fanlar WHERE semestr = " . (int)$semestrNum . " ORDER BY id DESC");
+        if ($candidateRes) {
+            while ($candidate = mysqli_fetch_assoc($candidateRes)) {
+                $candidateNorm = $normalizeFanName((string)($candidate['fan_name'] ?? ''));
+                if ($candidateNorm === $masterFanNameNorm) {
+                    $masterUmumtalim = $candidate;
+                    break;
+                }
+            }
+        }
+    } else {
         $masterUmumtalim = $db->get_data_by_table('umumtalim_fanlar', [
-            'fan_code'   => $masterFanRow['fan_code'],
-            'fan_name'   => $masterFanRow['fan_name'],
+            'fan_code'   => $masterFanCode,
+            'fan_name'   => $masterFanName,
             'semestr'    => $semestrNum
         ]);
     }
 
     if (!$masterUmumtalim) {
-        echo json_encode(['success' => false, 'message' => 'Birlashtiriladigan fan topilmadi']);
-        return;
+        $insertId = (int) $db->insert('umumtalim_fanlar', [
+            'fan_code' => $masterFanCode,
+            'fan_name' => $masterFanName,
+            'kafedra_id' => (int) ($masterFanRow['kafedra_id'] ?? 0),
+            'semestr' => $semestrNum
+        ]);
+
+        if ($insertId > 0) {
+            $masterUmumtalim = ['id' => $insertId];
+        } else {
+            if ($mergeByNameOnly) {
+                $masterUmumtalim = $db->get_data_by_table('umumtalim_fanlar', [
+                    'fan_name'   => $masterFanName,
+                    'semestr'    => $semestrNum
+                ]);
+            } else {
+                $masterUmumtalim = $db->get_data_by_table('umumtalim_fanlar', [
+                    'fan_code'   => $masterFanCode,
+                    'fan_name'   => $masterFanName,
+                    'semestr'    => $semestrNum
+                ]);
+            }
+        }
     }
+
     $masterUmumtalimId = (int) ($masterUmumtalim['id'] ?? 0);
     if ($masterUmumtalimId <= 0) {
-        echo json_encode(['success' => false, 'message' => 'Birlashtiriladigan fan topilmadi']);
-        return;
-    }
-
-    $masterFanCode = trim((string) ($masterFanRow['fan_code'] ?? ''));
-    $masterFanName = trim((string) ($masterFanRow['fan_name'] ?? ''));
-
-    if ($masterFanCode === '' || $masterFanName === '') {
-        echo json_encode(['success' => false, 'message' => 'Master fan ma\'lumoti to\'liq emas']);
+        echo json_encode(['success' => false, 'message' => 'Birlashtiriladigan fanni tayyorlashda xatolik']);
         return;
     }
 
@@ -137,9 +186,16 @@
 
         $sourceCode = trim((string) ($sourceFanRow['fan_code'] ?? ''));
         $sourceName = trim((string) ($sourceFanRow['fan_name'] ?? ''));
-        if ($sourceCode !== $masterFanCode || $sourceName !== $masterFanName) {
-            echo json_encode(['success' => false, 'message' => 'Faqat bir xil fan (kod+nom) biriktirilishi mumkin']);
-            return;
+        if ($mergeByNameOnly) {
+            if ($normalizeFanName($sourceName) !== $masterFanNameNorm) {
+                echo json_encode(['success' => false, 'message' => 'Faqat bir xil fan nomi biriktirilishi mumkin']);
+                return;
+            }
+        } else {
+            if ($sourceCode !== $masterFanCode || $sourceName !== $masterFanName) {
+                echo json_encode(['success' => false, 'message' => 'Faqat bir xil fan (kod+nom) biriktirilishi mumkin']);
+                return;
+            }
         }
 
         // Izoh: umumtalim_fan_id faqat master (umumtalim_fanlar ID), source_fan_id esa fanlar jadvalidagi ID.

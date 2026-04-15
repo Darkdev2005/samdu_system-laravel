@@ -18,6 +18,9 @@ if (isset($_POST['semestr_turi']) && !empty($_POST['semestr_turi'])) {
 if (isset($_POST['yonalish_id']) && !empty($_POST['yonalish_id'])) {
     $filters['yonalish_id'] = (int)$_POST['yonalish_id'];
 }
+if (isset($_POST['kurs']) && !empty($_POST['kurs'])) {
+    $filters['kurs'] = (int)$_POST['kurs'];
+}
 
 $oquv_yuklamalar = $db->get_oquv_yuklamalar($filters);
 $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);

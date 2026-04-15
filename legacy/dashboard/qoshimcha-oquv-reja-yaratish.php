@@ -1564,7 +1564,7 @@ if ($kafedralarJson === false) {
         function updateExtraFields(card, qoshimchaId) {
             card.find('.extra-field').hide();
 
-            if ([QOSHIMCHA_IDS.DALA_OTM, QOSHIMCHA_IDS.DALA_TASH, QOSHIMCHA_IDS.ISHLAB_CHIQARISH].includes(qoshimchaId)) {
+            if ([QOSHIMCHA_IDS.OQUV_PED, QOSHIMCHA_IDS.DALA_OTM, QOSHIMCHA_IDS.DALA_TASH, QOSHIMCHA_IDS.ISHLAB_CHIQARISH].includes(qoshimchaId)) {
                 card.find('.extra-hafta').show();
             }
 
@@ -1637,6 +1637,24 @@ if ($kafedralarJson === false) {
             let fanSoat = null;
             let auto = true;
             let hintText = '';
+            const formatRawNumber = (value) => {
+                const numeric = Number(value);
+                if (!Number.isFinite(numeric)) {
+                    return '0';
+                }
+                if (Math.abs(numeric - Math.round(numeric)) < 0.0001) {
+                    return String(Math.round(numeric));
+                }
+                return String(parseFloat(numeric.toFixed(2)));
+            };
+            const buildMulHint = (left, factor, result) => {
+                const raw = Number(left) * Number(factor);
+                const rawText = formatRawNumber(raw);
+                if (Math.abs(raw - Number(result)) < 0.0001) {
+                    return `${left} x ${factor} = ${result}`;
+                }
+                return `${left} x ${factor} = ${rawText} (yaxlitlab: ${result})`;
+            };
 
             switch (qoshimchaId) {
                 case QOSHIMCHA_IDS.ORALIQ:
@@ -1645,10 +1663,10 @@ if ($kafedralarJson === false) {
                         hintText = "Sirtqi/masofaviy/kechki: 0";
                     } else if (auditoriyaSoat >= 60) {
                         fanSoat = Math.round(semestrMeta.talaba * 0.4);
-                        hintText = `${semestrMeta.talaba} × 0.4 = ${fanSoat}`;
+                        hintText = buildMulHint(semestrMeta.talaba, 0.4, fanSoat);
                     } else if (auditoriyaSoat >= 30) {
                         fanSoat = Math.round(semestrMeta.talaba * 0.2);
-                        hintText = `${semestrMeta.talaba} × 0.2 = ${fanSoat}`;
+                        hintText = buildMulHint(semestrMeta.talaba, 0.2, fanSoat);
                     } else {
                         fanSoat = 0;
                         hintText = "Auditoriya soat 30 dan kam: 0";
@@ -1657,25 +1675,22 @@ if ($kafedralarJson === false) {
                 case QOSHIMCHA_IDS.YAKUNIY: {
                     const isTest = card.find('.yakuniy-test').is(':checked');
                     fanSoat = isTest ? 0 : Math.round(semestrMeta.talaba * 0.3);
-                    hintText = isTest ? "Yakuniy test: 0" : `${semestrMeta.talaba} × 0.3 = ${fanSoat}`;
+                    hintText = isTest ? "Yakuniy test: 0" : buildMulHint(semestrMeta.talaba, 0.3, fanSoat);
                     break;
                 }
                 case QOSHIMCHA_IDS.KURS_ISHI:
-                    auto = false;
-                    hintText = "Kurs ishi soatini qo'lda kiriting";
+                    fanSoat = Math.round(semestrMeta.talaba * 2.4);
+                    hintText = buildMulHint(semestrMeta.talaba, 2.4, fanSoat);
                     break;
                 case QOSHIMCHA_IDS.KURS_LOYIHA:
-                    auto = false;
-                    hintText = "Kurs loyihasi soatini qo'lda kiriting";
+                    fanSoat = Math.round(semestrMeta.talaba * 3.6);
+                    hintText = buildMulHint(semestrMeta.talaba, 3.6, fanSoat);
                     break;
                 case QOSHIMCHA_IDS.UZLUKSIZ_MALAKA:
-                    auto = false;
-                    hintText = "Uzluksiz malakaviy amaliyot soatini qo'lda kiriting";
+                    fanSoat = Math.round(semestrMeta.talaba * (isExternal ? 0.4 : 2));
+                    hintText = buildMulHint(semestrMeta.talaba, isExternal ? 0.4 : 2, fanSoat);
                     break;
                 case QOSHIMCHA_IDS.OQUV_PED:
-                    auto = false;
-                    hintText = "O'quv-pedagogik amaliyot soatini qo'lda kiriting";
-                    break;
                 case QOSHIMCHA_IDS.DALA_OTM:
                 case QOSHIMCHA_IDS.DALA_TASH:
                 case QOSHIMCHA_IDS.ISHLAB_CHIQARISH: {
@@ -1683,20 +1698,24 @@ if ($kafedralarJson === false) {
                     const guruh = semestrMeta.guruh || 0;
                     const perWeek = qoshimchaId === QOSHIMCHA_IDS.DALA_TASH ? 30 : 18;
                     fanSoat = Math.round(guruh * hafta * perWeek);
-                    hintText = `${guruh} × ${hafta} × ${perWeek} = ${fanSoat}`;
+                    const raw = guruh * hafta * perWeek;
+                    const rawText = formatRawNumber(raw);
+                    hintText = Math.abs(raw - fanSoat) < 0.0001
+                        ? `${guruh} x ${hafta} x ${perWeek} = ${fanSoat}`
+                        : `${guruh} x ${hafta} x ${perWeek} = ${rawText} (yaxlitlab: ${fanSoat})`;
                     break;
                 }
                 case QOSHIMCHA_IDS.BMI: {
                     const isTech = card.find('.bmi-tech').is(':checked');
                     const per = isTech ? 30 : 25;
                     fanSoat = Math.round(semestrMeta.talaba * per);
-                    hintText = `${semestrMeta.talaba} × ${per} = ${fanSoat}`;
+                    hintText = buildMulHint(semestrMeta.talaba, per, fanSoat);
                     break;
                 }
                 case QOSHIMCHA_IDS.OCHIQ_DARS: {
                     const count = parseInt(card.find('.ochiq-count').val(), 10) || 1;
                     fanSoat = count * 10;
-                    hintText = `${count} × 10 = ${fanSoat}`;
+                    hintText = `${count} x 10 = ${fanSoat}`;
                     break;
                 }
                 case QOSHIMCHA_IDS.YADAK: {
@@ -2356,5 +2375,3 @@ if ($kafedralarJson === false) {
 </body>
 
 </html>
-
-

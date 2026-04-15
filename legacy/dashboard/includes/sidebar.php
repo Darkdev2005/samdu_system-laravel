@@ -135,6 +135,12 @@
                             </a>
                         </li>
                         <li>
+                            <a href="umumtalim-fanlar-royxati.php">
+                                <i class="fas fa-list-ul"></i>
+                                <span>Birlashtirilgan fanlar ro'yxati</span>
+                            </a>
+                        </li>
+                        <li>
                             <a href="chet-tili-biriktirish.php">
                                 <i class="fas fa-language"></i>
                                 <span>Chet tilini biriktirish</span>
