@@ -70,41 +70,6 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
 if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
     $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
 }
-// Izoh: Fanlar ro'yxati (kod + nom) va auditoriya soatlari selectda chiqishi uchun.
-$fanOptions = [];
-$fanSql = "
-        SELECT
-            f.id,
-            f.semestr_id,
-            f.fan_code,
-            f.fan_name,
-            COALESCE(SUM(CASE WHEN dst.id IN (1,2,3,4) THEN o.dars_soat ELSE 0 END), 0) AS auditoriya_soat
-        FROM fanlar f
-        LEFT JOIN oquv_rejalar o ON o.fan_id = f.id
-        LEFT JOIN dars_soat_turlar dst ON dst.id = o.dars_tur_id
-        GROUP BY f.id, f.semestr_id, f.fan_code, f.fan_name
-    ";
-$fanResult = $db->query($fanSql);
-while ($row = mysqli_fetch_assoc($fanResult)) {
-    $semestrId = (int) ($row['semestr_id'] ?? 0);
-    $code = trim($row['fan_code'] ?? '');
-    $name = trim($row['fan_name'] ?? '');
-    if ($semestrId <= 0 || $name === '') {
-        continue;
-    }
-    $label = $code !== '' ? ($code . ' - ' . $name) : $name;
-    $fanOptions[] = [
-        'semestr_id' => $semestrId,
-        'value' => (int) $row['id'],
-        'label' => $label,
-        'auditoriya_soat' => (float) $row['auditoriya_soat']
-    ];
-}
-$fanOptionsJson = json_encode($fanOptions, $jsonFlags);
-if ($fanOptionsJson === false) {
-    $fanOptionsJson = '[]';
-}
-$fanOptionsJsonBase64 = base64_encode($fanOptionsJson);
 $qoshimchaDarsTurlarJson = json_encode($qoshimcha_dars_turlar ?? [], $jsonFlags);
 if ($qoshimchaDarsTurlarJson === false) {
     $qoshimchaDarsTurlarJson = '[]';
@@ -636,22 +601,10 @@ if ($kafedralarJson === false) {
         });
 
         let fanIndex = 0;
-        const fanOptions = (() => {
-            try {
-                const raw = atob('<?php echo $fanOptionsJsonBase64; ?>');
-                const parsed = JSON.parse(raw);
-                return Array.isArray(parsed) ? parsed : [];
-            } catch (e) {
-                console.error('fanOptions parse failed:', e);
-                return [];
-            }
-        })();
         const qoshimchaDarsTurlari = <?php echo $qoshimchaDarsTurlarJson; ?>;
         const kafedralarList = <?php echo $kafedralarJson; ?>;
+        const fanOptionsBySemestr = {};
         const fanMap = {};
-        fanOptions.forEach(f => {
-            fanMap[String(f.value)] = f;
-        });
 
         let allSemestrOptions = [];
         let allSemestrOptionsMaster = [];
@@ -795,6 +748,36 @@ if ($kafedralarJson === false) {
 
         function escapeHtml(value) {
             return escapeOptionText(value);
+        }
+
+        async function ensureFanOptionsLoaded(semestrId) {
+            const targetSemestrId = String(semestrId || '').trim();
+            if (!targetSemestrId) {
+                return [];
+            }
+
+            if (Array.isArray(fanOptionsBySemestr[targetSemestrId])) {
+                return fanOptionsBySemestr[targetSemestrId];
+            }
+
+            const response = await fetch(`api/get_qoshimcha_fan_options.php?semestr_id=${encodeURIComponent(targetSemestrId)}`, {
+                cache: 'no-store'
+            });
+            const data = await response.json();
+            const rows = (data && data.success && Array.isArray(data.rows)) ? data.rows : [];
+
+            fanOptionsBySemestr[targetSemestrId] = rows.map(item => ({
+                semestr_id: String(item.semestr_id || targetSemestrId),
+                value: String(item.value || ''),
+                label: String(item.label || ''),
+                auditoriya_soat: Number(item.auditoriya_soat || 0)
+            })).filter(item => item.value !== '' && item.label !== '');
+
+            fanOptionsBySemestr[targetSemestrId].forEach(item => {
+                fanMap[String(item.value)] = item;
+            });
+
+            return fanOptionsBySemestr[targetSemestrId];
         }
 
         function getCreatedQoshimchaSearchText(row) {
@@ -1869,11 +1852,13 @@ if ($kafedralarJson === false) {
             loadCreatedQoshimchaList();
         });
 
-        $('#semestrSelect').on('change', function() {
-            $('.reja-card').each(function() {
-                renderFanOptions($(this));
-                calculateForSingleCard($(this));
-            });
+        $('#semestrSelect').on('change', async function() {
+            const cards = $('.reja-card').toArray();
+            for (const cardElement of cards) {
+                const card = $(cardElement);
+                await renderFanOptions(card);
+                calculateForSingleCard(card);
+            }
             loadCreatedQoshimchaList();
         });
 
@@ -1885,7 +1870,7 @@ if ($kafedralarJson === false) {
             renderFanOptions($('.reja-card:first'));
         }
 
-        function renderFanOptions(card) {
+        async function renderFanOptions(card) {
             const select = card.find('.fan-select');
             if (select.length === 0) return;
 
@@ -1899,7 +1884,23 @@ if ($kafedralarJson === false) {
                 return;
             }
 
-            const items = fanOptions.filter(f => String(f.semestr_id) === String(semestrId));
+            select.prop('disabled', true);
+            select.append(new Option('Fanlar yuklanmoqda...', '', true, true));
+            select.val(null).trigger('change');
+
+            let items = [];
+            try {
+                items = await ensureFanOptionsLoaded(semestrId);
+            } catch (error) {
+                console.error('fan options load failed:', error);
+                select.empty();
+                select.prop('disabled', true);
+                select.append(new Option('Fanlarni yuklab bo\'lmadi', '', true, true));
+                select.val(null).trigger('change');
+                return;
+            }
+
+            select.empty();
             if (items.length === 0) {
                 select.prop('disabled', true);
                 select.append(new Option('Fan topilmadi', '', true, true));

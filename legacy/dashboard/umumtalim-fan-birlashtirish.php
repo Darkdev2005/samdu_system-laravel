@@ -112,6 +112,7 @@
                 'fan_id' => (int) ($row['id'] ?? 0),
                 'fan_code' => (string) ($row['fan_code'] ?? ''),
                 'fan_name' => (string) ($row['fan_name'] ?? ''),
+                'kafedra_id' => (int) ($row['kafedra_id'] ?? 0),
                 'kafedra_name' => (string) ($row['kafedra_name'] ?? ''),
                 'semestr_id' => $semestrId,
                 'semestr_num' => $semestrNum,
@@ -732,6 +733,20 @@
             $('#mandatoryFanSelectAll').prop('checked', allVisibleSelected);
         }
 
+        function retainOnlyFilteredSelections() {
+            const visibleFanIds = new Set(
+                filteredMandatoryFanRows
+                    .map((row) => String(row.fan_id || ''))
+                    .filter((fanId) => fanId !== '')
+            );
+
+            Array.from(selectedMandatoryFanIds).forEach((fanId) => {
+                if (!visibleFanIds.has(fanId)) {
+                    selectedMandatoryFanIds.delete(fanId);
+                }
+            });
+        }
+
         function applyTopFiltersToMandatoryList() {
             const filters = getTopFilters();
             const search = String($('#mandatoryFanSearch').val() || '').trim().toLowerCase();
@@ -762,6 +777,8 @@
                 return true;
             });
 
+            // Izoh: Filterdan keyin ko'rinmay qolgan eski tanlovlar xato validatsiya bermasin.
+            retainOnlyFilteredSelections();
             renderMandatoryFanTable();
         }
 
@@ -871,7 +888,6 @@
                         Toast.fire({ icon: 'error', title: "Faqat bir xil semestr raqamidagi fanlar tanlanishi mumkin" });
                         return;
                     }
-
                     if (usedSemestrIds.has(semestrId)) {
                         continue;
                     }

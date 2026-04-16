@@ -1453,9 +1453,11 @@ class Database{
                     ub.yonalish_id,
                     uf.fan_code,
                     uf.fan_name,
-                    uf.kafedra_id
+                    uf.kafedra_id AS kafedra_id,
+                    sf.kafedra_id AS source_kafedra_id
                 FROM umumtalim_fan_biriktirish ub
                 JOIN umumtalim_fanlar uf ON uf.id = ub.umumtalim_fan_id
+                LEFT JOIN fanlar sf ON sf.id = ub.source_fan_id
             ),
             umumtalim_fan_soat AS (
                 SELECT
@@ -1475,7 +1477,7 @@ class Database{
                    AND fr_fb.semestr = s.semestr
                 LEFT JOIN fan_reja fr_name
                     ON fr_name.semestr_id = ub.semestr_id
-                   AND fr_name.kafedra_id = ub.kafedra_id
+                   AND fr_name.kafedra_id = COALESCE(ub.source_kafedra_id, ub.kafedra_id)
                    AND fr_name.fan_name = ub.fan_name
                 GROUP BY ub.umumtalim_fan_id, s.semestr
             ),
@@ -1502,9 +1504,9 @@ class Database{
                     ub.kafedra_id,
                     s.semestr,
                     FLOOR((s.semestr + 1)/2) AS kurs,
-                    GROUP_CONCAT(DISTINCT g.guruh_nomer ORDER BY g.guruh_nomer SEPARATOR ' | ') AS guruh_raqami,
-                    COUNT(DISTINCT g.id) AS guruhlar_soni,
-                    SUM(g.soni) AS talabalar_soni,
+                    GROUP_CONCAT(DISTINCT ga.guruh_raqami ORDER BY ga.guruh_raqami SEPARATOR ' | ') AS guruh_raqami,
+                    SUM(COALESCE(ga.guruhlar_soni, 0)) AS guruhlar_soni,
+                    SUM(COALESCE(ga.talabalar_soni, 0)) AS talabalar_soni,
                     GROUP_CONCAT(DISTINCT y.code ORDER BY y.code SEPARATOR ', ') AS yonalish_code,
                     GROUP_CONCAT(DISTINCT CONCAT(y.name, ' - ', y.kirish_yili) ORDER BY y.code SEPARATOR ' | ') AS talim_yonalishi,
                     GROUP_CONCAT(DISTINCT tsh.name ORDER BY tsh.name SEPARATOR ' | ') AS oquv_shakli
@@ -1512,7 +1514,7 @@ class Database{
                 JOIN semestrlar s ON s.id = ub.semestr_id
                 JOIN yonalishlar y ON y.id = ub.yonalish_id
                 JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
-                JOIN guruhlar g ON g.yonalish_id = y.id
+                LEFT JOIN guruh_agg ga ON ga.yonalish_id = y.id
                 WHERE 1=1
                 $filterYonalish
                 $filterCurrentSemestr
@@ -1623,30 +1625,30 @@ class Database{
                     uk.kattaguruh_soni,
                     uk.kichikguruh_soni,
 
-                    ufs.maruza_soat,
-                    ufs.amaliy_soat,
-                    ufs.laboratoriya_soat,
-                    ufs.seminar_soat,
-                    ufs.maruza_soat AS amalda_maruz,
-                    ufs.amaliy_soat * uk.kattaguruh_soni AS amalda_amaliy,
-                    ufs.laboratoriya_soat * uk.kichikguruh_soni AS amalda_lab,
-                    ufs.seminar_soat * uk.kattaguruh_soni AS amalda_seminar,
-                    ufs.maruza_soat
-                    + (ufs.amaliy_soat * uk.kattaguruh_soni)
-                    + (ufs.laboratoriya_soat * uk.kichikguruh_soni)
-                    + (ufs.seminar_soat * uk.kattaguruh_soni)
+                    COALESCE(ufs.maruza_soat, 0) AS maruza_soat,
+                    COALESCE(ufs.amaliy_soat, 0) AS amaliy_soat,
+                    COALESCE(ufs.laboratoriya_soat, 0) AS laboratoriya_soat,
+                    COALESCE(ufs.seminar_soat, 0) AS seminar_soat,
+                    COALESCE(ufs.maruza_soat, 0) AS amalda_maruz,
+                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(uk.kattaguruh_soni, 0) AS amalda_amaliy,
+                    COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0) AS amalda_lab,
+                    COALESCE(ufs.seminar_soat, 0) * COALESCE(uk.kattaguruh_soni, 0) AS amalda_seminar,
+                    COALESCE(ufs.maruza_soat, 0)
+                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(uk.kattaguruh_soni, 0))
+                    + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0))
+                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(uk.kattaguruh_soni, 0))
                     AS jami_soat,
-                    ubi.biriktirilgan_yonalish_code,
-                    ubi.biriktirilgan_yonalishlar,
+                    COALESCE(ubi.biriktirilgan_yonalish_code, '') AS biriktirilgan_yonalish_code,
+                    COALESCE(ubi.biriktirilgan_yonalishlar, '') AS biriktirilgan_yonalishlar,
                     1 AS is_birlashtirilgan
                 FROM umumtalim_lecture ul
-                JOIN umumtalim_fan_soat ufs
+                LEFT JOIN umumtalim_fan_soat ufs
                     ON ufs.umumtalim_fan_id = ul.umumtalim_fan_id
                    AND ufs.semestr = ul.semestr
-                JOIN umumtalim_kopaytirgich uk
+                LEFT JOIN umumtalim_kopaytirgich uk
                     ON uk.umumtalim_fan_id = ul.umumtalim_fan_id
                    AND uk.semestr = ul.semestr
-                JOIN umumtalim_birik_info ubi
+                LEFT JOIN umumtalim_birik_info ubi
                     ON ubi.umumtalim_fan_id = ul.umumtalim_fan_id
                    AND ubi.semestr = ul.semestr
                 JOIN kafedralar k ON k.id = ul.kafedra_id
@@ -1921,14 +1923,18 @@ class Database{
                     ub.yonalish_id,
                     uf.fan_code,
                     uf.fan_name,
-                    uf.kafedra_id
+                    LOWER(TRIM(uf.fan_name)) AS fan_name_key,
+                    COALESCE(sf.kafedra_id, uf.kafedra_id) AS kafedra_id
                 FROM umumtalim_fan_biriktirish ub
                 JOIN umumtalim_fanlar uf ON uf.id = ub.umumtalim_fan_id
+                LEFT JOIN fanlar sf ON sf.id = ub.source_fan_id
             ),
             umumtalim_fan_soat AS (
                 SELECT
-                    ub.umumtalim_fan_id,
+                    ub.fan_name_key,
+                    ub.kafedra_id,
                     s.semestr,
+                    MAX(ub.fan_name) AS fan_name,
                     MIN(COALESCE(fr_src.maruza_reja_id, fr_fb.maruza_reja_id, fr_name.maruza_reja_id)) AS maruza_reja_id,
                     MIN(COALESCE(fr_src.amaliy_reja_id, fr_fb.amaliy_reja_id, fr_name.amaliy_reja_id)) AS amaliy_reja_id,
                     MIN(COALESCE(fr_src.laboratoriya_reja_id, fr_fb.laboratoriya_reja_id, fr_name.laboratoriya_reja_id)) AS laboratoriya_reja_id,
@@ -1949,18 +1955,18 @@ class Database{
                     ON fr_name.semestr_id = ub.semestr_id
                    AND fr_name.kafedra_id = ub.kafedra_id
                    AND fr_name.fan_name = ub.fan_name
-                GROUP BY ub.umumtalim_fan_id, s.semestr
+                GROUP BY ub.fan_name_key, ub.kafedra_id, s.semestr
             ),
             umumtalim_lecture AS (
                 SELECT
-                    ub.umumtalim_fan_id,
-                    ub.fan_name,
+                    ub.fan_name_key,
+                    MAX(ub.fan_name) AS fan_name,
                     ub.kafedra_id,
                     s.semestr,
                     FLOOR((s.semestr + 1)/2) AS kurs,
-                    GROUP_CONCAT(DISTINCT g.guruh_nomer ORDER BY g.guruh_nomer SEPARATOR ' | ') AS guruh_raqami,
-                    COUNT(DISTINCT g.id) AS guruhlar_soni,
-                    SUM(g.soni) AS talabalar_soni,
+                    GROUP_CONCAT(DISTINCT ga.guruh_raqami ORDER BY ga.guruh_raqami SEPARATOR ' | ') AS guruh_raqami,
+                    SUM(COALESCE(ga.guruhlar_soni, 0)) AS guruhlar_soni,
+                    SUM(COALESCE(ga.talabalar_soni, 0)) AS talabalar_soni,
                     GROUP_CONCAT(DISTINCT y.code ORDER BY y.code SEPARATOR ', ') AS yonalish_code,
                     GROUP_CONCAT(DISTINCT CONCAT(y.name, ' - ', y.kirish_yili) ORDER BY y.code SEPARATOR ' | ') AS talim_yonalishi,
                     GROUP_CONCAT(DISTINCT tsh.name ORDER BY tsh.name SEPARATOR ' | ') AS oquv_shakli,
@@ -1976,12 +1982,13 @@ class Database{
                 JOIN semestrlar s ON s.id = ub.semestr_id
                 JOIN yonalishlar y ON y.id = ub.yonalish_id
                 JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
-                JOIN guruhlar g ON g.yonalish_id = y.id
-                GROUP BY ub.umumtalim_fan_id, ub.fan_name, ub.kafedra_id, s.semestr
+                LEFT JOIN guruh_agg ga ON ga.yonalish_id = y.id
+                GROUP BY ub.fan_name_key, ub.kafedra_id, s.semestr
             ),
             umumtalim_kopaytirgich AS (
                 SELECT
-                    ub.umumtalim_fan_id,
+                    ub.fan_name_key,
+                    ub.kafedra_id,
                     s.semestr,
                     SUM(y.patok_soni) AS patok_soni,
                     SUM(y.kattaguruh_soni) AS kattaguruh_soni,
@@ -1989,7 +1996,7 @@ class Database{
                 FROM umumtalim_birik ub
                 JOIN semestrlar s ON s.id = ub.semestr_id
                 JOIN yonalishlar y ON y.id = ub.yonalish_id
-                GROUP BY ub.umumtalim_fan_id, s.semestr
+                GROUP BY ub.fan_name_key, ub.kafedra_id, s.semestr
             )
             SELECT *
             FROM (
@@ -2078,25 +2085,27 @@ class Database{
                     uk.kattaguruh_soni,
                     uk.kichikguruh_soni,
                     ul.needs_resync,
-                    ufs.maruza_soat AS reja_maruz,
-                    ufs.amaliy_soat AS reja_amaliy,
-                    ufs.laboratoriya_soat AS reja_laboratoriya,
-                    ufs.seminar_soat AS reja_seminar,
-                    ufs.maruza_soat AS amalda_maruz,
-                    ufs.amaliy_soat * uk.kattaguruh_soni AS amalda_amaliy,
-                    ufs.laboratoriya_soat * uk.kichikguruh_soni AS amalda_laboratoriya,
-                    ufs.seminar_soat * uk.kattaguruh_soni AS amalda_seminar,
-                    ufs.maruza_soat
-                    + (ufs.amaliy_soat * uk.kattaguruh_soni)
-                    + (ufs.laboratoriya_soat * uk.kichikguruh_soni)
-                    + (ufs.seminar_soat * uk.kattaguruh_soni)
+                    COALESCE(ufs.maruza_soat, 0) AS reja_maruz,
+                    COALESCE(ufs.amaliy_soat, 0) AS reja_amaliy,
+                    COALESCE(ufs.laboratoriya_soat, 0) AS reja_laboratoriya,
+                    COALESCE(ufs.seminar_soat, 0) AS reja_seminar,
+                    COALESCE(ufs.maruza_soat, 0) AS amalda_maruz,
+                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(uk.kattaguruh_soni, 0) AS amalda_amaliy,
+                    COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0) AS amalda_laboratoriya,
+                    COALESCE(ufs.seminar_soat, 0) * COALESCE(uk.kattaguruh_soni, 0) AS amalda_seminar,
+                    COALESCE(ufs.maruza_soat, 0)
+                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(uk.kattaguruh_soni, 0))
+                    + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0))
+                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(uk.kattaguruh_soni, 0))
                     AS jami_soat
                 FROM umumtalim_lecture ul
-                JOIN umumtalim_fan_soat ufs
-                    ON ufs.umumtalim_fan_id = ul.umumtalim_fan_id
+                LEFT JOIN umumtalim_fan_soat ufs
+                    ON ufs.fan_name_key = ul.fan_name_key
+                   AND ufs.kafedra_id = ul.kafedra_id
                    AND ufs.semestr = ul.semestr
-                JOIN umumtalim_kopaytirgich uk
-                    ON uk.umumtalim_fan_id = ul.umumtalim_fan_id
+                LEFT JOIN umumtalim_kopaytirgich uk
+                    ON uk.fan_name_key = ul.fan_name_key
+                   AND uk.kafedra_id = ul.kafedra_id
                    AND uk.semestr = ul.semestr
                 JOIN kafedralar k ON k.id = ul.kafedra_id
                 WHERE 1=1

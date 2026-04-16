@@ -85,6 +85,7 @@
     $masterFanCode = trim((string) ($masterFanRow['fan_code'] ?? ''));
     $masterFanName = trim((string) ($masterFanRow['fan_name'] ?? ''));
     $masterFanNameNorm = $normalizeFanName($masterFanName);
+    $masterKafedraId = (int) ($masterFanRow['kafedra_id'] ?? 0);
 
     if ((!$mergeByNameOnly && ($masterFanCode === '' || $masterFanName === '')) || ($mergeByNameOnly && $masterFanName === '')) {
         echo json_encode(['success' => false, 'message' => 'Master fan ma\'lumoti to\'liq emas']);
@@ -95,20 +96,11 @@
         return;
     }
 
-    // Izoh: Umumta'lim fanlar bazasida (fan_code+fan_name+semestr) bo'yicha topamiz.
-    // Izoh: Agar topilmasa, tanlangan master fandan avtomatik yaratib olamiz.
+    // Izoh: Ushbu sahifada foydalanuvchi tanlagan birinchi fan alohida master bo'lishi kerak.
+    // Shu sabab fan nomi bo'yicha mavjud masterlarni qidirib ulab yubormaymiz,
+    // aks holda alohida biriktirishlar bitta umumta'lim ID ostiga qo'shilib ketadi.
     if ($mergeByNameOnly) {
         $masterUmumtalim = null;
-        $candidateRes = $db->query("SELECT id, fan_name FROM umumtalim_fanlar WHERE semestr = " . (int)$semestrNum . " ORDER BY id DESC");
-        if ($candidateRes) {
-            while ($candidate = mysqli_fetch_assoc($candidateRes)) {
-                $candidateNorm = $normalizeFanName((string)($candidate['fan_name'] ?? ''));
-                if ($candidateNorm === $masterFanNameNorm) {
-                    $masterUmumtalim = $candidate;
-                    break;
-                }
-            }
-        }
     } else {
         $masterUmumtalim = $db->get_data_by_table('umumtalim_fanlar', [
             'fan_code'   => $masterFanCode,
@@ -121,7 +113,7 @@
         $insertId = (int) $db->insert('umumtalim_fanlar', [
             'fan_code' => $masterFanCode,
             'fan_name' => $masterFanName,
-            'kafedra_id' => (int) ($masterFanRow['kafedra_id'] ?? 0),
+            'kafedra_id' => $masterKafedraId,
             'semestr' => $semestrNum
         ]);
 
@@ -129,10 +121,8 @@
             $masterUmumtalim = ['id' => $insertId];
         } else {
             if ($mergeByNameOnly) {
-                $masterUmumtalim = $db->get_data_by_table('umumtalim_fanlar', [
-                    'fan_name'   => $masterFanName,
-                    'semestr'    => $semestrNum
-                ]);
+                // Izoh: Insert muvaffaqiyatsiz bo'lsa shu sessiyadagi aynan shu master satrini topishga urinib ko'ramiz.
+                $masterUmumtalim = null;
             } else {
                 $masterUmumtalim = $db->get_data_by_table('umumtalim_fanlar', [
                     'fan_code'   => $masterFanCode,
