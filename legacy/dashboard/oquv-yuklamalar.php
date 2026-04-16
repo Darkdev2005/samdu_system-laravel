@@ -1,6 +1,7 @@
 <?php
     include_once 'config.php';
     $db = new Database();
+    $rowLimit = 150;
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     $kursSet = [];
@@ -95,6 +96,9 @@
                         <button class="btn btn-primary" onclick="applyFilters()">
                             <i class="fas fa-filter me-2"></i>Filtrlash
                         </button>
+                        <button class="btn btn-warning" id="toggleAllRowsBtn" onclick="toggleAllRows()">
+                            <i class="fas fa-table me-2"></i>Butun jadvalni ochish
+                        </button>
                         <button class="btn btn-secondary" onclick="resetFilters()">
                             <i class="fas fa-redo me-2"></i>Tozalash
                         </button>
@@ -104,6 +108,9 @@
                         <button class="btn btn-info" onclick="exportToExcel()">
                             <i class="fas fa-file-excel me-2"></i>Excel
                         </button>
+                    </div>
+                    <div id="rowLimitNotice" style="margin-top:10px; color:#856404; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; padding:10px 12px;">
+                        Jadval tez ishlashi uchun hozir faqat birinchi <?= $rowLimit ?> ta qator ko'rsatiladi. Aniq natija uchun filtrlardan foydalaning.
                     </div>
                 </div>
                 
@@ -123,6 +130,8 @@
     
     <script>
         let currentZoom = 1;
+        const rowLimit = <?= $rowLimit ?>;
+        let showAllRows = false;
         $(document).ready(function() {
             $('#kafedraFilter, #semestrFilter, #kursFilter, #semestrTypeFilter, #yonalishFilter').select2({
                 placeholder: "Tanlang",
@@ -190,6 +199,7 @@
             updateSemestrOptions();
 
             loadTableData();
+            updateRowModeUI();
             
             $(document).on('wheel', function(e) {
                 if (e.ctrlKey) {
@@ -223,7 +233,8 @@
                     oquv_yil_start: oquvYilStart,
                     yonalish_id: yonalishId,
                     semestr_turi: semestrType,
-                    kurs: kurs
+                    kurs: kurs,
+                    show_all: showAllRows ? 1 : 0
                 },
                 success: function(response) {
                     container.html(response);
@@ -241,6 +252,24 @@
                     console.error('Xatolik:', error);
                 }
             });
+        }
+
+        function updateRowModeUI() {
+            const button = $('#toggleAllRowsBtn');
+            const notice = $('#rowLimitNotice');
+            if (showAllRows) {
+                button.html('<i class="fas fa-bolt me-2"></i>Tezkor rejimga qaytish');
+                notice.text("To'liq jadval ochilgan. Natijalar ko'p bo'lsa sahifa sekinlashishi mumkin.");
+            } else {
+                button.html('<i class="fas fa-table me-2"></i>Butun jadvalni ochish');
+                notice.text(`Jadval tez ishlashi uchun hozir faqat birinchi ${rowLimit} ta qator ko'rsatiladi. Aniq natija uchun filtrlardan foydalaning.`);
+            }
+        }
+
+        function toggleAllRows() {
+            showAllRows = !showAllRows;
+            updateRowModeUI();
+            applyFilters();
         }
 
         function applyFilters() {

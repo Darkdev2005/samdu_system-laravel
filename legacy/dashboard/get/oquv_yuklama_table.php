@@ -3,6 +3,12 @@ include_once '../config.php';
 $db = new Database();
 
 $filters = [];
+$rowLimit = 150;
+if (isset($_POST['show_all']) && (int)$_POST['show_all'] === 1) {
+    $filters['limit'] = 0;
+} else {
+    $filters['limit'] = $rowLimit;
+}
 if (isset($_POST['kafedra_id']) && !empty($_POST['kafedra_id'])) {
     $filters['kafedra_id'] = (int)$_POST['kafedra_id'];
 }
@@ -23,7 +29,15 @@ if (isset($_POST['kurs']) && !empty($_POST['kurs'])) {
 }
 
 $oquv_yuklamalar = $db->get_oquv_yuklamalar($filters);
-$qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
+$qoshimcha_yuklamalar = [];
+if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
+    $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
+} else {
+    $remainingLimit = max(0, (int)$filters['limit'] - count($oquv_yuklamalar));
+    if ($remainingLimit > 0) {
+        $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters + ['limit' => $remainingLimit]);
+    }
+}
 ?>
 
 <div class="table-container-wrapper">

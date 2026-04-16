@@ -1,6 +1,7 @@
 <?php
 include_once 'config.php';
 $db = new Database();
+$rowLimit = 150;
 $kafedralar = $db->get_data_by_table_all('kafedralar');
 
 $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
@@ -58,6 +59,9 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                         <button class="btn btn-primary" onclick="applyFilters()">
                             <i class="fas fa-filter me-2"></i>Filtrlash
                         </button>
+                        <button class="btn btn-warning" id="toggleAllRowsBtn" onclick="toggleAllRows()">
+                            <i class="fas fa-table me-2"></i>Butun jadvalni ochish
+                        </button>
                         <button class="btn btn-secondary" onclick="resetFilters()">
                             <i class="fas fa-redo me-2"></i>Tozalash
                         </button>
@@ -67,6 +71,9 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                         <button class="btn btn-info" onclick="exportToExcel()">
                             <i class="fas fa-file-excel me-2"></i>Excel
                         </button>
+                    </div>
+                    <div id="rowLimitNotice" style="margin-top:10px; color:#856404; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; padding:10px 12px;">
+                        Jadval tez ishlashi uchun hozir faqat birinchi <?= $rowLimit ?> ta qator ko'rsatiladi. Aniq natija uchun filtrlardan foydalaning.
                     </div>
                 </div>
                 
@@ -209,6 +216,8 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
     
     <script>
         let currentZoom = 1;
+        const rowLimit = <?= $rowLimit ?>;
+        let showAllRows = false;
         let currentCell = null;
         let currentYuklamaId = null;
         let currentSoatTuri = null;
@@ -226,6 +235,7 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
             });
             
             loadTableData();
+            updateRowModeUI();
             
             $(document).on('wheel', function(e) {
                 if (e.ctrlKey) {
@@ -264,7 +274,8 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                 type: 'POST',
                 data: {
                     kafedra_id: kafedraId,
-                    semestr: semestrId
+                    semestr: semestrId,
+                    show_all: showAllRows ? 1 : 0
                 },
                 success: function(response) {
                     container.html(response);
@@ -282,6 +293,24 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                     `);
                 }
             });
+        }
+
+        function updateRowModeUI() {
+            const button = $('#toggleAllRowsBtn');
+            const notice = $('#rowLimitNotice');
+            if (showAllRows) {
+                button.html('<i class="fas fa-bolt me-2"></i>Tezkor rejimga qaytish');
+                notice.text("To'liq jadval ochilgan. Natijalar ko'p bo'lsa sahifa sekinlashishi mumkin.");
+            } else {
+                button.html('<i class="fas fa-table me-2"></i>Butun jadvalni ochish');
+                notice.text(`Jadval tez ishlashi uchun hozir faqat birinchi ${rowLimit} ta qator ko'rsatiladi. Aniq natija uchun filtrlardan foydalaning.`);
+            }
+        }
+
+        function toggleAllRows() {
+            showAllRows = !showAllRows;
+            updateRowModeUI();
+            applyFilters();
         }
         function attachCellClickEvents() {
             $('.soat-cell').off('click').on('click', function(e) {
@@ -715,6 +744,7 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                     if (response.success) {
                         closeTaqsimotModal();
                         loadTableData();
+            updateRowModeUI();
 
                         Swal.fire({
                             icon: 'success',
@@ -788,6 +818,7 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
             $('#semestrFilter').val(null).trigger('change');
             
             loadTableData();
+            updateRowModeUI();
             
             const Toast = Swal.mixin({
                 toast: true,

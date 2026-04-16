@@ -3,6 +3,12 @@ include_once '../config.php';
 $db = new Database();
 
 $filters = [];
+$rowLimit = 150;
+if (isset($_POST['show_all']) && (int)$_POST['show_all'] === 1) {
+    $filters['limit'] = 0;
+} else {
+    $filters['limit'] = $rowLimit;
+}
 if (isset($_POST['kafedra_id']) && !empty($_POST['kafedra_id'])) {
     $filters['kafedra_id'] = (int)$_POST['kafedra_id'];
 }
@@ -11,7 +17,15 @@ if (isset($_POST['semestr']) && !empty($_POST['semestr'])) {
 }
 
 $oquv_taqsimotlar = $db->get_oquv_taqsimotlar($filters);
-$qoshimcha_oquv_taqsimotlar = $db->get_qoshimcha_oquv_taqsimotlar($filters);
+$qoshimcha_oquv_taqsimotlar = [];
+if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
+    $qoshimcha_oquv_taqsimotlar = $db->get_qoshimcha_oquv_taqsimotlar($filters);
+} else {
+    $remainingLimit = max(0, (int)$filters['limit'] - count($oquv_taqsimotlar));
+    if ($remainingLimit > 0) {
+        $qoshimcha_oquv_taqsimotlar = $db->get_qoshimcha_oquv_taqsimotlar($filters + ['limit' => $remainingLimit]);
+    }
+}
 
 // Izoh: config.php dagi ayrim eski versiyalarda needs_resync SELECTda bo'lmasligi mumkin.
 // Shu holatda fallback sifatida pending eventlarni yonalish_id bo'yicha shu faylda tekshiramiz.
@@ -393,5 +407,3 @@ if (!empty($allYonalishIds)) {
         </table>
     </div>
 </div>
-
-

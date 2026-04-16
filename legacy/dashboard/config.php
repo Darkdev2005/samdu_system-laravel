@@ -1048,6 +1048,7 @@ class Database{
         if ($fakultetColRes && mysqli_num_rows($fakultetColRes) > 0) {
             $hasYonalishFakultet = true;
         }
+        $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
 
         $where = [];
         if (!empty($filters['yonalish_id'])) {
@@ -1071,6 +1072,7 @@ class Database{
         if (!empty($where)) {
             $whereSQL = 'WHERE ' . implode(' AND ', $where);
         }
+        $limitSQL = $limit > 0 ? "LIMIT {$limit}" : '';
         $sql = "
                 SELECT
             s.id AS semestr_id,
@@ -1157,7 +1159,8 @@ class Database{
         ORDER BY
             s.semestr,
             f.fan_code,
-            f.fan_name;
+            f.fan_name
+        {$limitSQL};
         ";
         $result = $this->query($sql);
         $data = [];
@@ -1302,6 +1305,7 @@ class Database{
     }
 
     public function get_oquv_yuklamalar($filters = []){
+        $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
         // Izoh: Filtrlar uchun SQL bo'laklari (kafedra va semestr).
         $filterKafedraBase = '';
         $filterKafedraMerged = '';
@@ -1368,6 +1372,7 @@ class Database{
                 $filterKursLecture = " AND ul.kurs = {$kurs}";
             }
         }
+        $limitSQL = $limit > 0 ? "LIMIT {$limit}" : '';
 
         // Izoh: Umumta'lim biriktirishda ma'ruza bitta, qolgan darslar yo'nalish bo'yicha alohida chiqishi uchun UNION ishlatiladi.
         $sql = "
@@ -1653,7 +1658,8 @@ class Database{
                 $filterCurrentLecture
                 $filterKursLecture
             ) AS yuklama
-            ORDER BY yuklama.semestr, yuklama.fan_name;
+            ORDER BY yuklama.semestr, yuklama.fan_name
+            {$limitSQL};
         ";
         $result = $this->query($sql);
         $data = [];
@@ -1663,6 +1669,7 @@ class Database{
         return $data;
     }
     public function get_qoshimcha_oquv_yuklamalar($filters = []){
+        $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
         $where = [];
         $currentSemestrSQL = '';
         if (!empty($filters['kafedra_id'])) {
@@ -1704,7 +1711,8 @@ class Database{
         $whereSQL = '';
         if (!empty($where)) {
             $whereSQL = 'WHERE ' . implode(' AND ', $where);
-        }        
+        }
+        $limitSQL = $limit > 0 ? "LIMIT {$limit}" : '';
         $sql = "
             WITH guruh_agg AS (
                 SELECT
@@ -1766,7 +1774,8 @@ class Database{
             $whereSQL
             GROUP BY qf.id, q.kafedra_id
 
-            ORDER BY s.semestr, qdt.name;
+            ORDER BY s.semestr, qdt.name
+            {$limitSQL};
         ";
         $result = $this->query($sql);
         $data = [];
@@ -1791,6 +1800,7 @@ class Database{
         return $data;
     }
     public function get_oquv_taqsimotlar($filters=[]){
+        $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
         $whereBase = [];
         $whereMerged = [];
         if (!empty($filters['kafedra_id'])) {
@@ -1824,6 +1834,7 @@ class Database{
         if (!empty($whereMerged)) {
             $whereSQLMerged = ' AND ' . implode(' AND ', $whereMerged);
         }
+        $limitSQL = $limit > 0 ? "LIMIT {$limit}" : '';
 
         $sql = "WITH fan_reja AS (
                 SELECT
@@ -2091,7 +2102,8 @@ class Database{
                 WHERE 1=1
                 $whereSQLMerged
             ) AS taqsim
-            ORDER BY taqsim.semestr, taqsim.fan_nomi;
+            ORDER BY taqsim.semestr, taqsim.fan_nomi
+            {$limitSQL};
         ";
 
         $result = $this->query($sql);
@@ -2102,6 +2114,7 @@ class Database{
         return $data;
     }
     public function get_qoshimcha_oquv_taqsimotlar($filters = []){
+        $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
         $where = [];
         if (!empty($filters['kafedra_id'])) {
             $where[] = "k.id = " . (int)$filters['kafedra_id'];
@@ -2115,7 +2128,8 @@ class Database{
         $whereSQL = '';
         if (!empty($where)) {
             $whereSQL = 'WHERE ' . implode(' AND ', $where);
-        } 
+        }
+        $limitSQL = $limit > 0 ? "LIMIT {$limit}" : '';
         $sql = "
             WITH guruh_agg AS (
                 SELECT
@@ -2178,7 +2192,8 @@ class Database{
             JOIN kafedralar k ON k.id = q.kafedra_id
             JOIN guruh_agg ga ON ga.yonalish_id = y.id
             $whereSQL
-            ORDER BY s.semestr, q.id;
+            ORDER BY s.semestr, q.id
+            {$limitSQL};
         ";
         
         $result = $this->query($sql);
