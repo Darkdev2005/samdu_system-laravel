@@ -4,6 +4,9 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 require_once 'config.php';
 $db = new Database();
+$rowLimit = 150;
+$showAllRows = !empty($_GET['show_all']);
+$activeRowLimit = $showAllRows ? 0 : $rowLimit;
 
 // Izoh: Filtrlar (fakultet, yo'nalish va semestr) uchun qiymatlar.
 $filters = [];
@@ -79,7 +82,7 @@ if (!empty($semestrNumbers)) {
     }
 }
 
-$oquv_rejalar = $db->get_oquv_rejalar($filters);
+$oquv_rejalar = $db->get_oquv_rejalar($filters + ['limit' => $activeRowLimit]);
 
 // Izoh: O'quv rejada tanlov fan nechta variantga ega ekanini ishchi reja variantlaridan olamiz.
 // Shu bilan bazaviy o'quv rejada ham "Tanlov fan" soni variantlar soniga mos chiqadi.
@@ -465,10 +468,26 @@ function renderSubjectCells($subject, $side = 'left') {
                             <button class="btn btn-primary" type="submit">
                                 <i class="fas fa-filter"></i> Filtrlash
                             </button>
+                            <?php if ($showAllRows): ?>
+                                <a class="btn btn-warning" href="oquv-rejalar.php?<?= htmlspecialchars(http_build_query($filters)) ?>">
+                                    <i class="fas fa-bolt"></i> Tezkor rejimga qaytish
+                                </a>
+                            <?php else: ?>
+                                <a class="btn btn-warning" href="oquv-rejalar.php?<?= htmlspecialchars(http_build_query($filters + ['show_all' => 1])) ?>">
+                                    <i class="fas fa-table"></i> Butun jadvalni ochish
+                                </a>
+                            <?php endif; ?>
                             <a class="btn btn-secondary" href="oquv-rejalar.php">
                                 <i class="fas fa-rotate-left"></i> Tozalash
                             </a>
                         </form>
+                        <div style="width:100%; margin-top:8px; color:#856404; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; padding:10px 12px;">
+                            <?php if ($showAllRows): ?>
+                                To'liq jadval ochilgan. Natijalar ko'p bo'lsa sahifa sekinlashishi mumkin.
+                            <?php else: ?>
+                                Jadval tez ishlashi uchun hozir faqat birinchi <?= $rowLimit ?> ta qator ko'rsatiladi. Aniq natija uchun filtrlardan foydalaning.
+                            <?php endif; ?>
+                        </div>
                         <div class="action-buttons" style="display: flex; gap: 10px;">
                             <button class="btn btn-success" id="exportExcel">
                                 <i class="fas fa-file-excel"></i> Excel ga eksport
