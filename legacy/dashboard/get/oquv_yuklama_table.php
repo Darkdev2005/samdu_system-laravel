@@ -158,17 +158,17 @@ if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
                         $talaba = (int)($row['talabalar_soni'] ?? 0);
                         $auditoriyaSoat = $rejaMaruza + $rejaAmaliy + $rejaLab + $rejaSeminar;
                         $shakl = mb_strtolower(trim($row['oquv_shakli'] ?? ''), 'UTF-8');
-                        $isExternal = (strpos($shakl, 'sirtqi') !== false) || (strpos($shakl, 'masof') !== false) || (strpos($shakl, 'kechki') !== false);
+                        $isMasofaviy = strpos($shakl, 'masof') !== false;
 
                         $oraliq = 0;
-                        if (!$isExternal && $talaba > 0) {
+                        if (!$isMasofaviy && $talaba > 0) {
                             if ($auditoriyaSoat >= 60) {
                                 $oraliq = round($talaba * 0.4);
                             } elseif ($auditoriyaSoat >= 30) {
                                 $oraliq = round($talaba * 0.2);
                             }
                         }
-                        $yakuniy = (!$isExternal && $talaba > 0) ? round($talaba * 0.3) : 0;
+                        $yakuniy = $talaba > 0 ? round($talaba * 0.3) : 0;
                         // Izoh: Kurs ishi/kurs loyihasi faqat qo'shimcha o'quv rejadan kiritilganda ko'rsatiladi.
                         $kursIshi = 0;
                         $kursLoyiha = 0;

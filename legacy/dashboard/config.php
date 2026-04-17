@@ -70,6 +70,22 @@ class Database{
         return (int)$raw;
     }
 
+    private function isMasofaviyEducationForm(?string $form): bool
+    {
+        $value = trim((string)$form);
+        if ($value === '') {
+            return false;
+        }
+
+        if (function_exists('mb_strtolower')) {
+            $value = mb_strtolower($value, 'UTF-8');
+        } else {
+            $value = strtolower($value);
+        }
+
+        return strpos($value, 'masof') !== false;
+    }
+
     function __construct() {
         $this->host = $this->readEnv('DB_HOST', $this->host);
         $this->port = (int)$this->readEnv('DB_PORT', (string)$this->port);
@@ -712,6 +728,9 @@ class Database{
         $result = $this->query($sql);
         $data = [];
         while ($row = mysqli_fetch_assoc($result)) {
+            if ($this->isMasofaviyEducationForm($row['oquv_shakli'] ?? '')) {
+                $row['oraliq_nazorat'] = 0;
+            }
             $data[] = $row;
         }
         return $data;
@@ -942,6 +961,9 @@ class Database{
         $result = $this->query($sql);
         $data = [];
         while ($row = mysqli_fetch_assoc($result)) {
+            if ($this->isMasofaviyEducationForm($row['oquv_shakli'] ?? '')) {
+                $row['oraliq_nazorat'] = 0;
+            }
             $data[] = $row;
         }
         return $data;
@@ -1525,7 +1547,7 @@ class Database{
                 SELECT
                     ub.umumtalim_fan_id,
                     s.semestr,
-                    1 AS patok_soni,
+                    MAX(y.patok_soni) AS patok_soni,
                     SUM(y.kattaguruh_soni) AS kattaguruh_soni,
                     SUM(y.kichikguruh_soni) AS kichikguruh_soni
                 FROM umumtalim_birik ub
@@ -1562,11 +1584,11 @@ class Database{
                     fr.amaliy_soat,
                     fr.laboratoriya_soat,
                     fr.seminar_soat,
-                    fr.maruza_soat AS amalda_maruz,
+                    fr.maruza_soat * y.patok_soni AS amalda_maruz,
                     fr.amaliy_soat * y.kattaguruh_soni AS amalda_amaliy,
                     fr.laboratoriya_soat * y.kichikguruh_soni AS amalda_lab,
                     fr.seminar_soat * y.kattaguruh_soni AS amalda_seminar,
-                    fr.maruza_soat
+                    fr.maruza_soat * y.patok_soni
                     + fr.amaliy_soat * y.kattaguruh_soni
                     + fr.laboratoriya_soat * y.kichikguruh_soni
                     + fr.seminar_soat * y.kattaguruh_soni
@@ -1629,11 +1651,11 @@ class Database{
                     COALESCE(ufs.amaliy_soat, 0) AS amaliy_soat,
                     COALESCE(ufs.laboratoriya_soat, 0) AS laboratoriya_soat,
                     COALESCE(ufs.seminar_soat, 0) AS seminar_soat,
-                    COALESCE(ufs.maruza_soat, 0) AS amalda_maruz,
+                    COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1) AS amalda_maruz,
                     COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_amaliy,
                     COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0) AS amalda_lab,
                     COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_seminar,
-                    COALESCE(ufs.maruza_soat, 0)
+                    (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1))
                     + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
                     + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0))
                     + (COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
@@ -1990,7 +2012,7 @@ class Database{
                     ub.fan_name_key,
                     ub.kafedra_id,
                     s.semestr,
-                    1 AS patok_soni,
+                    MAX(y.patok_soni) AS patok_soni,
                     SUM(y.kattaguruh_soni) AS kattaguruh_soni,
                     SUM(y.kichikguruh_soni) AS kichikguruh_soni
                 FROM umumtalim_birik ub
@@ -2029,11 +2051,11 @@ class Database{
                     fr.amaliy_soat AS reja_amaliy,
                     fr.laboratoriya_soat AS reja_laboratoriya,
                     fr.seminar_soat AS reja_seminar,
-                    fr.maruza_soat AS amalda_maruz,
+                    fr.maruza_soat * y.patok_soni AS amalda_maruz,
                     fr.amaliy_soat * y.kattaguruh_soni AS amalda_amaliy,
                     fr.laboratoriya_soat * y.kichikguruh_soni AS amalda_laboratoriya,
                     fr.seminar_soat * y.kattaguruh_soni AS amalda_seminar,
-                    fr.maruza_soat
+                    fr.maruza_soat * y.patok_soni
                     + fr.amaliy_soat * y.kattaguruh_soni
                     + fr.laboratoriya_soat * y.kichikguruh_soni
                     + fr.seminar_soat * y.kattaguruh_soni
@@ -2089,11 +2111,11 @@ class Database{
                     COALESCE(ufs.amaliy_soat, 0) AS reja_amaliy,
                     COALESCE(ufs.laboratoriya_soat, 0) AS reja_laboratoriya,
                     COALESCE(ufs.seminar_soat, 0) AS reja_seminar,
-                    COALESCE(ufs.maruza_soat, 0) AS amalda_maruz,
+                    COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1) AS amalda_maruz,
                     COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_amaliy,
                     COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0) AS amalda_laboratoriya,
                     COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_seminar,
-                    COALESCE(ufs.maruza_soat, 0)
+                    (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1))
                     + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
                     + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0))
                     + (COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
@@ -2329,11 +2351,10 @@ class Database{
             // Izoh: Qo'shimcha yuklama soatlarini talaba soni asosida avtomatik hisoblash.
             $talaba = (int)($row['talabalar_soni'] ?? 0);
             $fanSoat = (float)($row['fan_soat'] ?? 0);
-            $shakl = mb_strtolower(trim($row['oquv_shakli'] ?? ''), 'UTF-8');
-            $isExternal = (strpos($shakl, 'sirtqi') !== false) || (strpos($shakl, 'masof') !== false) || (strpos($shakl, 'kechki') !== false);
+            $isMasofaviy = $this->isMasofaviyEducationForm($row['oquv_shakli'] ?? '');
 
             if (($row['oraliq_nazorat'] ?? 0) <= 0 && $talaba > 0) {
-                if ($isExternal) {
+                if ($isMasofaviy) {
                     $row['oraliq_nazorat'] = 0;
                 } elseif ($fanSoat >= 60) {
                     $row['oraliq_nazorat'] = round($talaba * 0.4);
@@ -2345,7 +2366,7 @@ class Database{
             }
 
             if (($row['yakuniy_nazorat'] ?? 0) <= 0 && $talaba > 0) {
-                $row['yakuniy_nazorat'] = $isExternal ? 0 : round($talaba * 0.3);
+                $row['yakuniy_nazorat'] = round($talaba * 0.3);
             }
 
             if (($row['kurs_ishi'] ?? 0) <= 0 && $talaba > 0) {
@@ -2355,7 +2376,7 @@ class Database{
                 $row['kurs_loyiha'] = round($talaba * 3.6);
             }
             if (($row['uzluksiz_malakaviy'] ?? 0) <= 0 && $talaba > 0) {
-                $row['uzluksiz_malakaviy'] = round($talaba * ($isExternal ? 0.4 : 2));
+                $row['uzluksiz_malakaviy'] = round($talaba * ($isMasofaviy ? 0.4 : 2));
             }
 
             // Izoh: Jami soatni qayta hisoblaymiz (faqat hisoblangan/saqlangan qiymatlar).
