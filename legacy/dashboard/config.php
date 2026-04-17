@@ -1525,7 +1525,7 @@ class Database{
                 SELECT
                     ub.umumtalim_fan_id,
                     s.semestr,
-                    SUM(y.patok_soni) AS patok_soni,
+                    1 AS patok_soni,
                     SUM(y.kattaguruh_soni) AS kattaguruh_soni,
                     SUM(y.kichikguruh_soni) AS kichikguruh_soni
                 FROM umumtalim_birik ub
@@ -1562,11 +1562,11 @@ class Database{
                     fr.amaliy_soat,
                     fr.laboratoriya_soat,
                     fr.seminar_soat,
-                    fr.maruza_soat * y.patok_soni AS amalda_maruz,
+                    fr.maruza_soat AS amalda_maruz,
                     fr.amaliy_soat * y.kattaguruh_soni AS amalda_amaliy,
                     fr.laboratoriya_soat * y.kichikguruh_soni AS amalda_lab,
                     fr.seminar_soat * y.kattaguruh_soni AS amalda_seminar,
-                    fr.maruza_soat * y.patok_soni
+                    fr.maruza_soat
                     + fr.amaliy_soat * y.kattaguruh_soni
                     + fr.laboratoriya_soat * y.kichikguruh_soni
                     + fr.seminar_soat * y.kattaguruh_soni
@@ -1622,7 +1622,7 @@ class Database{
                     ul.talabalar_soni,
 
                     uk.patok_soni,
-                    uk.kattaguruh_soni,
+                    COALESCE(NULLIF(ul.guruhlar_soni, 0), uk.kattaguruh_soni) AS kattaguruh_soni,
                     uk.kichikguruh_soni,
 
                     COALESCE(ufs.maruza_soat, 0) AS maruza_soat,
@@ -1630,13 +1630,13 @@ class Database{
                     COALESCE(ufs.laboratoriya_soat, 0) AS laboratoriya_soat,
                     COALESCE(ufs.seminar_soat, 0) AS seminar_soat,
                     COALESCE(ufs.maruza_soat, 0) AS amalda_maruz,
-                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(uk.kattaguruh_soni, 0) AS amalda_amaliy,
+                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_amaliy,
                     COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0) AS amalda_lab,
-                    COALESCE(ufs.seminar_soat, 0) * COALESCE(uk.kattaguruh_soni, 0) AS amalda_seminar,
+                    COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_seminar,
                     COALESCE(ufs.maruza_soat, 0)
-                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(uk.kattaguruh_soni, 0))
+                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
                     + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0))
-                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(uk.kattaguruh_soni, 0))
+                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
                     AS jami_soat,
                     COALESCE(ubi.biriktirilgan_yonalish_code, '') AS biriktirilgan_yonalish_code,
                     COALESCE(ubi.biriktirilgan_yonalishlar, '') AS biriktirilgan_yonalishlar,
@@ -1990,7 +1990,7 @@ class Database{
                     ub.fan_name_key,
                     ub.kafedra_id,
                     s.semestr,
-                    SUM(y.patok_soni) AS patok_soni,
+                    1 AS patok_soni,
                     SUM(y.kattaguruh_soni) AS kattaguruh_soni,
                     SUM(y.kichikguruh_soni) AS kichikguruh_soni
                 FROM umumtalim_birik ub
@@ -2029,11 +2029,11 @@ class Database{
                     fr.amaliy_soat AS reja_amaliy,
                     fr.laboratoriya_soat AS reja_laboratoriya,
                     fr.seminar_soat AS reja_seminar,
-                    fr.maruza_soat * y.patok_soni AS amalda_maruz,
+                    fr.maruza_soat AS amalda_maruz,
                     fr.amaliy_soat * y.kattaguruh_soni AS amalda_amaliy,
                     fr.laboratoriya_soat * y.kichikguruh_soni AS amalda_laboratoriya,
                     fr.seminar_soat * y.kattaguruh_soni AS amalda_seminar,
-                    fr.maruza_soat * y.patok_soni
+                    fr.maruza_soat
                     + fr.amaliy_soat * y.kattaguruh_soni
                     + fr.laboratoriya_soat * y.kichikguruh_soni
                     + fr.seminar_soat * y.kattaguruh_soni
@@ -2082,7 +2082,7 @@ class Database{
                     ul.guruhlar_soni,
                     ul.talabalar_soni,
                     uk.patok_soni,
-                    uk.kattaguruh_soni,
+                    COALESCE(NULLIF(ul.guruhlar_soni, 0), uk.kattaguruh_soni) AS kattaguruh_soni,
                     uk.kichikguruh_soni,
                     ul.needs_resync,
                     COALESCE(ufs.maruza_soat, 0) AS reja_maruz,
@@ -2090,13 +2090,13 @@ class Database{
                     COALESCE(ufs.laboratoriya_soat, 0) AS reja_laboratoriya,
                     COALESCE(ufs.seminar_soat, 0) AS reja_seminar,
                     COALESCE(ufs.maruza_soat, 0) AS amalda_maruz,
-                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(uk.kattaguruh_soni, 0) AS amalda_amaliy,
+                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_amaliy,
                     COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0) AS amalda_laboratoriya,
-                    COALESCE(ufs.seminar_soat, 0) * COALESCE(uk.kattaguruh_soni, 0) AS amalda_seminar,
+                    COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_seminar,
                     COALESCE(ufs.maruza_soat, 0)
-                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(uk.kattaguruh_soni, 0))
+                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
                     + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0))
-                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(uk.kattaguruh_soni, 0))
+                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
                     AS jami_soat
                 FROM umumtalim_lecture ul
                 LEFT JOIN umumtalim_fan_soat ufs

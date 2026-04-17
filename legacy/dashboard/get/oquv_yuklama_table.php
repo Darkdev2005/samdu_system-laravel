@@ -151,11 +151,12 @@ if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
                 ];
                 if (!empty($oquv_yuklamalar) || !empty($qoshimcha_yuklamalar)):
                     foreach ($oquv_yuklamalar as $row): 
+                        $rejaMaruza = (float)($row['maruza_soat'] ?? ($row['reja_maruz'] ?? 0));
+                        $rejaAmaliy = (float)($row['amaliy_soat'] ?? ($row['reja_amaliy'] ?? 0));
+                        $rejaLab = (float)($row['laboratoriya_soat'] ?? ($row['reja_laboratoriya'] ?? 0));
+                        $rejaSeminar = (float)($row['seminar_soat'] ?? ($row['reja_seminar'] ?? 0));
                         $talaba = (int)($row['talabalar_soni'] ?? 0);
-                        $auditoriyaSoat = (float)($row['maruza_soat'] ?? 0)
-                            + (float)($row['amaliy_soat'] ?? 0)
-                            + (float)($row['laboratoriya_soat'] ?? 0)
-                            + (float)($row['seminar_soat'] ?? 0);
+                        $auditoriyaSoat = $rejaMaruza + $rejaAmaliy + $rejaLab + $rejaSeminar;
                         $shakl = mb_strtolower(trim($row['oquv_shakli'] ?? ''), 'UTF-8');
                         $isExternal = (strpos($shakl, 'sirtqi') !== false) || (strpos($shakl, 'masof') !== false) || (strpos($shakl, 'kechki') !== false);
 
@@ -173,17 +174,37 @@ if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
                         $kursLoyiha = 0;
                         // Izoh: Uzluksiz malakaviy amaliyot faqat qo'shimcha o'quv rejadan kiritilganda ko'rsatiladi.
                         $uzluksiz = 0;
-                        $amaldaMaruza = (float)($row['maruza_soat'] ?? 0) * (int)($row['patok_soni'] ?? 0);
-                        $amaldaAmaliy = (float)($row['amaliy_soat'] ?? 0) * (int)($row['kattaguruh_soni'] ?? 0);
-                        $amaldaLab = (float)($row['laboratoriya_soat'] ?? 0) * (int)($row['kichikguruh_soni'] ?? 0);
-                        $amaldaSeminar = (float)($row['seminar_soat'] ?? 0) * (int)($row['kattaguruh_soni'] ?? 0);
+                        $isBirlashtirilganRow = !empty($row['is_birlashtirilgan']);
+                        if ($isBirlashtirilganRow) {
+                            // Izoh: Birlashtirilgan fanlarda backend agregati ustuvor ishlaydi.
+                            $amaldaMaruza = isset($row['amalda_maruz'])
+                                ? (float)$row['amalda_maruz']
+                                : $rejaMaruza;
+                            $amaldaAmaliy = isset($row['amalda_amaliy'])
+                                ? (float)$row['amalda_amaliy']
+                                : ($rejaAmaliy * (int)($row['guruhlar_soni'] ?? 0));
+                            $amaldaLab = isset($row['amalda_laboratoriya'])
+                                ? (float)$row['amalda_laboratoriya']
+                                : ($rejaLab * (int)($row['kichikguruh_soni'] ?? 0));
+                            $amaldaSeminar = isset($row['amalda_seminar'])
+                                ? (float)$row['amalda_seminar']
+                                : ($rejaSeminar * (int)($row['guruhlar_soni'] ?? 0));
+                        } else {
+                            // Izoh: Oddiy fanlarda eski hisoblash mantiqini saqlaymiz.
+                            $amaldaMaruza = isset($row['amalda_maruz'])
+                                ? (float)$row['amalda_maruz']
+                                : $rejaMaruza;
+                            $amaldaAmaliy = $rejaAmaliy * (int)($row['kattaguruh_soni'] ?? 0);
+                            $amaldaLab = $rejaLab * (int)($row['kichikguruh_soni'] ?? 0);
+                            $amaldaSeminar = $rejaSeminar * (int)($row['kattaguruh_soni'] ?? 0);
+                        }
 
                         $jamiAll = (float)($row['jami_soat'] ?? 0) + $oraliq + $yakuniy + $kursIshi + $kursLoyiha + $uzluksiz;
 
-                        $totals['reja_maruza'] += (float)($row['maruza_soat'] ?? 0);
-                        $totals['reja_amaliy'] += (float)($row['amaliy_soat'] ?? 0);
-                        $totals['reja_lab'] += (float)($row['laboratoriya_soat'] ?? 0);
-                        $totals['reja_seminar'] += (float)($row['seminar_soat'] ?? 0);
+                        $totals['reja_maruza'] += $rejaMaruza;
+                        $totals['reja_amaliy'] += $rejaAmaliy;
+                        $totals['reja_lab'] += $rejaLab;
+                        $totals['reja_seminar'] += $rejaSeminar;
                         $totals['amalda_maruza'] += $amaldaMaruza;
                         $totals['amalda_amaliy'] += $amaldaAmaliy;
                         $totals['amalda_lab'] += $amaldaLab;
@@ -226,10 +247,10 @@ if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
                     <td><?= $row['kattaguruh_soni'] ?></td>
                     <td><?= $row['kichikguruh_soni'] ?></td>
                     <!-- O'quv reja bo'yicha -->
-                    <td><?= $row['maruza_soat'] ?></td>
-                    <td><?= $row['amaliy_soat'] ?></td>
-                    <td><?= $row['laboratoriya_soat'] ?></td>
-                    <td><?= $row['seminar_soat'] ?></td>
+                    <td><?= $formatSoat($rejaMaruza) ?></td>
+                    <td><?= $formatSoat($rejaAmaliy) ?></td>
+                    <td><?= $formatSoat($rejaLab) ?></td>
+                    <td><?= $formatSoat($rejaSeminar) ?></td>
                     <!-- Amalda bajarilgan -->
                     <td><?= $formatSoat($amaldaMaruza) ?></td>
                     <td><?= $formatSoat($amaldaAmaliy) ?></td>
