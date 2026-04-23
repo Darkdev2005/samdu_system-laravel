@@ -81,23 +81,30 @@
               FROM umumtalim_fan_biriktirish ub
               LEFT JOIN fanlar sf ON sf.id = ub.source_fan_id
               LEFT JOIN umumtalim_fanlar uf ON uf.id = ub.umumtalim_fan_id
-              WHERE ub.source_fan_id = f.id
-                 OR (
-                     ub.semestr_id = f.semestr_id
-                     AND (
-                         (
-                             ub.source_fan_id IS NOT NULL
-                             AND LOWER(TRIM(COALESCE(sf.fan_name, ''))) = LOWER(TRIM(COALESCE(f.fan_name, '')))
-                         )
-                         OR (
-                             ub.source_fan_id IS NULL
-                             AND (
-                                 (COALESCE(uf.fan_code, '') <> '' AND uf.fan_code = f.fan_code AND uf.fan_name = f.fan_name)
-                                 OR (COALESCE(uf.fan_code, '') = '' AND uf.fan_name = f.fan_name)
-                             )
-                         )
-                     )
-                 )
+              WHERE NOT EXISTS (
+                  SELECT 1
+                  FROM umumtalim_fan_biriktirish_guruhlar ubg
+                  WHERE ubg.biriktirish_id = ub.id
+              )
+                AND (
+                    ub.source_fan_id = f.id
+                    OR (
+                        ub.semestr_id = f.semestr_id
+                        AND (
+                            (
+                                ub.source_fan_id IS NOT NULL
+                                AND LOWER(TRIM(COALESCE(sf.fan_name, ''))) = LOWER(TRIM(COALESCE(f.fan_name, '')))
+                            )
+                            OR (
+                                ub.source_fan_id IS NULL
+                                AND (
+                                    (COALESCE(uf.fan_code, '') <> '' AND uf.fan_code = f.fan_code AND uf.fan_name = f.fan_name)
+                                    OR (COALESCE(uf.fan_code, '') = '' AND uf.fan_name = f.fan_name)
+                                )
+                            )
+                        )
+                    )
+                )
           )
         ORDER BY f.semestr_id, f.fan_name, f.id DESC
     ");
@@ -126,6 +133,47 @@
                 'talim_shakli_name' => (string) ($row['talim_shakli_name'] ?? ''),
                 'fakultet_id' => (int) ($row['fakultet_id'] ?? 0),
             ];
+        }
+    }
+
+    $guruhlarByYonalish = [];
+    $guruhResult = $db->query("
+        SELECT id, yonalish_id, guruh_nomer, soni
+        FROM guruhlar
+        ORDER BY yonalish_id, guruh_nomer, id
+    ");
+    if ($guruhResult) {
+        while ($guruh = mysqli_fetch_assoc($guruhResult)) {
+            $yonalishId = (int)($guruh['yonalish_id'] ?? 0);
+            if ($yonalishId <= 0) {
+                continue;
+            }
+            if (!isset($guruhlarByYonalish[$yonalishId])) {
+                $guruhlarByYonalish[$yonalishId] = [];
+            }
+            $guruhlarByYonalish[$yonalishId][] = [
+                'id' => (int)($guruh['id'] ?? 0),
+                'nomer' => (string)($guruh['guruh_nomer'] ?? ''),
+                'soni' => (int)($guruh['soni'] ?? 0),
+            ];
+        }
+    }
+    $usedGuruhlarByFan = [];
+    $usedGuruhResult = $db->query("
+        SELECT source_fan_id, guruh_id
+        FROM umumtalim_fan_biriktirish_guruhlar
+    ");
+    if ($usedGuruhResult) {
+        while ($used = mysqli_fetch_assoc($usedGuruhResult)) {
+            $fanId = (int)($used['source_fan_id'] ?? 0);
+            $guruhId = (int)($used['guruh_id'] ?? 0);
+            if ($fanId <= 0 || $guruhId <= 0) {
+                continue;
+            }
+            if (!isset($usedGuruhlarByFan[$fanId])) {
+                $usedGuruhlarByFan[$fanId] = [];
+            }
+            $usedGuruhlarByFan[$fanId][] = $guruhId;
         }
     }
 
@@ -241,6 +289,14 @@
     $mandatoryFanRowsJson = json_encode($mandatoryFanRows, $jsonFlags);
     if ($mandatoryFanRowsJson === false) {
         $mandatoryFanRowsJson = '[]';
+    }
+    $guruhlarByYonalishJson = json_encode($guruhlarByYonalish, $jsonFlags);
+    if ($guruhlarByYonalishJson === false) {
+        $guruhlarByYonalishJson = '{}';
+    }
+    $usedGuruhlarByFanJson = json_encode($usedGuruhlarByFan, $jsonFlags);
+    if ($usedGuruhlarByFanJson === false) {
+        $usedGuruhlarByFanJson = '{}';
     }
 ?>
 <!DOCTYPE html>
@@ -422,6 +478,38 @@
             padding: 6px 12px;
             white-space: nowrap;
         }
+        .mandatory-groups-row td {
+            background: #fbfdff;
+            border-top: 0;
+        }
+        .mandatory-groups {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding: 8px 0 10px;
+        }
+        .mandatory-group-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 10px;
+            border: 1px solid #d7e4ee;
+            border-radius: 999px;
+            background: #fff;
+            color: #334155;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .mandatory-group-chip.is-disabled {
+            background: #f1f5f9;
+            color: #94a3b8;
+            cursor: not-allowed;
+        }
+        .mandatory-group-empty {
+            color: #94a3b8;
+            font-size: 13px;
+            padding: 6px 0;
+        }
         @media (max-width: 1200px) {
             .top-filters-grid {
                 grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -581,8 +669,11 @@
         const allSemestrOptions = <?php echo $semestrSelectItemsJson; ?>;
         const allYonalishOptions = <?php echo $filterYonalishlarJson; ?>;
         const allMandatoryFanRows = <?php echo $mandatoryFanRowsJson; ?>;
+        const allGuruhlarByYonalish = <?php echo $guruhlarByYonalishJson; ?>;
+        const usedGuruhlarByFan = <?php echo $usedGuruhlarByFanJson; ?>;
         const mandatoryFanById = Object.create(null);
-        const selectedMandatoryFanIds = new Set();
+        const selectedMandatoryGroupKeys = new Set();
+        const mandatoryRenderLimit = 150;
         let filteredMandatoryFanRows = [];
 
         allMandatoryFanRows.forEach((row) => {
@@ -645,6 +736,45 @@
                 return getAcademicYearLabel(filters.kirishYili);
             }
             return item.kirish_yili_label || item.kirish_yili || '-';
+        }
+
+        function getRowGroups(row) {
+            const fanId = String(row.fan_id || '');
+            const yonalishId = String(row.yonalish_id || '');
+            const usedSet = new Set((usedGuruhlarByFan[fanId] || []).map((id) => String(id || '')));
+            return (allGuruhlarByYonalish[yonalishId] || []).map((group) => {
+                return {
+                    id: String(group.id || ''),
+                    nomer: String(group.nomer || ''),
+                    soni: parseInt(group.soni || 0, 10) || 0,
+                    isUsed: usedSet.has(String(group.id || ''))
+                };
+            }).filter((group) => group.id !== '');
+        }
+
+        function getGroupKey(row, groupId) {
+            return `${row.fan_id || ''}:${groupId || ''}`;
+        }
+
+        function getAvailableGroups(row) {
+            return getRowGroups(row).filter((group) => !group.isUsed);
+        }
+
+        function getSelectedGroupRows() {
+            const selected = [];
+            selectedMandatoryGroupKeys.forEach((key) => {
+                const [fanId, guruhId] = String(key).split(':');
+                const row = mandatoryFanById[String(fanId)];
+                if (!row || !guruhId) {
+                    return;
+                }
+                const group = getRowGroups(row).find((item) => item.id === String(guruhId));
+                if (!group || group.isUsed) {
+                    return;
+                }
+                selected.push({ row, group });
+            });
+            return selected;
         }
 
         function setupSelect2ForFilters() {
@@ -745,10 +875,17 @@
 
         function renderMandatoryFanTable() {
             const tbody = $('#mandatoryFanTableBody');
-            $('#mandatoryFanCount').text(`${filteredMandatoryFanRows.length} ta`);
-            $('#mandatoryFanSelectedCount').text(`${selectedMandatoryFanIds.size} ta tanlandi`);
+            const visibleRows = filteredMandatoryFanRows.slice(0, mandatoryRenderLimit);
+            const selectedGroups = getSelectedGroupRows();
+            const selectedStudents = selectedGroups.reduce((sum, item) => sum + (parseInt(item.group.soni || 0, 10) || 0), 0);
+            $('#mandatoryFanCount').text(
+                filteredMandatoryFanRows.length > mandatoryRenderLimit
+                    ? `${filteredMandatoryFanRows.length} ta / ${mandatoryRenderLimit} ta ko'rsatildi`
+                    : `${filteredMandatoryFanRows.length} ta`
+            );
+            $('#mandatoryFanSelectedCount').text(`${selectedGroups.length} ta guruh / ${selectedStudents} talaba tanlandi`);
 
-            if (filteredMandatoryFanRows.length === 0) {
+            if (visibleRows.length === 0) {
                 tbody.html('<tr><td colspan="8">Tanlangan filter bo\'yicha majburiy fan topilmadi</td></tr>');
                 $('#mandatoryFanSelectAll').prop('checked', false);
                 return;
@@ -756,13 +893,33 @@
 
             let html = '';
             const filters = getTopFilters();
-            filteredMandatoryFanRows.forEach((row) => {
+            visibleRows.forEach((row) => {
                 const fanId = String(row.fan_id || '');
-                const checked = selectedMandatoryFanIds.has(fanId) ? ' checked' : '';
+                const groups = getRowGroups(row);
+                const availableGroups = groups.filter((group) => !group.isUsed);
+                const allRowGroupsSelected = availableGroups.length > 0
+                    && availableGroups.every((group) => selectedMandatoryGroupKeys.has(getGroupKey(row, group.id)));
+                const checked = allRowGroupsSelected ? ' checked' : '';
+                const disabled = availableGroups.length === 0 ? ' disabled' : '';
                 const displayCourse = getDisplayCourse(row, filters);
+                const groupHtml = groups.length > 0
+                    ? groups.map((group) => {
+                        const key = getGroupKey(row, group.id);
+                        const groupChecked = selectedMandatoryGroupKeys.has(key) ? ' checked' : '';
+                        const groupDisabled = group.isUsed ? ' disabled' : '';
+                        const disabledClass = group.isUsed ? ' is-disabled' : '';
+                        const usedText = group.isUsed ? ' - biriktirilgan' : '';
+                        return `
+                            <label class="mandatory-group-chip${disabledClass}">
+                                <input type="checkbox" class="mandatory-group-check" data-fan-id="${escapeHtml(fanId)}" value="${escapeHtml(group.id)}"${groupChecked}${groupDisabled}>
+                                <span>${escapeHtml(group.nomer || '-')} (${escapeHtml(group.soni)} talaba${escapeHtml(usedText)})</span>
+                            </label>
+                        `;
+                    }).join('')
+                    : '<div class="mandatory-group-empty">Bu yo\'nalish uchun guruh topilmadi</div>';
                 html += `
                     <tr>
-                        <td><input type="checkbox" class="mandatory-fan-check" value="${escapeHtml(fanId)}"${checked}></td>
+                        <td><input type="checkbox" class="mandatory-fan-check" value="${escapeHtml(fanId)}"${checked}${disabled}></td>
                         <td>${escapeHtml(row.fan_code || '-')}</td>
                         <td>${escapeHtml(row.fan_name || '-')}</td>
                         <td>${escapeHtml(row.kafedra_name || '-')}</td>
@@ -771,25 +928,45 @@
                         <td>${escapeHtml(displayCourse ? `${displayCourse}-kurs` : '-')}</td>
                         <td>${escapeHtml(row.semestr_num ? `${row.semestr_num}-semestr` : '-')}</td>
                     </tr>
+                    <tr class="mandatory-groups-row">
+                        <td></td>
+                        <td colspan="7">
+                            <div class="mandatory-groups">${groupHtml}</div>
+                        </td>
+                    </tr>
                 `;
             });
+            if (filteredMandatoryFanRows.length > mandatoryRenderLimit) {
+                html += `
+                    <tr>
+                        <td colspan="8" class="created-list-empty">
+                            Tez ishlashi uchun hozir birinchi ${mandatoryRenderLimit} ta qator ko'rsatildi. Qolganlarini ko'rish uchun yuqoridagi filter yoki qidiruvdan foydalaning.
+                        </td>
+                    </tr>
+                `;
+            }
             tbody.html(html);
 
-            const allVisibleSelected = filteredMandatoryFanRows.length > 0
-                && filteredMandatoryFanRows.every(row => selectedMandatoryFanIds.has(String(row.fan_id || '')));
+            const allVisibleSelected = visibleRows.length > 0
+                && visibleRows.every((row) => {
+                    const availableGroups = getAvailableGroups(row);
+                    return availableGroups.length > 0
+                        && availableGroups.every((group) => selectedMandatoryGroupKeys.has(getGroupKey(row, group.id)));
+                });
             $('#mandatoryFanSelectAll').prop('checked', allVisibleSelected);
         }
 
         function retainOnlyFilteredSelections() {
-            const visibleFanIds = new Set(
-                filteredMandatoryFanRows
-                    .map((row) => String(row.fan_id || ''))
-                    .filter((fanId) => fanId !== '')
-            );
+            const visibleGroupKeys = new Set();
+            filteredMandatoryFanRows.slice(0, mandatoryRenderLimit).forEach((row) => {
+                getAvailableGroups(row).forEach((group) => {
+                    visibleGroupKeys.add(getGroupKey(row, group.id));
+                });
+            });
 
-            Array.from(selectedMandatoryFanIds).forEach((fanId) => {
-                if (!visibleFanIds.has(fanId)) {
-                    selectedMandatoryFanIds.delete(fanId);
+            Array.from(selectedMandatoryGroupKeys).forEach((key) => {
+                if (!visibleGroupKeys.has(key)) {
+                    selectedMandatoryGroupKeys.delete(key);
                 }
             });
         }
@@ -813,6 +990,9 @@
                     return false;
                 }
                 if (filters.semestrNum !== '' && String(row.semestr_num || '') !== filters.semestrNum) {
+                    return false;
+                }
+                if (getAvailableGroups(row).length === 0) {
                     return false;
                 }
 
@@ -860,16 +1040,15 @@
         });
         $('#mandatoryFanSelectAll').on('change', function() {
             const checked = $(this).is(':checked');
-            filteredMandatoryFanRows.forEach((row) => {
-                const fanId = String(row.fan_id || '');
-                if (fanId === '') {
-                    return;
-                }
-                if (checked) {
-                    selectedMandatoryFanIds.add(fanId);
-                } else {
-                    selectedMandatoryFanIds.delete(fanId);
-                }
+            filteredMandatoryFanRows.slice(0, mandatoryRenderLimit).forEach((row) => {
+                getAvailableGroups(row).forEach((group) => {
+                    const key = getGroupKey(row, group.id);
+                    if (checked) {
+                        selectedMandatoryGroupKeys.add(key);
+                    } else {
+                        selectedMandatoryGroupKeys.delete(key);
+                    }
+                });
             });
             renderMandatoryFanTable();
         });
@@ -878,15 +1057,34 @@
             if (fanId === '') {
                 return;
             }
-            if ($(this).is(':checked')) {
-                selectedMandatoryFanIds.add(fanId);
-            } else {
-                selectedMandatoryFanIds.delete(fanId);
+            const row = mandatoryFanById[fanId];
+            if (!row) {
+                return;
             }
-            $('#mandatoryFanSelectedCount').text(`${selectedMandatoryFanIds.size} ta tanlandi`);
-            const allVisibleSelected = filteredMandatoryFanRows.length > 0
-                && filteredMandatoryFanRows.every(row => selectedMandatoryFanIds.has(String(row.fan_id || '')));
-            $('#mandatoryFanSelectAll').prop('checked', allVisibleSelected);
+            if ($(this).is(':checked')) {
+                getAvailableGroups(row).forEach((group) => selectedMandatoryGroupKeys.add(getGroupKey(row, group.id)));
+            } else {
+                getAvailableGroups(row).forEach((group) => selectedMandatoryGroupKeys.delete(getGroupKey(row, group.id)));
+            }
+            renderMandatoryFanTable();
+        });
+        $(document).on('change', '.mandatory-group-check', function() {
+            const fanId = String($(this).data('fan-id') || '');
+            const groupId = String($(this).val() || '');
+            if (fanId === '' || groupId === '') {
+                return;
+            }
+            const row = mandatoryFanById[fanId];
+            if (!row) {
+                return;
+            }
+            const key = getGroupKey(row, groupId);
+            if ($(this).is(':checked')) {
+                selectedMandatoryGroupKeys.add(key);
+            } else {
+                selectedMandatoryGroupKeys.delete(key);
+            }
+            renderMandatoryFanTable();
         });
 
         const Toast = Swal.mixin({
@@ -902,23 +1100,22 @@
 
             const formData = new FormData();
             const masterInput = $('#masterFanId');
-            const selectedListRows = Array.from(selectedMandatoryFanIds)
-                .map((id) => mandatoryFanById[String(id)])
-                .filter(Boolean);
+            const selectedListRows = getSelectedGroupRows();
 
             if (selectedListRows.length > 0) {
-                const first = selectedListRows[0];
+                const first = selectedListRows[0].row;
                 const firstFanId = String(first.fan_id || '');
                 const firstFanKey = normalizeFanName(String(first.fan_name || ''));
                 const firstSemestrNum = String(first.semestr_num || '');
-                const usedSemestrIds = new Set();
 
                 if (firstFanId === '') {
                     Toast.fire({ icon: 'error', title: "Tanlangan fanlarda xatolik bor" });
                     return;
                 }
 
-                for (const row of selectedListRows) {
+                for (const item of selectedListRows) {
+                    const row = item.row;
+                    const group = item.group;
                     const fanId = String(row.fan_id || '');
                     const semestrId = String(row.semestr_id || '');
                     const fanKey = normalizeFanName(String(row.fan_name || ''));
@@ -936,16 +1133,13 @@
                         Toast.fire({ icon: 'error', title: "Faqat bir xil semestr raqamidagi fanlar tanlanishi mumkin" });
                         return;
                     }
-                    if (usedSemestrIds.has(semestrId)) {
-                        continue;
-                    }
-                    usedSemestrIds.add(semestrId);
                     formData.append('semestr_ids[]', semestrId);
                     formData.append('fan_ids[]', fanId);
+                    formData.append('guruh_ids[]', String(group.id || ''));
                 }
 
-                if (usedSemestrIds.size === 0) {
-                    Toast.fire({ icon: 'error', title: "Biriktirish uchun kamida 1 ta fan tanlang" });
+                if (selectedListRows.length === 0) {
+                    Toast.fire({ icon: 'error', title: "Biriktirish uchun kamida 1 ta guruh tanlang" });
                     return;
                 }
 
@@ -974,7 +1168,7 @@
 
                     this.reset();
                     $('#masterFanId').val('');
-                    selectedMandatoryFanIds.clear();
+                    selectedMandatoryGroupKeys.clear();
                     applyTopFiltersToRows();
                     // Izoh: Biriktirilgan fanlar ro'yxati ko'rinishi uchun sahifani yangilaymiz.
                     setTimeout(() => {

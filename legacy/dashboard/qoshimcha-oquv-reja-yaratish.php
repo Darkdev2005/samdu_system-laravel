@@ -7,6 +7,17 @@ $fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
 $yonalishlar = $db->get_data_by_table_all('yonalishlar');
 $qoshimcha_dars_turlar = $db->get_data_by_table_all('qoshimcha_dars_turlar');
 $kafedralar = $db->get_data_by_table_all('kafedralar');
+$magDokQoshimchaIds = [9, 10, 11, 12, 13, 14];
+$asosiy_qoshimcha_dars_turlar = [];
+$mag_dok_dars_turlar = [];
+foreach ($qoshimcha_dars_turlar as $qdt) {
+    $qdtId = (int)($qdt['id'] ?? 0);
+    if (in_array($qdtId, $magDokQoshimchaIds, true)) {
+        $mag_dok_dars_turlar[] = $qdt;
+        continue;
+    }
+    $asosiy_qoshimcha_dars_turlar[] = $qdt;
+}
 
 $makeShortCode = static function (string $name): string {
     $words = preg_split('/\s+/', trim($name)) ?: [];
@@ -70,9 +81,13 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
 if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
     $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
 }
-$qoshimchaDarsTurlarJson = json_encode($qoshimcha_dars_turlar ?? [], $jsonFlags);
+$qoshimchaDarsTurlarJson = json_encode($asosiy_qoshimcha_dars_turlar ?? [], $jsonFlags);
 if ($qoshimchaDarsTurlarJson === false) {
     $qoshimchaDarsTurlarJson = '[]';
+}
+$magDokDarsTurlarJson = json_encode($mag_dok_dars_turlar ?? [], $jsonFlags);
+if ($magDokDarsTurlarJson === false) {
+    $magDokDarsTurlarJson = '[]';
 }
 $kafedralarJson = json_encode($kafedralar ?? [], $jsonFlags);
 if ($kafedralarJson === false) {
@@ -361,7 +376,7 @@ if ($kafedralarJson === false) {
                                     <label>Qo'shimcha dars turi</label>
                                     <select class="form-control" name="qoshimcha_dars_id[]" required>
                                         <option value="">Tanlang</option>
-                                        <?php foreach ($qoshimcha_dars_turlar as $qdt): ?>
+                                        <?php foreach ($asosiy_qoshimcha_dars_turlar as $qdt): ?>
                                             <option value="<?= $qdt['id'] ?>"
                                                 data-koef="<?= $qdt['koifesent'] ?>">
                                                 <?= htmlspecialchars($qdt['name']) ?>
@@ -602,6 +617,8 @@ if ($kafedralarJson === false) {
 
         let fanIndex = 0;
         const qoshimchaDarsTurlari = <?php echo $qoshimchaDarsTurlarJson; ?>;
+        const magDokDarsTurlari = <?php echo $magDokDarsTurlarJson; ?>;
+        const magDokQoshimchaIds = new Set((magDokDarsTurlari || []).map(item => String(item.id || '')));
         const kafedralarList = <?php echo $kafedralarJson; ?>;
         const fanOptionsBySemestr = {};
         const fanMap = {};
@@ -1303,6 +1320,7 @@ if ($kafedralarJson === false) {
                     }
 
                     const rows = Array.isArray(data.rows) ? data.rows : [];
+                    const commonRows = rows.filter(row => !magDokQoshimchaIds.has(String(row.qoshimcha_dars_id || '')));
                     createdQoshimchaRowsById = {};
                     rows.forEach(row => {
                         const id = parseInt(row.qoshimcha_fanid || 0, 10);
@@ -1311,7 +1329,7 @@ if ($kafedralarJson === false) {
                         }
                     });
 
-                    createdQoshimchaRowsAll = rows;
+                    createdQoshimchaRowsAll = commonRows;
                     applyCreatedQoshimchaTableFilters(true);
                 })
                 .catch(() => {

@@ -1,6 +1,10 @@
 <?php
     include_once 'config.php';
     $db = new Database();
+    $isMagistrDoktorantYuklamaPage = !empty($magistrDoktorantYuklamaPage);
+    $pageTitle = $isMagistrDoktorantYuklamaPage ? "Magistr/Doktorant yuklama jadvali" : "O'quv yuklama jadvali";
+    $excelSheetName = $isMagistrDoktorantYuklamaPage ? "Magistr doktorant yuklamasi" : "O'quv yuklamasi";
+    $excelFileName = $isMagistrDoktorantYuklamaPage ? "magistr_doktorant_yuklamasi.xlsx" : "oquv_yuklamasi.xlsx";
     $rowLimit = 150;
     $kafedralar = $db->get_data_by_table_all('kafedralar');
     $yonalishlar = $db->get_data_by_table_all('yonalishlar');
@@ -20,7 +24,7 @@
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
-    <title>O'quv yuklama jadvali</title>
+    <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">
     <link rel="stylesheet" href="../assets/css/oquv_yuklama_style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -32,7 +36,7 @@
 
         <main class="main-content">
             <header class="top-navbar">
-                <h1><i class="fas fa-chart-bar me-2"></i>O'quv yuklama jadvali</h1>
+                <h1><i class="fas fa-chart-bar me-2"></i><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
                 <div class="current-date">
                     <i class="fas fa-calendar-alt"></i>
                     <span><?php echo date('d.m.Y'); ?></span>
@@ -131,6 +135,9 @@
     <script>
         let currentZoom = 1;
         const rowLimit = <?= $rowLimit ?>;
+        const magistrDoktorantOnly = <?= $isMagistrDoktorantYuklamaPage ? 'true' : 'false' ?>;
+        const excelSheetName = <?= json_encode($excelSheetName, JSON_UNESCAPED_UNICODE) ?>;
+        const excelFileName = <?= json_encode($excelFileName, JSON_UNESCAPED_UNICODE) ?>;
         let showAllRows = false;
         $(document).ready(function() {
             $('#kafedraFilter, #semestrFilter, #kursFilter, #semestrTypeFilter, #yonalishFilter').select2({
@@ -234,6 +241,7 @@
                     yonalish_id: yonalishId,
                     semestr_turi: semestrType,
                     kurs: kurs,
+                    magistr_doktorant_only: magistrDoktorantOnly ? 1 : 0,
                     show_all: showAllRows ? 1 : 0
                 },
                 success: function(response) {
@@ -381,8 +389,8 @@
 
             const table = document.getElementById('yuklamaTable');
             if (table) {
-                const wb = XLSX.utils.table_to_book(table, {sheet: "O'quv yuklamasi"});
-                XLSX.writeFile(wb, "oquv_yuklamasi.xlsx");
+                const wb = XLSX.utils.table_to_book(table, {sheet: excelSheetName});
+                XLSX.writeFile(wb, excelFileName);
             } else {
                 Swal.fire({
                     icon: 'warning',

@@ -29,12 +29,21 @@
                     IF(COALESCE(y.kirish_yili, '') <> '', CONCAT(' - ', y.kirish_yili), ''),
                     ' - ',
                     COALESCE(s.semestr, ''),
-                    '-semestr'
+                    '-semestr',
+                    IF(COALESCE(ginfo.guruhlar, '') <> '', CONCAT(' (', ginfo.guruhlar, ')'), '')
                 )
                 ORDER BY s.semestr SEPARATOR ' | '
             ) AS biriktirishlar
         FROM umumtalim_fanlar uf
         JOIN umumtalim_fan_biriktirish ub ON ub.umumtalim_fan_id = uf.id
+        LEFT JOIN (
+            SELECT
+                ubg.biriktirish_id,
+                GROUP_CONCAT(DISTINCT g.guruh_nomer ORDER BY g.guruh_nomer SEPARATOR ', ') AS guruhlar
+            FROM umumtalim_fan_biriktirish_guruhlar ubg
+            JOIN guruhlar g ON g.id = ubg.guruh_id
+            GROUP BY ubg.biriktirish_id
+        ) ginfo ON ginfo.biriktirish_id = ub.id
         LEFT JOIN kafedralar k ON k.id = uf.kafedra_id
         LEFT JOIN semestrlar s ON s.id = ub.semestr_id
         LEFT JOIN yonalishlar y ON y.id = ub.yonalish_id

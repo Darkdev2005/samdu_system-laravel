@@ -153,6 +153,18 @@
                             </a>
                         </li>
                         <li>
+                            <a href="magistr-doktorant-yuklama.php">
+                                <i class="fas fa-user-graduate"></i>
+                                <span>Magistr/Doktorant kiritish</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="magistr-doktorant-qoshimcha-reja.php">
+                                <i class="fas fa-user-clock"></i>
+                                <span>Magistr/Doktorant qo‘shimcha reja</span>
+                            </a>
+                        </li>
+                        <li>
                             <a href="oquv-rejalar.php">
                                 <i class="fas fa-list"></i>
                                 <span>Barcha o‘quv rejalar</span>
@@ -192,6 +204,12 @@
                             <a href="oquv-yuklamalar.php">
                                 <i class="fas fa-tasks"></i>
                                 <span>Barcha o'quv yuklamalar</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="magistr-doktorant-yuklamalar.php">
+                                <i class="fas fa-table"></i>
+                                <span>Magistr/Doktorant yuklama jadvali</span>
                             </a>
                         </li>
                     </ul>

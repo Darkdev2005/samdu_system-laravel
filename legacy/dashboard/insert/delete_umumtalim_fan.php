@@ -11,6 +11,12 @@
     }
 
     // Izoh: Biriktirishlarni oldin o'chiramiz.
+    $db->query("
+        DELETE ubg
+        FROM umumtalim_fan_biriktirish_guruhlar ubg
+        JOIN umumtalim_fan_biriktirish ub ON ub.id = ubg.biriktirish_id
+        WHERE ub.umumtalim_fan_id = $id
+    ");
     $db->delete('umumtalim_fan_biriktirish', "umumtalim_fan_id = $id");
 
     $deleted = $db->delete('umumtalim_fanlar', "id = $id");

@@ -79,6 +79,7 @@ try {
 
     // Izoh: Umumta'lim biriktirishda source fan bo'lib turgan bog'lanishlar.
     if ($ok) {
+        $ok = $ok && $db->query("DELETE FROM umumtalim_fan_biriktirish_guruhlar WHERE source_fan_id = $fanId");
         $ok = $ok && $db->query("DELETE FROM umumtalim_fan_biriktirish WHERE source_fan_id = $fanId");
     }
 

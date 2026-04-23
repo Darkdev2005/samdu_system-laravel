@@ -28,9 +28,12 @@ if (isset($_POST['kurs']) && !empty($_POST['kurs'])) {
     $filters['kurs'] = (int)$_POST['kurs'];
 }
 
-$oquv_yuklamalar = $db->get_oquv_yuklamalar($filters);
+$magistrDoktorantOnly = isset($_POST['magistr_doktorant_only']) && (int)$_POST['magistr_doktorant_only'] === 1;
+$oquv_yuklamalar = $magistrDoktorantOnly ? [] : $db->get_oquv_yuklamalar($filters);
 $qoshimcha_yuklamalar = [];
-if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
+if ($magistrDoktorantOnly) {
+    $qoshimcha_yuklamalar = $db->get_magistr_doktorant_yuklamalar($filters);
+} elseif (empty($filters['limit']) || (int)$filters['limit'] === 0) {
     $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters);
 } else {
     $remainingLimit = max(0, (int)$filters['limit'] - count($oquv_yuklamalar));

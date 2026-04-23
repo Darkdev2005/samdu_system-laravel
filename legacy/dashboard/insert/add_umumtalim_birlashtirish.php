@@ -8,6 +8,7 @@
     $fanIdsRaw = $_POST['fan_ids'] ?? [];
     $masterFanId = (int) ($_POST['master_fan_id'] ?? 0);
     $semestrIdsRaw = $_POST['semestr_ids'] ?? [];
+    $guruhIdsRaw = $_POST['guruh_ids'] ?? [];
     $mergeByNameOnly = ((int)($_POST['merge_by_name_only'] ?? 0) === 1);
 
     $normalizeFanName = static function (string $value): string {
@@ -19,38 +20,40 @@
         return strtolower($value);
     };
 
-    if (!is_array($fanIdsRaw) || !is_array($semestrIdsRaw) || count($fanIdsRaw) === 0 || count($semestrIdsRaw) === 0) {
-        echo json_encode(['success' => false, 'message' => 'Yo\'nalish+semestr va fan tanlanmagan']);
+    if (!is_array($fanIdsRaw) || !is_array($semestrIdsRaw) || !is_array($guruhIdsRaw) || count($fanIdsRaw) === 0 || count($semestrIdsRaw) === 0 || count($guruhIdsRaw) === 0) {
+        echo json_encode(['success' => false, 'message' => 'Yo\'nalish+semestr, fan va guruh tanlanmagan']);
         return;
     }
 
-    if (count($fanIdsRaw) !== count($semestrIdsRaw)) {
+    if (count($fanIdsRaw) !== count($semestrIdsRaw) || count($fanIdsRaw) !== count($guruhIdsRaw)) {
         echo json_encode(['success' => false, 'message' => 'Biriktirish ma\'lumotlari to\'liq emas']);
         return;
     }
 
     // Izoh: Birinchi tanlangan fan (fanlar jadvalidagi ID) master bo'ladi.
     $rows = [];
-    $seenSemestrIds = [];
+    $seenItems = [];
 
     for ($i = 0; $i < count($semestrIdsRaw); $i++) {
         $semestrId = (int) ($semestrIdsRaw[$i] ?? 0);
         $sourceFanId = (int) ($fanIdsRaw[$i] ?? 0);
+        $guruhId = (int) ($guruhIdsRaw[$i] ?? 0);
 
-        if ($semestrId <= 0 && $sourceFanId <= 0) {
+        if ($semestrId <= 0 && $sourceFanId <= 0 && $guruhId <= 0) {
             continue;
         }
 
-        if ($semestrId <= 0 || $sourceFanId <= 0) {
-            echo json_encode(['success' => false, 'message' => 'Yo\'nalish+semestr va fan tanlanishi shart']);
+        if ($semestrId <= 0 || $sourceFanId <= 0 || $guruhId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Yo\'nalish+semestr, fan va guruh tanlanishi shart']);
             return;
         }
 
-        if (isset($seenSemestrIds[$semestrId])) {
-            echo json_encode(['success' => false, 'message' => 'Bir xil yo\'nalish+semestr qayta tanlangan']);
+        $seenKey = $sourceFanId . ':' . $guruhId;
+        if (isset($seenItems[$seenKey])) {
+            echo json_encode(['success' => false, 'message' => 'Bir xil fan+guruh qayta tanlangan']);
             return;
         }
-        $seenSemestrIds[$semestrId] = true;
+        $seenItems[$seenKey] = true;
 
         if ($masterFanId <= 0) {
             $masterFanId = $sourceFanId;
@@ -58,7 +61,8 @@
 
         $rows[] = [
             'semestr_id' => $semestrId,
-            'source_fan_id' => $sourceFanId
+            'source_fan_id' => $sourceFanId,
+            'guruh_id' => $guruhId
         ];
     }
 
@@ -158,6 +162,14 @@
         if ($yonalishId <= 0) {
             continue;
         }
+        $guruhId = (int) $row['guruh_id'];
+        $guruh = $db->get_data_by_table('guruhlar', [
+            'id' => $guruhId
+        ]);
+        if (!$guruh || (int)($guruh['yonalish_id'] ?? 0) !== $yonalishId) {
+            echo json_encode(['success' => false, 'message' => 'Tanlangan guruh yo\'nalishga mos emas']);
+            return;
+        }
 
         $sourceFanId = (int) $row['source_fan_id']; // fanlar jadvalidagi ID
         $sourceFanRow = $db->get_data_by_table('fanlar', [
@@ -194,7 +206,31 @@
             VALUES ($masterUmumtalimId, $sourceFanId, $yonalishId, $semestrId)
             ON DUPLICATE KEY UPDATE source_fan_id = $sourceFanId
         ");
+        $biriktirishId = 0;
+        $biriktirishResult = $db->query("
+            SELECT id
+            FROM umumtalim_fan_biriktirish
+            WHERE umumtalim_fan_id = $masterUmumtalimId
+              AND yonalish_id = $yonalishId
+              AND semestr_id = $semestrId
+            LIMIT 1
+        ");
+        if ($biriktirishResult && ($biriktirishRow = mysqli_fetch_assoc($biriktirishResult))) {
+            $biriktirishId = (int)($biriktirishRow['id'] ?? 0);
+        }
+        if ($biriktirishId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Biriktirish yozuvini tayyorlashda xatolik']);
+            return;
+        }
+
+        $db->query("
+            INSERT INTO umumtalim_fan_biriktirish_guruhlar
+                (biriktirish_id, source_fan_id, semestr_id, yonalish_id, guruh_id)
+            VALUES
+                ($biriktirishId, $sourceFanId, $semestrId, $yonalishId, $guruhId)
+            ON DUPLICATE KEY UPDATE biriktirish_id = VALUES(biriktirish_id)
+        ");
     }
 
-    echo json_encode(['success' => true, 'message' => 'Birlashtiriladigan fanlar yo\'nalishlarga biriktirildi']);
+    echo json_encode(['success' => true, 'message' => 'Birlashtiriladigan fanlar guruhlar bo\'yicha biriktirildi']);
 ?>
