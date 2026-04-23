@@ -190,13 +190,21 @@ if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
                                 ? (float)$row['amalda_seminar']
                                 : ($rejaSeminar * (int)($row['guruhlar_soni'] ?? 0));
                         } else {
-                            // Izoh: Oddiy fanlarda eski hisoblash mantiqini saqlaymiz.
+                            // Izoh: Oddiy fanlarda backenddan kelgan hisob ustuvor, shu jumladan tanlov fan taqsimoti.
                             $amaldaMaruza = isset($row['amalda_maruz'])
                                 ? (float)$row['amalda_maruz']
                                 : $rejaMaruza;
-                            $amaldaAmaliy = $rejaAmaliy * (int)($row['kattaguruh_soni'] ?? 0);
-                            $amaldaLab = $rejaLab * (int)($row['kichikguruh_soni'] ?? 0);
-                            $amaldaSeminar = $rejaSeminar * (int)($row['kattaguruh_soni'] ?? 0);
+                            $amaldaAmaliy = isset($row['amalda_amaliy'])
+                                ? (float)$row['amalda_amaliy']
+                                : ($rejaAmaliy * (int)($row['kattaguruh_soni'] ?? 0));
+                            $amaldaLab = isset($row['amalda_lab'])
+                                ? (float)$row['amalda_lab']
+                                : (isset($row['amalda_laboratoriya'])
+                                    ? (float)$row['amalda_laboratoriya']
+                                    : ($rejaLab * (int)($row['kichikguruh_soni'] ?? 0)));
+                            $amaldaSeminar = isset($row['amalda_seminar'])
+                                ? (float)$row['amalda_seminar']
+                                : ($rejaSeminar * (int)($row['kattaguruh_soni'] ?? 0));
                         }
 
                         $jamiAll = (float)($row['jami_soat'] ?? 0) + $oraliq + $yakuniy + $kursIshi + $kursLoyiha + $uzluksiz;

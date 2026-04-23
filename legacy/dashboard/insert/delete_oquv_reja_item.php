@@ -72,6 +72,11 @@ try {
         $ok = $ok && $db->query("DELETE FROM ishchi_oquv_reja_variants WHERE fan_id = $fanId");
     }
 
+    // Izoh: Tanlov fan talabalar taqsimotida shu bazaviy yoki variant fan bo'lsa tozalaymiz.
+    if ($ok) {
+        $ok = $ok && $db->query("DELETE FROM tanlov_fan_talablar WHERE base_fan_id = $fanId OR variant_fan_id = $fanId");
+    }
+
     // Izoh: Umumta'lim biriktirishda source fan bo'lib turgan bog'lanishlar.
     if ($ok) {
         $ok = $ok && $db->query("DELETE FROM umumtalim_fan_biriktirish WHERE source_fan_id = $fanId");
@@ -125,4 +130,3 @@ try {
         'message' => "O'chirishda texnik xatolik yuz berdi"
     ]);
 }
-

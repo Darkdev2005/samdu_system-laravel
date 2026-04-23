@@ -13,9 +13,14 @@
     $tanlov_fanlar = $_POST['tanlov_fan'];
     $insertCount = 0;
     $hasTanlovReference = false;
+    $semestrRow = $db->get_data_by_table('semestrlar', ['id' => $semestr_id]);
+    $yonalishIdForSemestr = (int)($semestrRow['yonalish_id'] ?? 0);
+    $talabaRow = $db->get_talaba_soni($semestr_id);
+    $jamiTalabaForSemestr = (int)($talabaRow['talabalar_soni'] ?? 0);
     // Izoh: Bir xil so'rovda kelgan bir nechta tanlov bloklari bitta ishchi reja bazasiga yig'ilishi uchun
     // variantlarni faqat bir marta tozalaymiz (har blokda qayta tozalanmaydi).
     $clearedIshchiVariantIds = [];
+    $clearedTanlovTalabBaseIds = [];
 
     // Izoh: Har bir fan kartasi uchun dars soatlari yig'indisini hisoblaymiz.
     $getCardHoursMeta = static function (int $index): array {
@@ -267,9 +272,50 @@
             $tanlovBaseName = trim($_POST['tanlov_fan_base_nomi'][$index]);
             $tanlovFanNomi = $_POST['tanlov_fan_nomi'][$index];
             $tanlovKafedraId = $_POST['tanlov_kafedra_id'][$index];
+            $tanlovTalabaSoni = $_POST['tanlov_talaba_soni'][$index] ?? [];
             
             if (empty($tanlovFanCode) || empty($tanlovBaseName) || empty($tanlovFanNomi) || empty($tanlovKafedraId)) {
                 continue;
+            }
+            if ($electiveType === 1 && (!is_array($tanlovTalabaSoni) || $yonalishIdForSemestr <= 0 || $jamiTalabaForSemestr <= 0)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => "Tanlov fan uchun talaba taqsimoti to'liq emas"
+                ]);
+                return;
+            }
+            if ($electiveType === 1) {
+                $taqsimotJami = 0;
+                foreach ($tanlovFanNomi as $variantIndex => $fanName) {
+                    $fanName = trim((string)$fanName);
+                    $kafedra_id = (int)($tanlovKafedraId[$variantIndex] ?? 0);
+                    if ($fanName === '' || $kafedra_id <= 0) {
+                        continue;
+                    }
+                    $talabaRaw = trim((string)($tanlovTalabaSoni[$variantIndex] ?? ''));
+                    if ($talabaRaw === '' || !is_numeric($talabaRaw) || (int)$talabaRaw < 0) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => "{$fanName}: talaba soni noto'g'ri"
+                        ]);
+                        return;
+                    }
+                    if ((int)$talabaRaw > 0 && (int)$talabaRaw < 10) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => "{$fanName}: aktiv tanlov varianti kamida 10 talaba bo'lishi kerak"
+                        ]);
+                        return;
+                    }
+                    $taqsimotJami += (int)$talabaRaw;
+                }
+                if ($taqsimotJami !== $jamiTalabaForSemestr) {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => "Tanlov fan taqsimoti {$taqsimotJami} ta. Jami talabalar soni {$jamiTalabaForSemestr} ga teng bo'lishi kerak"
+                    ]);
+                    return;
+                }
             }
 
             $baseExists = $db->get_data_by_table('fanlar', [
@@ -309,6 +355,10 @@
                 $db->query("DELETE FROM ishchi_oquv_reja_variants WHERE ishchi_reja_id = $ishchiId");
                 $clearedIshchiVariantIds[$ishchiId] = true;
             }
+            if ($electiveType === 1 && $baseFanId > 0 && !isset($clearedTanlovTalabBaseIds[$baseFanId])) {
+                $db->query("DELETE FROM tanlov_fan_talablar WHERE semestr_id = $semestr_id AND base_fan_id = $baseFanId");
+                $clearedTanlovTalabBaseIds[$baseFanId] = true;
+            }
 
             $variantSaved = false;
             
@@ -346,6 +396,18 @@
                         'ishchi_reja_id' => $ishchiId,
                         'fan_id' => $variantFanId
                     ]);
+                    if ($electiveType === 1) {
+                        $talabaSoni = max(0, (int)($tanlovTalabaSoni[$variantIndex] ?? 0));
+                        $db->query("
+                            INSERT INTO tanlov_fan_talablar
+                                (semestr_id, yonalish_id, base_fan_id, variant_fan_id, talabalar_soni)
+                            VALUES
+                                ($semestr_id, $yonalishIdForSemestr, $baseFanId, $variantFanId, $talabaSoni)
+                            ON DUPLICATE KEY UPDATE
+                                yonalish_id = $yonalishIdForSemestr,
+                                talabalar_soni = $talabaSoni
+                        ");
+                    }
                     $variantSaved = true;
                 }
             }

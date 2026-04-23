@@ -120,6 +120,7 @@
                 'yonalish_id' => (int) ($row['yonalish_id'] ?? 0),
                 'yonalish_name' => (string) ($row['yonalish_name'] ?? ''),
                 'kirish_yili' => (string) ($row['kirish_yili'] ?? ''),
+                'kirish_yili_num' => (int) ($row['kirish_yili'] ?? 0),
                 'kirish_yili_label' => $academicYearLabel((string) ($row['kirish_yili'] ?? '')),
                 'talim_shakli_id' => (int) ($row['talim_shakli_id'] ?? 0),
                 'talim_shakli_name' => (string) ($row['talim_shakli_name'] ?? ''),
@@ -177,6 +178,7 @@
             'fakultet_id' => $fakultetId,
             'yonalish_id' => $yonalishId,
             'kirish_yili' => $kirishYili,
+            'kirish_yili_num' => (int) $kirishYili,
             'talim_shakli_id' => $talimShakliId,
             'semestr_num' => $semestrNum,
             'kurs' => $kurs,
@@ -603,6 +605,48 @@
                 .toLocaleLowerCase('uz-UZ');
         }
 
+        function parseYear(value) {
+            const match = String(value || '').match(/\d{4}/);
+            return match ? parseInt(match[0], 10) : 0;
+        }
+
+        function getAcademicYearLabel(startYear) {
+            const year = parseInt(startYear || 0, 10);
+            return year > 0 ? `${year}-${year + 1}` : '-';
+        }
+
+        function getCurrentCourseForAcademicYear(item, academicYearStart) {
+            const startYear = parseInt(academicYearStart || 0, 10);
+            const entryYear = parseYear(item.kirish_yili_num || item.kirish_yili || '');
+            if (startYear <= 0 || entryYear <= 0) {
+                return 0;
+            }
+            return startYear - entryYear + 1;
+        }
+
+        function isItemInAcademicYear(item, academicYearStart) {
+            const currentCourse = getCurrentCourseForAcademicYear(item, academicYearStart);
+            const semestrNum = parseInt(item.semestr_num || 0, 10);
+            if (currentCourse <= 0 || semestrNum <= 0) {
+                return false;
+            }
+            return semestrNum === (currentCourse * 2 - 1) || semestrNum === (currentCourse * 2);
+        }
+
+        function getDisplayCourse(item, filters) {
+            if (filters && filters.kirishYili !== '') {
+                return getCurrentCourseForAcademicYear(item, filters.kirishYili);
+            }
+            return parseInt(item.kurs || 0, 10) || 0;
+        }
+
+        function getDisplayAcademicYearLabel(item, filters) {
+            if (filters && filters.kirishYili !== '') {
+                return getAcademicYearLabel(filters.kirishYili);
+            }
+            return item.kirish_yili_label || item.kirish_yili || '-';
+        }
+
         function setupSelect2ForFilters() {
             $('#yonalishFilter').select2({
                 placeholder: "Yo'nalish(lar)ni tanlang",
@@ -661,13 +705,14 @@
                 if (filters.yonalishIds.length > 0 && !filters.yonalishIds.includes(String(item.yonalish_id || ''))) {
                     return false;
                 }
-                if (filters.kirishYili !== '' && String(item.kirish_yili || '') !== filters.kirishYili) {
+                if (filters.kirishYili !== '' && !isItemInAcademicYear(item, filters.kirishYili)) {
                     return false;
                 }
                 if (filters.talimShakliId !== '' && String(item.talim_shakli_id || '') !== filters.talimShakliId) {
                     return false;
                 }
-                if (filters.kurs !== '' && String(item.kurs || '') !== filters.kurs) {
+                const displayCourse = getDisplayCourse(item, filters);
+                if (filters.kurs !== '' && String(displayCourse || '') !== filters.kurs) {
                     return false;
                 }
                 if (filters.semestrNum !== '' && String(item.semestr_num || '') !== filters.semestrNum) {
@@ -710,9 +755,11 @@
             }
 
             let html = '';
+            const filters = getTopFilters();
             filteredMandatoryFanRows.forEach((row) => {
                 const fanId = String(row.fan_id || '');
                 const checked = selectedMandatoryFanIds.has(fanId) ? ' checked' : '';
+                const displayCourse = getDisplayCourse(row, filters);
                 html += `
                     <tr>
                         <td><input type="checkbox" class="mandatory-fan-check" value="${escapeHtml(fanId)}"${checked}></td>
@@ -720,8 +767,8 @@
                         <td>${escapeHtml(row.fan_name || '-')}</td>
                         <td>${escapeHtml(row.kafedra_name || '-')}</td>
                         <td>${escapeHtml(row.yonalish_name || '-')}</td>
-                        <td>${escapeHtml(row.kirish_yili_label || row.kirish_yili || '-')}</td>
-                        <td>${escapeHtml(row.kurs ? `${row.kurs}-kurs` : '-')}</td>
+                        <td>${escapeHtml(getDisplayAcademicYearLabel(row, filters))}</td>
+                        <td>${escapeHtml(displayCourse ? `${displayCourse}-kurs` : '-')}</td>
                         <td>${escapeHtml(row.semestr_num ? `${row.semestr_num}-semestr` : '-')}</td>
                     </tr>
                 `;
@@ -755,13 +802,14 @@
                 if (filters.yonalishIds.length > 0 && !filters.yonalishIds.includes(String(row.yonalish_id || ''))) {
                     return false;
                 }
-                if (filters.kirishYili !== '' && String(row.kirish_yili || '') !== filters.kirishYili) {
+                if (filters.kirishYili !== '' && !isItemInAcademicYear(row, filters.kirishYili)) {
                     return false;
                 }
                 if (filters.talimShakliId !== '' && String(row.talim_shakli_id || '') !== filters.talimShakliId) {
                     return false;
                 }
-                if (filters.kurs !== '' && String(row.kurs || '') !== filters.kurs) {
+                const displayCourse = getDisplayCourse(row, filters);
+                if (filters.kurs !== '' && String(displayCourse || '') !== filters.kurs) {
                     return false;
                 }
                 if (filters.semestrNum !== '' && String(row.semestr_num || '') !== filters.semestrNum) {

@@ -248,6 +248,23 @@ class Database{
                 UNIQUE KEY uniq_ishchi_variant (ishchi_reja_id, fan_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+        // Izoh: Tanlov fan variantlariga yo'nalishdagi talabalarni taqsimlash.
+        mysqli_query($this->link, "
+            CREATE TABLE IF NOT EXISTS tanlov_fan_talablar (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                semestr_id INT NOT NULL,
+                yonalish_id INT NOT NULL,
+                base_fan_id INT NOT NULL,
+                variant_fan_id INT NOT NULL,
+                talabalar_soni INT NOT NULL DEFAULT 0,
+                create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                update_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_tanlov_fan_talab (semestr_id, base_fan_id, variant_fan_id),
+                INDEX idx_tanlov_talab_base (base_fan_id),
+                INDEX idx_tanlov_talab_variant (variant_fan_id),
+                INDEX idx_tanlov_talab_yonalish (yonalish_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
 
         // Izoh: Yo'nalishlar tahriri tarixini saqlash uchun history jadvali.
         mysqli_query($this->link, "
@@ -1345,12 +1362,18 @@ class Database{
         if (!empty($filters['kafedra_id'])) {
             $kid = (int)$filters['kafedra_id'];
             $filterKafedraBase = " AND (
-                fr.kafedra_id = {$kid}
-                OR EXISTS (
-                    SELECT 1
-                    FROM ishchi_variant_dept ivd
-                    WHERE ivd.base_fan_id = fr.fan_id
-                      AND ivd.variant_kafedra_id = {$kid}
+                (tft.variant_fan_id IS NOT NULL AND vf.kafedra_id = {$kid})
+                OR (
+                    tft.variant_fan_id IS NULL
+                    AND (
+                        fr.kafedra_id = {$kid}
+                        OR EXISTS (
+                            SELECT 1
+                            FROM ishchi_variant_dept ivd
+                            WHERE ivd.base_fan_id = fr.fan_id
+                              AND ivd.variant_kafedra_id = {$kid}
+                        )
+                    )
                 )
             )";
             $filterKafedraMerged = " AND k.id = {$kid}";
@@ -1564,34 +1587,81 @@ class Database{
             FROM (
                 -- Izoh: Oddiy fanlar (umumta'lim biriktirilmaganlar).
                 SELECT
-                    COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name) AS fan_name,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CONCAT(fr.fan_name, ' | ', COALESCE(vf.fan_name, 'Variant'))
+                        ELSE COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name)
+                    END AS fan_name,
                     y.name AS talim_yonalishi,
                     y.code AS yonalish_code,
-                    COALESCE(NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
+                    COALESCE(NULLIF(vk.name, ''), NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
                     tsh.name AS oquv_shakli,
                     s.semestr,
                     FLOOR((s.semestr + 1)/2) AS kurs,
 
                     ga.guruh_raqami,
-                    ga.guruhlar_soni,
-                    ga.talabalar_soni,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE ga.guruhlar_soni
+                    END AS guruhlar_soni,
+                    COALESCE(tft.talabalar_soni, ga.talabalar_soni) AS talabalar_soni,
 
-                    y.patok_soni,
-                    y.kattaguruh_soni,
-                    y.kichikguruh_soni,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+                        ELSE y.patok_soni
+                    END AS patok_soni,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END AS kattaguruh_soni,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kichikguruh_soni
+                    END AS kichikguruh_soni,
 
                     fr.maruza_soat,
                     fr.amaliy_soat,
                     fr.laboratoriya_soat,
                     fr.seminar_soat,
-                    fr.maruza_soat * y.patok_soni AS amalda_maruz,
-                    fr.amaliy_soat * y.kattaguruh_soni AS amalda_amaliy,
-                    fr.laboratoriya_soat * y.kichikguruh_soni AS amalda_lab,
-                    fr.seminar_soat * y.kattaguruh_soni AS amalda_seminar,
-                    fr.maruza_soat * y.patok_soni
-                    + fr.amaliy_soat * y.kattaguruh_soni
-                    + fr.laboratoriya_soat * y.kichikguruh_soni
-                    + fr.seminar_soat * y.kattaguruh_soni
+                    fr.maruza_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+                        ELSE y.patok_soni
+                    END AS amalda_maruz,
+                    fr.amaliy_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END AS amalda_amaliy,
+                    fr.laboratoriya_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kichikguruh_soni
+                    END AS amalda_lab,
+                    fr.seminar_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END AS amalda_seminar,
+                    fr.maruza_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+                        ELSE y.patok_soni
+                    END
+                    + fr.amaliy_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END
+                    + fr.laboratoriya_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kichikguruh_soni
+                    END
+                    + fr.seminar_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END
                     AS jami_soat,
                     '' AS biriktirilgan_yonalish_code,
                     '' AS biriktirilgan_yonalishlar,
@@ -1602,6 +1672,12 @@ class Database{
                 JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
                 LEFT JOIN kafedralar k ON k.id = fr.kafedra_id
                 LEFT JOIN ishchi_variant_info ivi ON ivi.base_fan_id = fr.fan_id
+                LEFT JOIN tanlov_fan_talablar tft
+                    ON tft.base_fan_id = fr.fan_id
+                   AND tft.semestr_id = fr.semestr_id
+                   AND tft.talabalar_soni > 0
+                LEFT JOIN fanlar vf ON vf.id = tft.variant_fan_id
+                LEFT JOIN kafedralar vk ON vk.id = vf.kafedra_id
                 JOIN guruh_agg ga ON ga.yonalish_id = y.id
                 WHERE NOT EXISTS (
                     SELECT 1
@@ -1618,6 +1694,15 @@ class Database{
                             AND ub.fan_name = fr.fan_name
                             AND ub.kafedra_id = fr.kafedra_id
                        )
+                )
+                AND (
+                    tft.variant_fan_id IS NOT NULL
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM tanlov_fan_talablar tft_any
+                        WHERE tft_any.base_fan_id = fr.fan_id
+                          AND tft_any.semestr_id = fr.semestr_id
+                    )
                 )
                 $filterKafedraBase
                 $filterSemestr
@@ -1829,12 +1914,21 @@ class Database{
         $whereMerged = [];
         if (!empty($filters['kafedra_id'])) {
             $kid = (int)$filters['kafedra_id'];
-            $whereBase[] = "(fr.kafedra_id = {$kid} OR EXISTS (
-                SELECT 1
-                FROM ishchi_variant_dept ivd
-                WHERE ivd.base_fan_id = fr.fan_id
-                  AND ivd.variant_kafedra_id = {$kid}
-            ))";
+            $whereBase[] = "(
+                (tft.variant_fan_id IS NOT NULL AND vf.kafedra_id = {$kid})
+                OR (
+                    tft.variant_fan_id IS NULL
+                    AND (
+                        fr.kafedra_id = {$kid}
+                        OR EXISTS (
+                            SELECT 1
+                            FROM ishchi_variant_dept ivd
+                            WHERE ivd.base_fan_id = fr.fan_id
+                              AND ivd.variant_kafedra_id = {$kid}
+                        )
+                    )
+                )
+            )";
             $whereMerged[] = "k.id = {$kid}";
         }
         if (!empty($filters['semestr'])) {
@@ -2028,19 +2122,34 @@ class Database{
                     fr.laboratoriya_reja_id,
                     fr.seminar_reja_id,
                     y.id AS yonalish_id,
-                    COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name) AS fan_nomi,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CONCAT(fr.fan_name, ' | ', COALESCE(vf.fan_name, 'Variant'))
+                        ELSE COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name)
+                    END AS fan_nomi,
                     y.name AS talim_yonalishi,
                     y.code AS yonalish_code,
-                    COALESCE(NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
+                    COALESCE(NULLIF(vk.name, ''), NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
                     tsh.name AS oquv_shakli,
                     s.semestr,
                     FLOOR((s.semestr + 1) / 2) AS kurs,
                     ga.guruh_raqami,
-                    ga.guruhlar_soni,
-                    ga.talabalar_soni,
-                    y.patok_soni,
-                    y.kattaguruh_soni,
-                    y.kichikguruh_soni,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE ga.guruhlar_soni
+                    END AS guruhlar_soni,
+                    COALESCE(tft.talabalar_soni, ga.talabalar_soni) AS talabalar_soni,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+                        ELSE y.patok_soni
+                    END AS patok_soni,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END AS kattaguruh_soni,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kichikguruh_soni
+                    END AS kichikguruh_soni,
                     EXISTS (
                         SELECT 1
                         FROM taqsimot_resync_events tre
@@ -2051,20 +2160,58 @@ class Database{
                     fr.amaliy_soat AS reja_amaliy,
                     fr.laboratoriya_soat AS reja_laboratoriya,
                     fr.seminar_soat AS reja_seminar,
-                    fr.maruza_soat * y.patok_soni AS amalda_maruz,
-                    fr.amaliy_soat * y.kattaguruh_soni AS amalda_amaliy,
-                    fr.laboratoriya_soat * y.kichikguruh_soni AS amalda_laboratoriya,
-                    fr.seminar_soat * y.kattaguruh_soni AS amalda_seminar,
-                    fr.maruza_soat * y.patok_soni
-                    + fr.amaliy_soat * y.kattaguruh_soni
-                    + fr.laboratoriya_soat * y.kichikguruh_soni
-                    + fr.seminar_soat * y.kattaguruh_soni
+                    fr.maruza_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+                        ELSE y.patok_soni
+                    END AS amalda_maruz,
+                    fr.amaliy_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END AS amalda_amaliy,
+                    fr.laboratoriya_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kichikguruh_soni
+                    END AS amalda_laboratoriya,
+                    fr.seminar_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END AS amalda_seminar,
+                    fr.maruza_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+                        ELSE y.patok_soni
+                    END
+                    + fr.amaliy_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END
+                    + fr.laboratoriya_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kichikguruh_soni
+                    END
+                    + fr.seminar_soat *
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        ELSE y.kattaguruh_soni
+                    END
                     AS jami_soat
                 FROM fan_reja fr
                 JOIN semestrlar s ON s.id = fr.semestr_id
                 JOIN yonalishlar y ON y.id = s.yonalish_id
                 LEFT JOIN kafedralar k ON k.id = fr.kafedra_id
                 LEFT JOIN ishchi_variant_info ivi ON ivi.base_fan_id = fr.fan_id
+                LEFT JOIN tanlov_fan_talablar tft
+                    ON tft.base_fan_id = fr.fan_id
+                   AND tft.semestr_id = fr.semestr_id
+                   AND tft.talabalar_soni > 0
+                LEFT JOIN fanlar vf ON vf.id = tft.variant_fan_id
+                LEFT JOIN kafedralar vk ON vk.id = vf.kafedra_id
                 JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
                 JOIN guruh_agg ga ON ga.yonalish_id = y.id
                 WHERE NOT EXISTS (
@@ -2082,6 +2229,15 @@ class Database{
                             AND ub.fan_name = fr.fan_name
                             AND ub.kafedra_id = fr.kafedra_id
                        )
+                )
+                AND (
+                    tft.variant_fan_id IS NOT NULL
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM tanlov_fan_talablar tft_any
+                        WHERE tft_any.base_fan_id = fr.fan_id
+                          AND tft_any.semestr_id = fr.semestr_id
+                    )
                 )
                 $whereSQLBase
 
