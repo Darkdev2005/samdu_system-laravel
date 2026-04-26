@@ -3,13 +3,13 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ config('app.name', "O'quv Qo'lanma") }}</title>
+    <title>{{ config('app.name', "O'quv Bo'limi") }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="antialiased bg-gray-100 text-gray-900">
     <main class="min-h-screen flex items-center justify-center p-6">
         <div class="w-full max-w-lg rounded-xl bg-white p-8 shadow-sm text-center">
-            <h1 class="text-2xl font-semibold">O'quv Qo'lanma</h1>
+            <h1 class="text-2xl font-semibold">O'quv Bo'limi</h1>
             <p class="mt-2 text-sm text-gray-600">Laravel tizimi ishga tushdi.</p>
             <div class="mt-6 flex items-center justify-center gap-3">
                 @auth

@@ -111,6 +111,7 @@ $result = $db->query("
     SELECT
         s.id AS semestr_id,
         s.semestr,
+        y.kirish_yili,
         y.id AS yonalish_id,
         y.name AS yonalish_name,
         f.id AS fan_id,
@@ -182,6 +183,7 @@ $result = $db->query("
         s.id,
         s.semestr,
         y.id,
+        y.kirish_yili,
         y.name,
         f.fan_code,
         f.fan_name,
@@ -230,9 +232,20 @@ if ($variantResult) {
 
 function process_data_for_template(array $data, array $selectedVariants): array{
     $semesters = [];
+    $academicYearMap = [];
+
+    $resolveAcademicYear = static function (int $entryYear, int $semesterNumber): string {
+        if ($entryYear <= 0 || $semesterNumber <= 0) {
+            return '';
+        }
+        $offset = (int)floor(($semesterNumber - 1) / 2);
+        $startYear = $entryYear + $offset;
+        return $startYear . '-' . ($startYear + 1);
+    };
 
     foreach ($data as $row) {
         $semestrNum = (int)$row['semestr'];
+        $kirishYili = (int)($row['kirish_yili'] ?? 0);
         $semestrId  = (int)($row['semestr_id'] ?? 0);
         $fanId      = (int)($row['fan_id'] ?? 0);
         $fanCode    = $row['fan_code'];
@@ -262,6 +275,10 @@ function process_data_for_template(array $data, array $selectedVariants): array{
 
         $audTotal = $lecture + $practical + $lab + $seminar;
         $totalSoat = $audTotal + $mustaqil + $kursIshi + $malaka;
+        $academicYearForRow = $resolveAcademicYear($kirishYili, $semestrNum);
+        if ($academicYearForRow !== '') {
+            $academicYearMap[$academicYearForRow] = true;
+        }
 
         if (!isset($semesters[$semestrNum])) {
             $semesters[$semestrNum] = [
@@ -412,14 +429,52 @@ function process_data_for_template(array $data, array $selectedVariants): array{
         }
     }
 
+    $academicYears = array_keys($academicYearMap);
+    usort($academicYears, static function (string $a, string $b): int {
+        $aStart = (int)explode('-', $a)[0];
+        $bStart = (int)explode('-', $b)[0];
+        return $aStart <=> $bStart;
+    });
+
+    $academicYearLabel = "Noma'lum";
+    if (count($academicYears) === 1) {
+        $academicYearLabel = $academicYears[0];
+    } elseif (count($academicYears) > 1) {
+        $academicYearLabel = implode(', ', $academicYears);
+    }
+
     return [
-        'academicYear' => '2025-2026',
+        'academicYear' => $academicYearLabel,
         'semesters' => array_values($semesters),
         'yearlyTotal' => $yearlyTotal
     ];
 }
 
 $data = process_data_for_template($oquv_rejalar, $selectedVariants);
+
+// Izoh: Jadval bo'sh bo'lsa ham (fanlar chiqmasa) tanlangan yo'nalish+semestr bo'yicha
+// o'quv yilini headerda ko'rsatamiz.
+if (($data['academicYear'] ?? '') === "Noma'lum" && !empty($filters['yonalish_id']) && !empty($filters['semestr'])) {
+    $selectedYonalishId = (int)$filters['yonalish_id'];
+    $selectedKirishYili = 0;
+
+    foreach ($yonalishlar as $yonalishRow) {
+        if ((int)($yonalishRow['id'] ?? 0) === $selectedYonalishId) {
+            $selectedKirishYili = (int)($yonalishRow['kirish_yili'] ?? 0);
+            break;
+        }
+    }
+
+    if ($selectedKirishYili > 0) {
+        $pairStart = (int)$filters['semestr'];
+        if ($pairStart % 2 === 0) {
+            $pairStart -= 1;
+        }
+        $offset = (int)floor(($pairStart - 1) / 2);
+        $yearStart = $selectedKirishYili + $offset;
+        $data['academicYear'] = $yearStart . '-' . ($yearStart + 1);
+    }
+}
 
 // Izoh: Reja bajarilish foizi endi semestr kesimida (jadvalga chiqqan fanlar bo'yicha) hisoblanadi.
 $totalSubjectsCount = 0;
@@ -546,7 +601,7 @@ function renderSubjectCells($subject, $side = 'left') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ishchi O'quv Rejalari - O'quv Qo'lanma</title>
+    <title>Ishchi O'quv Rejalari - O'quv Bo'limi</title>
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">
     <link rel="stylesheet" href="../assets/css/oquv_reja_style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">

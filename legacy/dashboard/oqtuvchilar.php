@@ -12,7 +12,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>O'qituvchilar - O'quv Qo'llanma</title>
+    <title>O'qituvchilar - O'quv Bo'limi</title>
 
     <link rel="stylesheet" href="../assets/css/oquv_yuklama_style.css">
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">

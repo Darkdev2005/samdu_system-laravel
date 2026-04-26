@@ -20,7 +20,7 @@
                 <a href="/">
                     <x-application-logo class="w-16 h-16 mx-auto text-slate-900" />
                 </a>
-                <p class="mt-2 text-xl font-semibold text-slate-900">O'quv Qo'lanma</p>
+                <p class="mt-2 text-xl font-semibold text-slate-900">O'quv Bo'limi</p>
             </div>
 
             <div class="w-full sm:max-w-md mt-6 px-6 py-4 bg-white shadow-md overflow-hidden sm:rounded-lg">

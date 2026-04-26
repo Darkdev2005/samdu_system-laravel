@@ -55,7 +55,7 @@ $initialSemestrlar = $db->get_semestrlar();
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
-    <title>Semestrlar - O‘quv Qo‘llanma</title>
+    <title>Semestrlar - O‘quv Bo‘limi</title>
 
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
