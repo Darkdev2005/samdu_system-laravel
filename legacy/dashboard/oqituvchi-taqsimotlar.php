@@ -1,8 +1,13 @@
 <?php
     include_once 'config.php';
     $db = new Database();
-    $kafedralar = $db->get_data_by_table_all('kafedralar');
-    $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
+    $isKafedraMudiri = legacy_is_kafedra_mudiri();
+    $currentKafedraId = legacy_user_kafedra_id();
+    $currentKafedra = $isKafedraMudiri ? legacy_current_kafedra_row($db) : null;
+    $kafedralar = $isKafedraMudiri && $currentKafedraId > 0
+        ? $db->get_data_by_table_all('kafedralar', 'WHERE id = ' . $currentKafedraId)
+        : $db->get_data_by_table_all('kafedralar');
+    $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $currentKafedraId] : []);
     $ishturlar = $db->get_data_by_table_all('ish_turlar');
 
     // Izoh: Shtat turlarini kerakli tartibda chiqarish (Asosiy -> Ichki -> Tashqi -> Soatbay).
@@ -46,18 +51,23 @@
                 </div>
             </header>
             
-            <div class="content-container">
-                <div class="filter-container">
-                    <div class="filter-grid">
-                        <div class="form-group">
-                            <label><i class="fas fa-building me-2"></i>Kafedra</label>
-                            <select class="form-control" id="kafedraFilter">
-                                <option value="">Barcha kafedralar</option>
-                                <?php foreach ($kafedralar as $k): ?>
-                                    <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
+	            <div class="content-container">
+                    <?php if ($isKafedraMudiri && !empty($currentKafedra['name'])): ?>
+                        <div class="alert alert-info" style="margin-bottom: 16px;">
+                            <strong>Sizning kafedra:</strong> <?= htmlspecialchars($currentKafedra['name'], ENT_QUOTES, 'UTF-8') ?>
                         </div>
+                    <?php endif; ?>
+	                <div class="filter-container">
+	                    <div class="filter-grid">
+	                        <div class="form-group">
+	                            <label><i class="fas fa-building me-2"></i>Kafedra</label>
+	                            <select class="form-control" id="kafedraFilter"<?= $isKafedraMudiri ? ' disabled' : '' ?>>
+	                                <option value=""><?= $isKafedraMudiri ? 'Kafedra tanlangan' : 'Barcha kafedralar' ?></option>
+	                                <?php foreach ($kafedralar as $k): ?>
+	                                    <option value="<?= $k['id'] ?>"<?= $currentKafedraId === (int)$k['id'] ? ' selected' : '' ?>><?= htmlspecialchars($k['name']) ?></option>
+	                                <?php endforeach; ?>
+	                            </select>
+	                        </div>
                         
                         <div class="form-group">
                             <label><i class="fas fa-calendar me-2"></i>Semestr</label>
@@ -120,16 +130,23 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="../assets/js/app.js"></script>
     
-    <script>
-        $(document).ready(function() {
-            $('#kafedraFilter, #semestrFilter, #oqituvchiFilter, #shtatFilter').select2({
+	    <script>
+            const scopeLocked = <?= $isKafedraMudiri ? 'true' : 'false' ?>;
+            const lockedKafedraId = <?= (int)$currentKafedraId ?>;
+	        $(document).ready(function() {
+	            $('#kafedraFilter, #semestrFilter, #oqituvchiFilter, #shtatFilter').select2({
                 placeholder: "Tanlang",
                 allowClear: true,
                 width: '100%'
             });
             
-            loadTableData();
-        });
+	            if (scopeLocked) {
+	                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
+	                loadTableData(String(lockedKafedraId));
+	            } else {
+	                loadTableData();
+	            }
+	        });
 
         function loadTableData(kafedraId = '', semestrId = '', oqituvchiId = '', shtatTurId = '') {
             const container = $('#taqsimotTableContainer');
@@ -197,13 +214,17 @@
             }, 600);
         }
 
-        function resetFilters() {
-            $('#kafedraFilter').val(null).trigger('change');
-            $('#semestrFilter').val(null).trigger('change');
-            $('#oqituvchiFilter').val(null).trigger('change');
-            $('#shtatFilter').val(null).trigger('change');
-            
-            loadTableData();
+	        function resetFilters() {
+	            if (scopeLocked) {
+	                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
+	            } else {
+	                $('#kafedraFilter').val(null).trigger('change');
+	            }
+	            $('#semestrFilter').val(null).trigger('change');
+	            $('#oqituvchiFilter').val(null).trigger('change');
+	            $('#shtatFilter').val(null).trigger('change');
+
+	            loadTableData(scopeLocked ? String(lockedKafedraId) : '');
             
             const Toast = Swal.mixin({
                 toast: true,

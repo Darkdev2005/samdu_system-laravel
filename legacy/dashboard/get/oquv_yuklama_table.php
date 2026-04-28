@@ -27,6 +27,7 @@ if (isset($_POST['yonalish_id']) && !empty($_POST['yonalish_id'])) {
 if (isset($_POST['kurs']) && !empty($_POST['kurs'])) {
     $filters['kurs'] = (int)$_POST['kurs'];
 }
+legacy_apply_kafedra_scope($filters);
 
 $magistrDoktorantOnly = isset($_POST['magistr_doktorant_only']) && (int)$_POST['magistr_doktorant_only'] === 1;
 $oquv_yuklamalar = $magistrDoktorantOnly ? [] : $db->get_oquv_yuklamalar($filters);

@@ -2,9 +2,13 @@
 include_once 'config.php';
 $db = new Database();
 $rowLimit = 150;
-$kafedralar = $db->get_data_by_table_all('kafedralar');
-
-$oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
+$isKafedraMudiri = legacy_is_kafedra_mudiri();
+$currentKafedraId = legacy_user_kafedra_id();
+$currentKafedra = $isKafedraMudiri ? legacy_current_kafedra_row($db) : null;
+$kafedralar = $isKafedraMudiri && $currentKafedraId > 0
+    ? $db->get_data_by_table_all('kafedralar', 'WHERE id = ' . $currentKafedraId)
+    : $db->get_data_by_table_all('kafedralar');
+$oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $currentKafedraId] : []);
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -30,14 +34,19 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
             </header>
             
             <div class="content-container">
+                    <?php if ($isKafedraMudiri && !empty($currentKafedra['name'])): ?>
+                        <div class="alert alert-info" style="margin-bottom: 16px;">
+                            <strong>Sizning kafedra:</strong> <?= htmlspecialchars($currentKafedra['name'], ENT_QUOTES, 'UTF-8') ?>
+                        </div>
+                    <?php endif; ?>
                 <div class="filter-container">
                     <div class="filter-grid">
                         <div class="form-group">
                             <label><i class="fas fa-building me-2"></i>Kafedra</label>
-                            <select class="form-control" id="kafedraFilter">
-                                <option value="">Barcha kafedralar</option>
+                            <select class="form-control" id="kafedraFilter"<?= $isKafedraMudiri ? ' disabled' : '' ?>>
+                                <option value=""><?= $isKafedraMudiri ? 'Kafedra tanlangan' : 'Barcha kafedralar' ?></option>
                                 <?php foreach ($kafedralar as $k): ?>
-                                    <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['name']) ?></option>
+                                    <option value="<?= $k['id'] ?>"<?= $currentKafedraId === (int)$k['id'] ? ' selected' : '' ?>><?= htmlspecialchars($k['name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -217,6 +226,8 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
     <script>
         let currentZoom = 1;
         const rowLimit = <?= $rowLimit ?>;
+        const scopeLocked = <?= $isKafedraMudiri ? 'true' : 'false' ?>;
+        const lockedKafedraId = <?= (int)$currentKafedraId ?>;
         let showAllRows = false;
         let currentCell = null;
         let currentYuklamaId = null;
@@ -234,7 +245,12 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                 width: '100%'
             });
             
-            loadTableData();
+            if (scopeLocked) {
+                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
+                loadTableData(String(lockedKafedraId));
+            } else {
+                loadTableData();
+            }
             updateRowModeUI();
             
             $(document).on('wheel', function(e) {
@@ -268,6 +284,12 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
 
         function loadTableData(kafedraId = '', semestrId = '') {
             const container = $('#yuklamaTableContainer');
+            container.html(`
+                <div class="alert alert-info" style="margin-top: 16px;">
+                    <i class="fas fa-spinner fa-spin me-2"></i>
+                    Ma'lumotlar yuklanmoqda...
+                </div>
+            `);
             
             $.ajax({
                 url: 'get/oquv_taqsimoti_table.php',
@@ -339,7 +361,7 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
                     Swal.fire({
                         icon: 'warning',
                         title: 'Taqsimot ochilmadi',
-                        text: 'Bu soat uchun o‘quv reja ID topilmadi. Shu sabab o‘qituvchi biriktirish oynasi to‘liq ochilmadi.'
+                        text: "Bu soat uchun o'quv reja ID topilmadi. Shu sabab o'qituvchi biriktirish oynasi to'liq ochilmadi."
                     });
                     return;
                 }
@@ -445,7 +467,7 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
 
                     } catch (e) {
                         console.error('JSON xato:', e);
-                        $('#taqsimotList').html('<div style="padding:8px;color:#dc3545;">Serverdan kelgan javobni o‘qib bo‘lmadi</div>');
+                        $('#taqsimotList').html("<div style=\"padding:8px;color:#dc3545;\">Serverdan kelgan javobni o'qib bo'lmadi</div>");
                     }
                 },
                 error: function() {
@@ -814,10 +836,18 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
         }
 
         function resetFilters() {
-            $('#kafedraFilter').val(null).trigger('change');
+            if (scopeLocked) {
+                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
+            } else {
+                $('#kafedraFilter').val(null).trigger('change');
+            }
             $('#semestrFilter').val(null).trigger('change');
-            
-            loadTableData();
+
+            if (scopeLocked) {
+                loadTableData(String(lockedKafedraId));
+            } else {
+                loadTableData();
+            }
             updateRowModeUI();
             
             const Toast = Swal.mixin({
@@ -905,5 +935,3 @@ $oqtuvchilar = $db->get_data_by_table_all('oqituvchilar');
     </script>
 </body>
 </html>
-
-

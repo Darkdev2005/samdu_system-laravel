@@ -15,11 +15,40 @@ if ($yuklama_id <= 0 || empty($type) || !is_array($taqsimotlar)) {
     return;
 }
 
+if (legacy_is_kafedra_mudiri()) {
+    $scopeFilters = ['kafedra_id' => legacy_user_kafedra_id()];
+    if ($type === 'A') {
+        $scopeFilters['oquv_reja_id'] = $yuklama_id;
+        $allowedRows = $db->get_oquv_taqsimotlar($scopeFilters);
+    } elseif ($type === 'Q') {
+        $scopeFilters['qoshimcha_oquv_reja_id'] = $yuklama_id;
+        $allowedRows = $db->get_qoshimcha_oquv_taqsimotlar($scopeFilters);
+    } else {
+        $allowedRows = [];
+    }
+
+    if (empty($allowedRows)) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Bu yuklama sizning kafedrangizga tegishli emas.'
+        ]);
+        return;
+    }
+}
+
 $success = false;
 foreach ($taqsimotlar as $t) {
     $teacher_id = (int)($t['oqituvchi_id'] ?? 0);
     $soat       = (float)($t['soat_soni'] ?? 0);
     if ($teacher_id <= 0 || $soat <= 0) continue;
+
+    if (!legacy_can_access_teacher($db, $teacher_id)) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Tanlangan o‘qituvchi sizning kafedrangizga tegishli emas.'
+        ]);
+        return;
+    }
 
     $exists = $db->get_data_by_table('taqsimotlar', [
         'oquv_reja_id' => $yuklama_id,
@@ -72,5 +101,4 @@ echo json_encode([
     'success' => $success,
     'message' => $success ? 'Taqsimot saqlandi' : 'Saqlashda xatolik'
 ]);
-
 

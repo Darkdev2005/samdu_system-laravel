@@ -5,13 +5,32 @@ $db = new Database();
 
 $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
 $fakultetId = isset($_POST['fakultet_id']) ? (int) $_POST['fakultet_id'] : 0;
-$kafedraId = isset($_POST['kafedra_id']) ? (int) $_POST['kafedra_id'] : 0;
+$kafedraId = legacy_resolve_requested_kafedra_id($_POST['kafedra_id'] ?? 0);
 $fio = isset($_POST['fio']) ? trim($_POST['fio']) : '';
 $lavozim = isset($_POST['lavozim']) ? trim($_POST['lavozim']) : '';
 $stavka = isset($_POST['stavka']) ? trim($_POST['stavka']) : '';
 $ishturId = isset($_POST['ishtur_id']) ? (int) $_POST['ishtur_id'] : 0;
 $ilmiyUnvonId = isset($_POST['ilmiy_unvon_id']) ? (int) $_POST['ilmiy_unvon_id'] : 0;
 $ilmiyDarajaId = isset($_POST['ilmiy_daraja_id']) ? (int) $_POST['ilmiy_daraja_id'] : 0;
+
+if ($id > 0 && !legacy_can_access_teacher($db, $id)) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Siz faqat o‘z kafedrangizdagi o‘qituvchilarni tahrirlashingiz mumkin.'
+    ]);
+    return;
+}
+
+$kafedra = $kafedraId > 0 ? $db->get_data_by_table('kafedralar', ['id' => $kafedraId]) : null;
+if (legacy_is_kafedra_mudiri()) {
+    $fakultetId = (int)($kafedra['fakultet_id'] ?? 0);
+} elseif (!empty($kafedra) && (int)($kafedra['fakultet_id'] ?? 0) !== $fakultetId) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Tanlangan kafedra tanlangan fakultetga tegishli emas.'
+    ]);
+    return;
+}
 
 $ishtur = $ishturId > 0 ? $db->get_data_by_table('ish_turlar', ['id' => $ishturId]) : null;
 $ishturName = mb_strtolower(trim($ishtur['name'] ?? ''), 'UTF-8');

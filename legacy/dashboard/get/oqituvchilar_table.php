@@ -1,7 +1,15 @@
 <?php 
     include_once '../config.php';
     $db = new Database();
-    $oqituvchilar = $db->get_oqtuvchilar();
+    $filters = [];
+    if (!empty($_POST['fakultet_id'])) {
+        $filters['fakultet_id'] = (int)$_POST['fakultet_id'];
+    }
+    if (!empty($_POST['kafedra_id'])) {
+        $filters['kafedra_id'] = (int)$_POST['kafedra_id'];
+    }
+    legacy_apply_kafedra_scope($filters);
+    $oqituvchilar = $db->get_oqtuvchilar($filters);
 ?>
 <?php foreach ($oqituvchilar as $oqituvchi): ?>
     <tr>

@@ -10,10 +10,15 @@ class LegacyProxyController extends Controller
 {
     public function dashboard(Request $request, ?string $path = null): Response
     {
-        $resolvedPath = $this->resolvePath(base_path('legacy/dashboard'), $path ?? 'index.php');
+        $baseDirectory = base_path('legacy/dashboard');
+        $resolvedPath = $this->resolvePath($baseDirectory, $path ?? 'index.php');
 
         if (!$resolvedPath) {
             abort(404);
+        }
+
+        if ($guardResponse = $this->guardDashboardPathAccess($request, $baseDirectory, $resolvedPath)) {
+            return $guardResponse;
         }
 
         if (strtolower(pathinfo($resolvedPath, PATHINFO_EXTENSION)) === 'php') {
@@ -21,6 +26,62 @@ class LegacyProxyController extends Controller
         }
 
         return response()->file($resolvedPath);
+    }
+
+    private function guardDashboardPathAccess(Request $request, string $baseDirectoryAbsolute, string $resolvedPath): ?Response
+    {
+        $user = $request->user();
+        $role = trim((string) ($user?->role ?? 'admin'));
+        if ($role !== 'kafedra_mudiri') {
+            return null;
+        }
+
+        $basePath = realpath($baseDirectoryAbsolute);
+        if (!$basePath) {
+            return null;
+        }
+
+        $basePathNormalized = rtrim(str_replace('\\', '/', $basePath), '/') . '/';
+        $resolvedPathNormalized = str_replace('\\', '/', $resolvedPath);
+        $relativePath = Str::startsWith($resolvedPathNormalized, $basePathNormalized)
+            ? substr($resolvedPathNormalized, strlen($basePathNormalized))
+            : ltrim((string) $request->route('path', 'index.php'), '/');
+        $relativePath = $relativePath !== '' ? $relativePath : 'index.php';
+
+        $allowedPaths = [
+            'index.php',
+            'oqtuvchilar.php',
+            'oquv-rejalar.php',
+            'ishchi-oquv-rejalar.php',
+            'oquv-yuklamalar.php',
+            'magistr-doktorant-yuklamalar.php',
+            'oquv-taqsimotlar.php',
+            'oqituvchi-taqsimotlar.php',
+            'oqituvchi-bildirgi.php',
+            'get/oqituvchilar_table.php',
+            'get/oquv_yuklama_table.php',
+            'get/oquv_taqsimoti_table.php',
+            'get/oqituvchi_taqsimoti_table.php',
+            'insert/add_oqituvchi.php',
+            'insert/update_oqituvchi.php',
+            'insert/delete_oqituvchi.php',
+            'insert/add_oquv_taqsimot.php',
+            'api/get_oquv_reja_by_yuklama.php',
+            'api/get_teacher_total_hours.php',
+        ];
+
+        if (in_array($relativePath, $allowedPaths, true)) {
+            return null;
+        }
+
+        if ($request->expectsJson() || preg_match('#^(api|get|insert)/#', $relativePath)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ushbu bo‘limga ruxsat yo‘q.',
+            ], 403);
+        }
+
+        abort(403, 'Ushbu bo‘limga ruxsat yo‘q.');
     }
 
     public function asset(string $path): Response

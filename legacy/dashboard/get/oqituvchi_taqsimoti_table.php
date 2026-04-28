@@ -15,6 +15,7 @@ if (!empty($_POST['oqituvchi_id'])) {
 if (!empty($_POST['shtat_turi_id'])) {
     $filters['shtat_turi_id'] = (int)$_POST['shtat_turi_id'];
 }
+legacy_apply_kafedra_scope($filters);
 
 // Izoh: Qaysi bo'lim chiqishini boshqarish (taqsimot / report / full).
 $mode = $_POST['mode'] ?? 'taqsimot';

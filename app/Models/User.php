@@ -22,6 +22,9 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role',
+        'kafedra_id',
+        'is_active',
     ];
 
     /**
@@ -42,5 +45,16 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'is_active' => 'boolean',
     ];
+
+    public function isAdmin(): bool
+    {
+        return (string) ($this->role ?? 'admin') !== 'kafedra_mudiri';
+    }
+
+    public function isKafedraMudiri(): bool
+    {
+        return (string) ($this->role ?? '') === 'kafedra_mudiri';
+    }
 }

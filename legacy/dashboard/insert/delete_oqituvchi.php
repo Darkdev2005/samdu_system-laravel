@@ -12,6 +12,14 @@ if ($id <= 0) {
     return;
 }
 
+if (!legacy_can_access_teacher($db, $id)) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Siz faqat o‘z kafedrangizdagi o‘qituvchilarni o‘chirishingiz mumkin.'
+    ]);
+    return;
+}
+
 $checks = [
     'taqsimotlar' => "SELECT COUNT(*) AS cnt FROM taqsimotlar WHERE teacher_id = $id",
     'taqsimotlar_archive' => "SELECT COUNT(*) AS cnt FROM taqsimotlar_archive WHERE teacher_id = $id",

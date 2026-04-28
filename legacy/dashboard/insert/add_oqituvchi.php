@@ -2,13 +2,23 @@
     include_once '../config.php';
     $db = new Database();
     $fakultet_id = isset($_POST['fakultet_id']) ? (int)$_POST['fakultet_id'] : 0;
-    $kafedra_id = isset($_POST['kafedra_id']) ? (int)$_POST['kafedra_id'] : 0;
+    $kafedra_id = legacy_resolve_requested_kafedra_id($_POST['kafedra_id'] ?? 0);
     $fio = isset($_POST['fio']) ? trim($_POST['fio']) : '';
     $ilmiy_unvon_id = isset($_POST['ilmiy_unvon_id']) ? (int)$_POST['ilmiy_unvon_id'] : 0;
     $ilmiy_daraja_id = isset($_POST['ilmiy_daraja_id']) ? (int)$_POST['ilmiy_daraja_id'] : 0;
 $lavozim = isset($_POST['lavozim']) ? trim($_POST['lavozim']) : '';
 $stavka = isset($_POST['stavka']) ? trim($_POST['stavka']) : '';
 $ishtur_id = isset($_POST['ishtur_id']) ? (int)$_POST['ishtur_id'] : 0;
+$kafedra = $kafedra_id > 0 ? $db->get_data_by_table('kafedralar', ['id' => $kafedra_id]) : null;
+if (legacy_is_kafedra_mudiri()) {
+    $fakultet_id = (int)($kafedra['fakultet_id'] ?? 0);
+} elseif (!empty($kafedra) && (int)($kafedra['fakultet_id'] ?? 0) !== $fakultet_id) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Tanlangan kafedra tanlangan fakultetga tegishli emas.'
+    ]);
+    return;
+}
 $ishtur = $ishtur_id ? $db->get_data_by_table('ish_turlar', ['id' => $ishtur_id]) : null;
 $ishtur_name = mb_strtolower(trim($ishtur['name'] ?? ''), 'UTF-8');
 $is_soatbay = $ishtur_name !== '' && strpos($ishtur_name, 'soatbay') !== false;

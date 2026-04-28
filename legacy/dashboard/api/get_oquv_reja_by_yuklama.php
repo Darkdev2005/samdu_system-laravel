@@ -14,6 +14,7 @@
     
     if ($type === 'A') {
         $filters = ['oquv_reja_id' => $yuklama_id];
+        legacy_apply_kafedra_scope($filters);
         $oquv_reja = $db->get_oquv_taqsimotlar($filters);
         $oquv_taqsimotlar = $db->get_taqsimot_by_teacher($yuklama_id, $type);
         if (!empty($oquv_reja)) {
@@ -26,12 +27,13 @@
         } else {
             echo json_encode([
                 'success' => false,
-                'message' => 'Ma\'lumot topilmadi'
+                'message' => legacy_is_kafedra_mudiri() ? 'Bu yuklama sizning kafedrangizga tegishli emas.' : 'Ma\'lumot topilmadi'
             ]);
         }
         
     } else if ($type === 'Q') {
         $filters = ['qoshimcha_oquv_reja_id' => $yuklama_id];
+        legacy_apply_kafedra_scope($filters);
         $oquv_reja = $db->get_qoshimcha_oquv_taqsimotlar($filters);
         $oquv_taqsimotlar = $db->get_taqsimot_by_teacher($yuklama_id, $type);
         if (!empty($oquv_reja)) {
@@ -44,7 +46,7 @@
         } else {
             echo json_encode([
                 'success' => false,
-                'message' => 'Ma\'lumot topilmadi'
+                'message' => legacy_is_kafedra_mudiri() ? 'Bu yuklama sizning kafedrangizga tegishli emas.' : 'Ma\'lumot topilmadi'
             ]);
         }
         

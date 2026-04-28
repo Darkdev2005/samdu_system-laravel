@@ -1,8 +1,16 @@
 ﻿<?php 
     include_once 'config.php';
     $db = new Database();
-    $fakultetlar = $db->get_data_by_table_all('fakultetlar');
-    $kafedralar = $db->get_data_by_table_all('kafedralar');
+    $isKafedraMudiri = legacy_is_kafedra_mudiri();
+    $currentKafedraId = legacy_user_kafedra_id();
+    $currentKafedra = $isKafedraMudiri ? legacy_current_kafedra_row($db) : null;
+    $currentFakultetId = (int)($currentKafedra['fakultet_id'] ?? 0);
+    $fakultetlar = $isKafedraMudiri && $currentFakultetId > 0
+        ? $db->get_data_by_table_all('fakultetlar', 'WHERE id = ' . $currentFakultetId)
+        : $db->get_data_by_table_all('fakultetlar');
+    $kafedralar = $isKafedraMudiri && $currentKafedraId > 0
+        ? $db->get_data_by_table_all('kafedralar', 'WHERE id = ' . $currentKafedraId)
+        : $db->get_data_by_table_all('kafedralar');
     $ilmiy_unvonlar = $db->get_data_by_table_all('ilmiy_unvonlar');
     $ilmiy_darajalar = $db->get_data_by_table_all('ilmiy_darajalar');
     $ish_turlar = $db->get_data_by_table_all('ish_turlar');
@@ -39,24 +47,33 @@
                 </div>
             </header>
 
-            <div class="content-container">
-                <div class="filter-container">
-                    <div class="filter-grid">
-                        <div class="form-group">
-                            <label><i class="fas fa-building-columns me-2"></i>Fakultet</label>
-                            <select class="form-control" id="fakultetFilter">
-                                <option value="">Barcha fakultetlar</option>
-                                <?php foreach ($fakultetlar as $f): ?>
-                                    <option value="<?= $f['id'] ?>"><?= htmlspecialchars($f['name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
+	            <div class="content-container">
+                    <?php if ($isKafedraMudiri && !empty($currentKafedra['name'])): ?>
+                        <div class="alert alert-info" style="margin-bottom: 16px;">
+                            <strong>Sizning kafedra:</strong> <?= htmlspecialchars($currentKafedra['name']) ?>
                         </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-building me-2"></i>Kafedra</label>
-                            <select class="form-control" id="kafedraFilter">
-                                <option value="">Avval fakultetni tanlang</option>                                
-                            </select>
-                        </div>                        
+                    <?php endif; ?>
+	                <div class="filter-container">
+	                    <div class="filter-grid">
+	                        <div class="form-group">
+	                            <label><i class="fas fa-building-columns me-2"></i>Fakultet</label>
+	                            <select class="form-control" id="fakultetFilter"<?= $isKafedraMudiri ? ' disabled' : '' ?>>
+	                                <option value="">Barcha fakultetlar</option>
+	                                <?php foreach ($fakultetlar as $f): ?>
+	                                    <option value="<?= $f['id'] ?>"<?= $currentFakultetId === (int)$f['id'] ? ' selected' : '' ?>><?= htmlspecialchars($f['name']) ?></option>
+	                                <?php endforeach; ?>
+	                            </select>
+	                        </div>
+	                        <div class="form-group">
+	                            <label><i class="fas fa-building me-2"></i>Kafedra</label>
+	                            <select class="form-control" id="kafedraFilter"<?= $isKafedraMudiri ? ' disabled' : '' ?>>
+	                                <?php if ($isKafedraMudiri && !empty($currentKafedra)): ?>
+	                                    <option value="<?= (int)$currentKafedra['id'] ?>" selected><?= htmlspecialchars($currentKafedra['name']) ?></option>
+	                                <?php else: ?>
+	                                    <option value="">Avval fakultetni tanlang</option>
+	                                <?php endif; ?>
+	                            </select>
+	                        </div>
                     </div>
                     
                     <div class="filter-actions">
@@ -125,20 +142,24 @@
                         <label>Fakultet</label>
                         <select class="form-control" name="fakultet_id" id="fakultetSelect" required>
                             <option value="">Tanlang</option>
-                            <?php foreach ($fakultetlar as $f): ?>
-                                <option value="<?= $f['id'] ?>">
-                                    <?= htmlspecialchars($f['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
+	                            <?php foreach ($fakultetlar as $f): ?>
+	                                <option value="<?= $f['id'] ?>"<?= $currentFakultetId === (int)$f['id'] ? ' selected' : '' ?>>
+	                                    <?= htmlspecialchars($f['name']) ?>
+	                                </option>
+	                            <?php endforeach; ?>
                         </select>
                     </div>
 
                     <div class="form-group">
                         <label>Kafedra</label>
-                        <select class="form-control" name="kafedra_id" id="kafedraSelect" required>
-                            <option value="">Avval fakultetni tanlang</option>
-                        </select>
-                    </div>
+	                        <select class="form-control" name="kafedra_id" id="kafedraSelect" required>
+	                            <?php if ($isKafedraMudiri && !empty($currentKafedra)): ?>
+	                                <option value="<?= (int)$currentKafedra['id'] ?>" selected><?= htmlspecialchars($currentKafedra['name']) ?></option>
+	                            <?php else: ?>
+	                                <option value="">Avval fakultetni tanlang</option>
+	                            <?php endif; ?>
+	                        </select>
+	                    </div>
 
                     <div class="form-group">
                         <label>F.I.O</label>
@@ -209,19 +230,29 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="../assets/js/app.js"></script>
 
-    <script>
-        const allKafedralar = <?php echo json_encode($kafedralar, JSON_UNESCAPED_UNICODE); ?>;
-                                
-        $(document).ready(function() {
+	    <script>
+            const scopeLocked = <?= $isKafedraMudiri ? 'true' : 'false' ?>;
+            const lockedFakultetId = <?= (int)$currentFakultetId ?>;
+            const lockedKafedraId = <?= (int)$currentKafedraId ?>;
+	        const allKafedralar = <?php echo json_encode($kafedralar, JSON_UNESCAPED_UNICODE); ?>;
+
+	        $(document).ready(function() {
             $('#kafedraFilter, #fakultetFilter, #kafedraSelect, #fakultetSelect').select2({
                 placeholder: "Tanlang",
                 allowClear: true,
                 width: '100%'
             });
 
-            toggleStavkaRequired();
-            $('#ishturSelect').on('change', toggleStavkaRequired);
-        });
+	            toggleStavkaRequired();
+	            $('#ishturSelect').on('change', toggleStavkaRequired);
+
+                if (scopeLocked) {
+                    $('#fakultetFilter').val(String(lockedFakultetId)).trigger('change');
+                    $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
+                    $('#fakultetSelect').val(String(lockedFakultetId)).trigger('change');
+                    populateKafedraOptions(lockedFakultetId, lockedKafedraId);
+                }
+	        });
 
         function toggleStavkaRequired() {
             const selectedText = $('#ishturSelect option:selected').text().trim().toLowerCase();
@@ -299,11 +330,16 @@
                 row.toggle(show);
             });
         }
-        function resetFilters() {
-            $('#fakultetFilter').val(null).trigger('change');
-            $('#kafedraFilter').val(null).trigger('change');
-            $('#oqituvchilarTable tr').show();
-        }
+	        function resetFilters() {
+	            if (scopeLocked) {
+	                $('#fakultetFilter').val(String(lockedFakultetId)).trigger('change');
+	                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
+	            } else {
+	                $('#fakultetFilter').val(null).trigger('change');
+	                $('#kafedraFilter').val(null).trigger('change');
+	            }
+	            $('#oqituvchilarTable tr').show();
+	        }
         function loadOqituvchilar() {
             fetch('get/oqituvchilar_table.php')
                 .then(res => res.text())
@@ -322,15 +358,20 @@
             const form = document.getElementById('oqituvchiForm');
             const editIdInput = document.getElementById('oqituvchiEditId');
 
-            document.getElementById('addOqituvchiBtn').onclick = () => {
-                modalTitle.textContent = "OвЂqituvchi qoвЂshish";
-                saveBtn.textContent = 'Saqlash';
-                editIdInput.value = '';
-                form.reset();
-                $('#fakultetSelect').val('').trigger('change');
-                $('#kafedraSelect').val('').trigger('change');
-                $('#ishturSelect').val('').trigger('change');
-                $('#stavkaSelect').val('').trigger('change');
+	            document.getElementById('addOqituvchiBtn').onclick = () => {
+	                modalTitle.textContent = "OвЂqituvchi qoвЂshish";
+	                saveBtn.textContent = 'Saqlash';
+	                editIdInput.value = '';
+	                form.reset();
+	                if (scopeLocked) {
+	                    $('#fakultetSelect').val(String(lockedFakultetId)).trigger('change');
+	                    populateKafedraOptions(lockedFakultetId, lockedKafedraId);
+	                } else {
+	                    $('#fakultetSelect').val('').trigger('change');
+	                    $('#kafedraSelect').val('').trigger('change');
+	                }
+	                $('#ishturSelect').val('').trigger('change');
+	                $('#stavkaSelect').val('').trigger('change');
                 $('[name="ilmiy_unvon_id"]').val('');
                 $('[name="ilmiy_daraja_id"]').val('');
                 modal.classList.add('show');
@@ -447,12 +488,17 @@
                 if (r.success) {
                     Toast.fire({ icon: 'success', title: r.message || "O‘qituvchi saqlandi" });
                     form.reset();
-                    document.getElementById('oqituvchiEditId').value = '';
-                    document.getElementById('oqituvchiModalTitle').textContent = "O‘qituvchi qo‘shish";
-                    document.getElementById('saveOqituvchiBtn').textContent = 'Saqlash';
-                    $('#fakultetSelect').val('').trigger('change');
-                    $('#kafedraSelect').val('').trigger('change');
-                    $('#ishturSelect').val('').trigger('change');
+	                    document.getElementById('oqituvchiEditId').value = '';
+	                    document.getElementById('oqituvchiModalTitle').textContent = "O‘qituvchi qo‘shish";
+	                    document.getElementById('saveOqituvchiBtn').textContent = 'Saqlash';
+	                    if (scopeLocked) {
+	                        $('#fakultetSelect').val(String(lockedFakultetId)).trigger('change');
+	                        populateKafedraOptions(lockedFakultetId, lockedKafedraId);
+	                    } else {
+	                        $('#fakultetSelect').val('').trigger('change');
+	                        $('#kafedraSelect').val('').trigger('change');
+	                    }
+	                    $('#ishturSelect').val('').trigger('change');
                     $('#stavkaSelect').val('').trigger('change');
                     $('[name="ilmiy_unvon_id"]').val('');
                     $('[name="ilmiy_daraja_id"]').val('');

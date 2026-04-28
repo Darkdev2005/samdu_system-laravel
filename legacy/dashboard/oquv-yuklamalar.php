@@ -6,7 +6,12 @@
     $excelSheetName = $isMagistrDoktorantYuklamaPage ? "Magistr doktorant yuklamasi" : "O'quv yuklamasi";
     $excelFileName = $isMagistrDoktorantYuklamaPage ? "magistr_doktorant_yuklamasi.xlsx" : "oquv_yuklamasi.xlsx";
     $rowLimit = 150;
-    $kafedralar = $db->get_data_by_table_all('kafedralar');
+    $isKafedraMudiri = legacy_is_kafedra_mudiri();
+    $currentKafedraId = legacy_user_kafedra_id();
+    $currentKafedra = $isKafedraMudiri ? legacy_current_kafedra_row($db) : null;
+    $kafedralar = $isKafedraMudiri && $currentKafedraId > 0
+        ? $db->get_data_by_table_all('kafedralar', 'WHERE id = ' . $currentKafedraId)
+        : $db->get_data_by_table_all('kafedralar');
     $yonalishlar = $db->get_data_by_table_all('yonalishlar');
     $kursSet = [];
     $semestrlar = $db->get_semestrlar();
@@ -43,19 +48,24 @@
                 </div>
             </header>
             
-            <div class="content-container">
-                <!-- Filter qismi -->
-                <div class="filter-container">
-                    <div class="filter-grid">
-                        <div class="form-group">
-                            <label><i class="fas fa-building me-2"></i>Kafedra</label>
-                            <select class="form-control" id="kafedraFilter">
-                                <option value="">Barcha kafedralar</option>
-                                <?php foreach ($kafedralar as $k): ?>
-                                    <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
+	            <div class="content-container">
+                    <?php if ($isKafedraMudiri && !empty($currentKafedra['name'])): ?>
+                        <div class="alert alert-info" style="margin-bottom: 16px;">
+                            <strong>Sizning kafedra:</strong> <?= htmlspecialchars($currentKafedra['name'], ENT_QUOTES, 'UTF-8') ?>
                         </div>
+                    <?php endif; ?>
+	                <!-- Filter qismi -->
+	                <div class="filter-container">
+	                    <div class="filter-grid">
+	                        <div class="form-group">
+	                            <label><i class="fas fa-building me-2"></i>Kafedra</label>
+	                            <select class="form-control" id="kafedraFilter"<?= $isKafedraMudiri ? ' disabled' : '' ?>>
+	                                <option value=""><?= $isKafedraMudiri ? 'Kafedra tanlangan' : 'Barcha kafedralar' ?></option>
+	                                <?php foreach ($kafedralar as $k): ?>
+	                                    <option value="<?= $k['id'] ?>"<?= $currentKafedraId === (int)$k['id'] ? ' selected' : '' ?>><?= htmlspecialchars($k['name']) ?></option>
+	                                <?php endforeach; ?>
+	                            </select>
+	                        </div>
 
                         <div class="form-group">
                             <label><i class="fas fa-compass me-2"></i>Yo'nalish</label>
@@ -132,14 +142,16 @@
     <script src="../assets/js/app.js"></script>
     
     
-    <script>
-        let currentZoom = 1;
-        const rowLimit = <?= $rowLimit ?>;
-        const magistrDoktorantOnly = <?= $isMagistrDoktorantYuklamaPage ? 'true' : 'false' ?>;
-        const excelSheetName = <?= json_encode($excelSheetName, JSON_UNESCAPED_UNICODE) ?>;
-        const excelFileName = <?= json_encode($excelFileName, JSON_UNESCAPED_UNICODE) ?>;
-        let showAllRows = false;
-        $(document).ready(function() {
+	    <script>
+	        let currentZoom = 1;
+	        const rowLimit = <?= $rowLimit ?>;
+	        const magistrDoktorantOnly = <?= $isMagistrDoktorantYuklamaPage ? 'true' : 'false' ?>;
+	        const excelSheetName = <?= json_encode($excelSheetName, JSON_UNESCAPED_UNICODE) ?>;
+	        const excelFileName = <?= json_encode($excelFileName, JSON_UNESCAPED_UNICODE) ?>;
+            const scopeLocked = <?= $isKafedraMudiri ? 'true' : 'false' ?>;
+            const lockedKafedraId = <?= (int)$currentKafedraId ?>;
+	        let showAllRows = false;
+	        $(document).ready(function() {
             $('#kafedraFilter, #semestrFilter, #kursFilter, #semestrTypeFilter, #yonalishFilter').select2({
                 placeholder: "Tanlang",
                 allowClear: true,
@@ -205,8 +217,13 @@
             $('#yonalishFilter, #semestrTypeFilter').on('change', updateSemestrOptions);
             updateSemestrOptions();
 
-            loadTableData();
-            updateRowModeUI();
+	            if (scopeLocked) {
+	                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
+	                loadTableData(String(lockedKafedraId));
+	            } else {
+	                loadTableData();
+	            }
+	            updateRowModeUI();
             
             $(document).on('wheel', function(e) {
                 if (e.ctrlKey) {
@@ -314,14 +331,18 @@
             }, 1000);
         }
 
-        function resetFilters() {
-            $('#kafedraFilter').val(null).trigger('change');
-            $('#semestrFilter').val(null).trigger('change');
-            $('#kursFilter').val(null).trigger('change');
-            $('#yonalishFilter').val(null).trigger('change');
-            $('#semestrTypeFilter').val(null).trigger('change');
-            
-            loadTableData();
+	        function resetFilters() {
+	            if (scopeLocked) {
+	                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
+	            } else {
+	                $('#kafedraFilter').val(null).trigger('change');
+	            }
+	            $('#semestrFilter').val(null).trigger('change');
+	            $('#kursFilter').val(null).trigger('change');
+	            $('#yonalishFilter').val(null).trigger('change');
+	            $('#semestrTypeFilter').val(null).trigger('change');
+
+	            loadTableData(scopeLocked ? String(lockedKafedraId) : '');
             
             const Toast = Swal.mixin({
                 toast: true,

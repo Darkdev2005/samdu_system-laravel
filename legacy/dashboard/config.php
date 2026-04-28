@@ -1,5 +1,246 @@
 <?php
 
+if (!function_exists('legacy_session_user')) {
+    function legacy_session_user(): array
+    {
+        $user = [];
+
+        if (isset($_SESSION['legacy_user']) && is_array($_SESSION['legacy_user'])) {
+            $user = $_SESSION['legacy_user'];
+        }
+
+        if (function_exists('session')) {
+            try {
+                $sessionUser = session('legacy_user');
+                if (is_array($sessionUser)) {
+                    $user = array_merge($user, $sessionUser);
+                }
+
+                foreach (['id', 'username', 'name', 'role', 'kafedra_id'] as $key) {
+                    $value = session($key);
+                    if ($value !== null && $value !== '') {
+                        $user[$key] = $value;
+                    }
+                }
+            } catch (Throwable $e) {
+            }
+        }
+
+        return $user;
+    }
+}
+
+if (!function_exists('legacy_current_user')) {
+    function legacy_current_user()
+    {
+        if (function_exists('auth')) {
+            try {
+                $authUser = auth()->user();
+                if ($authUser) {
+                    return $authUser;
+                }
+            } catch (Throwable $e) {
+            }
+        }
+
+        $sessionUser = legacy_session_user();
+        return !empty($sessionUser) ? (object)$sessionUser : null;
+    }
+}
+
+if (!function_exists('legacy_user_role')) {
+    function legacy_user_role(): string
+    {
+        $sessionUser = legacy_session_user();
+        if (!empty($sessionUser['role'])) {
+            return (string)$sessionUser['role'];
+        }
+
+        $user = legacy_current_user();
+        $role = is_object($user) ? ($user->role ?? null) : null;
+        $role = is_string($role) ? trim($role) : '';
+        return $role !== '' ? $role : 'admin';
+    }
+}
+
+if (!function_exists('legacy_is_kafedra_mudiri')) {
+    function legacy_is_kafedra_mudiri(): bool
+    {
+        return legacy_user_role() === 'kafedra_mudiri';
+    }
+}
+
+if (!function_exists('legacy_is_admin')) {
+    function legacy_is_admin(): bool
+    {
+        return !legacy_is_kafedra_mudiri();
+    }
+}
+
+if (!function_exists('legacy_user_id')) {
+    function legacy_user_id(): int
+    {
+        $sessionUser = legacy_session_user();
+        if (!empty($sessionUser['id']) && is_numeric($sessionUser['id'])) {
+            return (int)$sessionUser['id'];
+        }
+
+        $user = legacy_current_user();
+        $id = is_object($user) ? ($user->id ?? null) : null;
+        return is_numeric($id) ? (int)$id : 0;
+    }
+}
+
+if (!function_exists('legacy_user_kafedra_id')) {
+    function legacy_user_kafedra_id(): int
+    {
+        $sessionUser = legacy_session_user();
+        if (!empty($sessionUser['kafedra_id']) && is_numeric($sessionUser['kafedra_id'])) {
+            return (int)$sessionUser['kafedra_id'];
+        }
+
+        $user = legacy_current_user();
+        $kafedraId = is_object($user) ? ($user->kafedra_id ?? null) : null;
+        return is_numeric($kafedraId) ? (int)$kafedraId : 0;
+    }
+}
+
+if (!function_exists('legacy_user_display_name')) {
+    function legacy_user_display_name(): string
+    {
+        $sessionUser = legacy_session_user();
+        foreach (['name', 'username'] as $key) {
+            if (!empty($sessionUser[$key])) {
+                return (string)$sessionUser[$key];
+            }
+        }
+
+        $user = legacy_current_user();
+        if (is_object($user)) {
+            if (!empty($user->name)) {
+                return (string)$user->name;
+            }
+            if (!empty($user->username)) {
+                return (string)$user->username;
+            }
+        }
+
+        return 'Foydalanuvchi';
+    }
+}
+
+if (!function_exists('legacy_user_role_label')) {
+    function legacy_user_role_label(): string
+    {
+        return legacy_is_kafedra_mudiri() ? 'Kafedra mudiri' : 'Admin';
+    }
+}
+
+if (!function_exists('legacy_require_admin')) {
+    function legacy_require_admin(bool $json = false): void
+    {
+        if (legacy_is_admin()) {
+            return;
+        }
+
+        if ($json) {
+            if (!headers_sent()) {
+                header('Content-Type: application/json; charset=UTF-8');
+            }
+            echo json_encode([
+                'success' => false,
+                'message' => 'Ushbu bo‘lim faqat admin uchun.',
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            if (!headers_sent()) {
+                http_response_code(403);
+                header('Content-Type: text/html; charset=UTF-8');
+            }
+            echo 'Ushbu bo‘lim faqat admin uchun.';
+        }
+
+        exit;
+    }
+}
+
+if (!function_exists('legacy_apply_kafedra_scope')) {
+    function legacy_apply_kafedra_scope(array &$filters): void
+    {
+        if (!legacy_is_kafedra_mudiri()) {
+            return;
+        }
+
+        $kafedraId = legacy_user_kafedra_id();
+        if ($kafedraId > 0) {
+            $filters['kafedra_id'] = $kafedraId;
+        }
+    }
+}
+
+if (!function_exists('legacy_resolve_requested_kafedra_id')) {
+    function legacy_resolve_requested_kafedra_id($requestedKafedraId): int
+    {
+        if (legacy_is_kafedra_mudiri()) {
+            return legacy_user_kafedra_id();
+        }
+
+        return is_numeric($requestedKafedraId) ? max(0, (int)$requestedKafedraId) : 0;
+    }
+}
+
+if (!function_exists('legacy_current_kafedra_row')) {
+    function legacy_current_kafedra_row($db): ?array
+    {
+        $kafedraId = legacy_user_kafedra_id();
+        if ($kafedraId <= 0 || !$db) {
+            return null;
+        }
+
+        $row = $db->get_data_by_table('kafedralar', ['id' => $kafedraId]);
+        return !empty($row) ? $row : null;
+    }
+}
+
+if (!function_exists('legacy_can_access_teacher')) {
+    function legacy_can_access_teacher($db, int $teacherId): bool
+    {
+        if ($teacherId <= 0) {
+            return false;
+        }
+
+        if (!legacy_is_kafedra_mudiri()) {
+            return true;
+        }
+
+        $teacher = $db->get_data_by_table('oqituvchilar', ['id' => $teacherId]);
+        return !empty($teacher) && (int)($teacher['kafedra_id'] ?? 0) === legacy_user_kafedra_id();
+    }
+}
+
+if (!function_exists('legacy_dashboard_relative_path')) {
+    function legacy_dashboard_relative_path(): string
+    {
+        $basePath = realpath(__DIR__);
+        $scriptPath = $_SERVER['SCRIPT_FILENAME'] ?? '';
+        $scriptReal = $scriptPath !== '' ? realpath($scriptPath) : false;
+
+        if ($basePath && $scriptReal) {
+            $basePrefix = rtrim(str_replace('\\', '/', $basePath), '/') . '/';
+            $scriptNormalized = str_replace('\\', '/', $scriptReal);
+            if (strpos($scriptNormalized, $basePrefix) === 0) {
+                return substr($scriptNormalized, strlen($basePrefix));
+            }
+        }
+
+        $requestUri = (string)($_SERVER['REQUEST_URI'] ?? '');
+        if (preg_match('#/dashboard/([^?]+)#', $requestUri, $matches)) {
+            return trim((string)$matches[1], '/');
+        }
+
+        return 'index.php';
+    }
+}
+
 class Database{
     private $host = 'localhost';
     private $port = 3306;
@@ -127,6 +368,24 @@ class Database{
                 INDEX idx_audit_created (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+        // Izoh: Laravel users jadvalida role/kafedra/holat ustunlari bo'lmasa avtomatik qo'shamiz.
+        $usersTableRes = mysqli_query($this->link, "SHOW TABLES LIKE 'users'");
+        if ($usersTableRes && mysqli_num_rows($usersTableRes) > 0) {
+            $userRoleColumn = mysqli_query($this->link, "SHOW COLUMNS FROM users LIKE 'role'");
+            if ($userRoleColumn && mysqli_num_rows($userRoleColumn) === 0) {
+                mysqli_query($this->link, "ALTER TABLE users ADD COLUMN role VARCHAR(50) NOT NULL DEFAULT 'admin' AFTER password");
+            }
+
+            $userKafedraColumn = mysqli_query($this->link, "SHOW COLUMNS FROM users LIKE 'kafedra_id'");
+            if ($userKafedraColumn && mysqli_num_rows($userKafedraColumn) === 0) {
+                mysqli_query($this->link, "ALTER TABLE users ADD COLUMN kafedra_id BIGINT UNSIGNED NULL AFTER role");
+            }
+
+            $userActiveColumn = mysqli_query($this->link, "SHOW COLUMNS FROM users LIKE 'is_active'");
+            if ($userActiveColumn && mysqli_num_rows($userActiveColumn) === 0) {
+                mysqli_query($this->link, "ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER kafedra_id");
+            }
+        }
         // Izoh: Umumta'lim fanlar jadvali mavjud bo'lmasa avtomatik yaratish.
         mysqli_query($this->link, "
             CREATE TABLE IF NOT EXISTS umumtalim_fanlar (
@@ -2083,14 +2342,25 @@ class Database{
         return $data;
     }
 
-    public function get_oqtuvchilar(){
+    public function get_oqtuvchilar($filters = []){
         $sql = "SELECT o.*, f.name AS fakultet_name, k.name AS kafedra_name, iu.name AS ilmiy_unvon_name, isht.name AS ishtur_name, id.name AS ilmiy_daraja_name
         FROM `oqituvchilar` o
         JOIN fakultetlar f ON f.id=o.fakultet_id
         JOIN kafedralar k ON k.id=o.kafedra_id
         JOIN ilmiy_unvonlar iu ON iu.id=o.ilmiy_unvon_id
         JOIN ilmiy_darajalar id ON id.id=o.ilmiy_daraja_id
-        JOIN ish_turlar isht ON isht.id=o.ishtur_id;";
+        JOIN ish_turlar isht ON isht.id=o.ishtur_id";
+        $where = [];
+        if (!empty($filters['fakultet_id'])) {
+            $where[] = 'o.fakultet_id = ' . (int)$filters['fakultet_id'];
+        }
+        if (!empty($filters['kafedra_id'])) {
+            $where[] = 'o.kafedra_id = ' . (int)$filters['kafedra_id'];
+        }
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY o.fio';
         $result = $this->query($sql);
         $data = [];
         while ($row = mysqli_fetch_assoc($result)) {

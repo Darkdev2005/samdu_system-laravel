@@ -61,13 +61,27 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        if (! (bool) ($user->is_active ?? true)) {
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'username' => "Foydalanuvchi vaqtincha faolsizlantirilgan.",
+            ]);
+        }
+
         Auth::login($user, $this->boolean('remember'));
         $this->session()->put('legacy_user', [
             'id' => (int) $user->id,
             'username' => (string) $user->username,
+            'name' => (string) ($user->name ?? ''),
+            'role' => (string) ($user->role ?? 'admin'),
+            'kafedra_id' => (int) ($user->kafedra_id ?? 0),
         ]);
         $this->session()->put('id', (int) $user->id);
         $this->session()->put('username', (string) $user->username);
+        $this->session()->put('name', (string) ($user->name ?? ''));
+        $this->session()->put('role', (string) ($user->role ?? 'admin'));
+        $this->session()->put('kafedra_id', (int) ($user->kafedra_id ?? 0));
 
         RateLimiter::clear($this->throttleKey());
     }
