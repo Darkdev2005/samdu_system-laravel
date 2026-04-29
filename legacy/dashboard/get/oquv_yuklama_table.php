@@ -301,6 +301,11 @@ if ($magistrDoktorantOnly) {
                 <?php 
                     endforeach;
                     foreach ($qoshimcha_yuklamalar as $row):
+                        $qoshimchaFanNomi = legacy_qoshimcha_display_name(
+                            (string)($row['fan_nomi'] ?? ''),
+                            (int)($row['qoshimcha_dars_id'] ?? 0),
+                            (string)($row['subtype_code'] ?? '')
+                        );
                         $totals['oraliq'] += (float)($row['oraliq_nazorat'] ?? 0);
                         $totals['yakuniy'] += (float)($row['yakuniy_nazorat'] ?? 0);
                         $totals['kurs_ishi'] += (float)($row['kurs_ishi'] ?? 0);
@@ -324,7 +329,7 @@ if ($magistrDoktorantOnly) {
                 ?>
                 <tr>
                     <td><?= $counter++ ?></td>
-                    <td class="left"><?= htmlspecialchars($row['fan_nomi']) ?></td>
+                    <td class="left"><?= htmlspecialchars($qoshimchaFanNomi) ?></td>
                     <td class="left"><?= htmlspecialchars($row['yonalish_code'] . ' - ' . $row['talim_yonalishi']) ?></td>
                     <td><?= htmlspecialchars($row['guruh_raqami']) ?></td>
                     <td><?= $row['oquv_shakli'] ?></td>

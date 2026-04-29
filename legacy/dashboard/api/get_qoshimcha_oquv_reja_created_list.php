@@ -35,6 +35,8 @@ $res = $db->query("
         qf.fan_name,
         qf.fan_soat,
         qf.qoshimcha_dars_id,
+        qf.subtype_code,
+        qf.formula_meta,
         COALESCE(qdt.name, '-') AS qoshimcha_dars_name,
         s.id AS semestr_id,
         s.semestr AS semestr_num,
@@ -68,6 +70,15 @@ if ($res) {
         if ($qoshimchaFanId <= 0) {
             continue;
         }
+
+        $subtypeCode = (string)($row['subtype_code'] ?? '');
+        $subtypeLabel = legacy_qoshimcha_subtype_label((int)($row['qoshimcha_dars_id'] ?? 0), $subtypeCode);
+        $row['subtype_label'] = $subtypeLabel;
+        $row['qoshimcha_dars_display_name'] = legacy_qoshimcha_display_name(
+            (string)($row['qoshimcha_dars_name'] ?? '-'),
+            (int)($row['qoshimcha_dars_id'] ?? 0),
+            $subtypeCode
+        );
 
         $row['allocations'] = [];
         $rows[] = $row;

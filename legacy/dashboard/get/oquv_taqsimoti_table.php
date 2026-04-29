@@ -348,10 +348,18 @@ if (!empty($allYonalishIds)) {
                         if (!$needsResync && $rowYonalishId > 0 && !empty($pendingYonalishMap[$rowYonalishId])) {
                             $needsResync = true;
                         }
+                        $qoshimchaBaseName = (int)($row['qoshimcha_dars_id'] ?? 0) === 16
+                            ? 'YADAK'
+                            : (string)($row['fan_nomi'] ?? '');
+                        $qoshimchaFanNomi = legacy_qoshimcha_display_name(
+                            $qoshimchaBaseName,
+                            (int)($row['qoshimcha_dars_id'] ?? 0),
+                            (string)($row['subtype_code'] ?? '')
+                        );
                 ?>
                 <tr class="<?= $needsResync ? 'needs-resync' : '' ?>">
                     <td><?= $counter++ ?></td>
-                    <td class="left fan-nomi"><?= htmlspecialchars($row['fan_nomi']) ?></td>
+                    <td class="left fan-nomi"><?= htmlspecialchars($qoshimchaFanNomi) ?></td>
                     <td class="left">
                         <?= htmlspecialchars($row['yonalish_code'] . ' - ' . $row['talim_yonalishi']) ?>
                         <?php if ($needsResync): ?>
@@ -433,14 +441,14 @@ if (!empty($allYonalishIds)) {
                     </td>
                     
                     <!-- Qo'shimcha soatlar -->
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="ochiq_dars" data-max-soat="0">
-                        
+                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="ochiq_dars" data-max-soat="<?= $row['ochiq_dars'] ?? 0 ?>">
+                        <?= ($row['ochiq_dars'] ?? 0) > 0 ? ($row['ochiq_dars'] ?? 0) : '' ?>
                     </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="yakuniy_attestatsiya" data-max-soat="0">
-                        
+                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="yadak" data-max-soat="<?= $row['yadak'] ?? 0 ?>">
+                        <?= ($row['yadak'] ?? 0) > 0 ? ($row['yadak'] ?? 0) : '' ?>
                     </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="boshqa_soatlar" data-max-soat="0">
-                        
+                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="boshqa_soatlar" data-max-soat="<?= $row['boshqa_soatlar'] ?? 0 ?>">
+                        <?= ($row['boshqa_soatlar'] ?? 0) > 0 ? ($row['boshqa_soatlar'] ?? 0) : '' ?>
                     </td>
                     <!-- JAMI soat -->
                     <td class="total-cell">

@@ -201,6 +201,50 @@ if (!function_exists('legacy_current_kafedra_row')) {
     }
 }
 
+if (!function_exists('legacy_decode_formula_meta')) {
+    function legacy_decode_formula_meta($value): array
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+}
+
+if (!function_exists('legacy_qoshimcha_subtype_label')) {
+    function legacy_qoshimcha_subtype_label(?int $qoshimchaDarsId, ?string $subtypeCode): string
+    {
+        $qoshimchaDarsId = (int)$qoshimchaDarsId;
+        $subtypeCode = trim((string)$subtypeCode);
+
+        if ($qoshimchaDarsId !== 16 || $subtypeCode === '') {
+            return '';
+        }
+
+        $map = [
+            'konsultatsiya' => 'Konsultatsiya',
+            'yozma_ish' => 'Yozma ish',
+            'bmi_himoyasi' => 'BMI himoyasi',
+        ];
+
+        return $map[$subtypeCode] ?? $subtypeCode;
+    }
+}
+
+if (!function_exists('legacy_qoshimcha_display_name')) {
+    function legacy_qoshimcha_display_name(string $baseName, ?int $qoshimchaDarsId, ?string $subtypeCode): string
+    {
+        $label = legacy_qoshimcha_subtype_label($qoshimchaDarsId, $subtypeCode);
+        if ($label === '') {
+            return $baseName;
+        }
+
+        return trim($baseName) !== '' ? ($baseName . ' - ' . $label) : $label;
+    }
+}
+
 if (!function_exists('legacy_can_access_teacher')) {
     function legacy_can_access_teacher($db, int $teacherId): bool
     {
@@ -384,6 +428,19 @@ class Database{
             $userActiveColumn = mysqli_query($this->link, "SHOW COLUMNS FROM users LIKE 'is_active'");
             if ($userActiveColumn && mysqli_num_rows($userActiveColumn) === 0) {
                 mysqli_query($this->link, "ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER kafedra_id");
+            }
+        }
+        // Izoh: Qo'shimcha fanlarda subtype va formula meta saqlash uchun ustunlar.
+        $qoshimchaFanTableRes = mysqli_query($this->link, "SHOW TABLES LIKE 'qoshimcha_fanlar'");
+        if ($qoshimchaFanTableRes && mysqli_num_rows($qoshimchaFanTableRes) > 0) {
+            $subtypeCol = mysqli_query($this->link, "SHOW COLUMNS FROM qoshimcha_fanlar LIKE 'subtype_code'");
+            if ($subtypeCol && mysqli_num_rows($subtypeCol) === 0) {
+                mysqli_query($this->link, "ALTER TABLE qoshimcha_fanlar ADD COLUMN subtype_code VARCHAR(50) NULL AFTER qoshimcha_dars_id");
+            }
+
+            $formulaMetaCol = mysqli_query($this->link, "SHOW COLUMNS FROM qoshimcha_fanlar LIKE 'formula_meta'");
+            if ($formulaMetaCol && mysqli_num_rows($formulaMetaCol) === 0) {
+                mysqli_query($this->link, "ALTER TABLE qoshimcha_fanlar ADD COLUMN formula_meta LONGTEXT NULL AFTER subtype_code");
             }
         }
         // Izoh: Umumta'lim fanlar jadvali mavjud bo'lmasa avtomatik yaratish.
@@ -2198,6 +2255,9 @@ class Database{
             )
 
             SELECT
+                qf.qoshimcha_dars_id,
+                qf.subtype_code,
+                qf.formula_meta,
                 qdt.name AS fan_nomi,  
                 y.name AS talim_yonalishi,
                 y.code AS yonalish_code,
@@ -2247,7 +2307,16 @@ class Database{
             $whereSQL
             GROUP BY qf.id, q.kafedra_id
 
-            ORDER BY s.semestr, qdt.name
+            ORDER BY
+                s.semestr,
+                qdt.name,
+                CASE qf.subtype_code
+                    WHEN 'bmi_himoyasi' THEN 1
+                    WHEN 'konsultatsiya' THEN 2
+                    WHEN 'yozma_ish' THEN 3
+                    ELSE 9
+                END,
+                qf.id
             {$limitSQL};
         ";
         $result = $this->query($sql);
@@ -2843,6 +2912,9 @@ class Database{
                 q.id AS qoshimcha_reja_id, 
                 y.id AS yonalish_id,
                 qf.fan_name AS fan_nomi,
+                qf.qoshimcha_dars_id,
+                qf.subtype_code,
+                qf.formula_meta,
                 y.name AS talim_yonalishi,
                 y.code AS yonalish_code,
                 k.name AS kafedra_nomi,
@@ -2891,7 +2963,15 @@ class Database{
             JOIN kafedralar k ON k.id = q.kafedra_id
             JOIN guruh_agg ga ON ga.yonalish_id = y.id
             $whereSQL
-            ORDER BY s.semestr, q.id
+            ORDER BY
+                s.semestr,
+                CASE qf.subtype_code
+                    WHEN 'bmi_himoyasi' THEN 1
+                    WHEN 'konsultatsiya' THEN 2
+                    WHEN 'yozma_ish' THEN 3
+                    ELSE 9
+                END,
+                q.id
             {$limitSQL};
         ";
         

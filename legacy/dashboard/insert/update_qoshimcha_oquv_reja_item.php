@@ -10,6 +10,11 @@ $fanSoat = (float)($_POST['fan_soat'] ?? 0);
 $qoshimchaDarsId = (int)($_POST['qoshimcha_dars_id'] ?? 0);
 $semestrId = (int)($_POST['semestr_id'] ?? 0);
 $izoh = trim((string)($_POST['izoh'] ?? ''));
+$yadakSubtype = trim((string)($_POST['yadak_subtype'] ?? ''));
+$yadakTeacher = (int)($_POST['yadak_teacher'] ?? 0);
+$yadakFanCount = (int)($_POST['yadak_fan_count'] ?? 0);
+$yadakBmiTalabaRaw = trim((string)($_POST['yadak_bmi_talaba'] ?? ''));
+$yadakPotokCountRaw = trim((string)($_POST['yadak_potok_count'] ?? ''));
 $allocationsJson = (string)($_POST['allocations_json'] ?? '[]');
 $allocations = json_decode($allocationsJson, true);
 
@@ -72,11 +77,72 @@ if (abs($sumSoat - $fanSoat) > 0.0001) {
 $db->query("START TRANSACTION");
 $ok = true;
 
+$subtypeCode = trim((string)($existingFan['subtype_code'] ?? ''));
+$formulaMeta = (string)($existingFan['formula_meta'] ?? '');
+
+if ($qoshimchaDarsId === 16) {
+    $effectiveSubtype = $yadakSubtype !== '' ? $yadakSubtype : $subtypeCode;
+
+    if ($effectiveSubtype === '') {
+        $effectiveSubtype = '';
+    }
+
+    if ($effectiveSubtype !== '' && !in_array($effectiveSubtype, ['konsultatsiya', 'yozma_ish', 'bmi_himoyasi'], true)) {
+        echo json_encode(['success' => false, 'message' => "YADAK turi noto'g'ri"]);
+        return;
+    }
+
+    $meta = legacy_decode_formula_meta($formulaMeta);
+    $effectiveTeacherCount = $yadakTeacher > 0 ? $yadakTeacher : (int)($meta['teacher_count'] ?? 0);
+    $effectiveFanCount = $yadakFanCount > 0 ? $yadakFanCount : (int)($meta['fan_count'] ?? 0);
+    $effectiveBmiTalabaCount = $yadakBmiTalabaRaw !== '' ? (int)$yadakBmiTalabaRaw : (int)($meta['bmi_talaba_count'] ?? 0);
+    $effectivePotokCount = $yadakPotokCountRaw !== '' ? (int)$yadakPotokCountRaw : (int)($meta['potok_count'] ?? 0);
+
+    if ($effectiveSubtype !== '') {
+        if ($effectiveSubtype === 'bmi_himoyasi' && $effectiveTeacherCount <= 0) {
+            echo json_encode(['success' => false, 'message' => "BMI himoyasi uchun o'qituvchi soni noto'g'ri"]);
+            return;
+        }
+
+        if (in_array($effectiveSubtype, ['bmi_himoyasi', 'yozma_ish'], true) && $effectiveBmiTalabaCount < 0) {
+            echo json_encode(['success' => false, 'message' => "BMI talaba soni noto'g'ri"]);
+            return;
+        }
+
+        if (in_array($effectiveSubtype, ['konsultatsiya', 'yozma_ish'], true) && $effectiveFanCount <= 0) {
+            echo json_encode(['success' => false, 'message' => "YADAK fan soni noto'g'ri"]);
+            return;
+        }
+
+        if ($effectiveSubtype === 'konsultatsiya' && $effectivePotokCount <= 0) {
+            echo json_encode(['success' => false, 'message' => "Konsultatsiya potok soni noto'g'ri"]);
+            return;
+        }
+
+        $subtypeCode = $effectiveSubtype;
+        $formulaMeta = json_encode([
+            'subtype_code' => $subtypeCode,
+            'teacher_count' => $effectiveTeacherCount,
+            'fan_count' => $effectiveFanCount,
+            'bmi_talaba_count' => $effectiveBmiTalabaCount,
+            'potok_count' => $effectivePotokCount,
+        ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($formulaMeta === false) {
+            $formulaMeta = '';
+        }
+    }
+} else {
+    $subtypeCode = '';
+    $formulaMeta = '';
+}
+
 $ok = $ok && $db->update('qoshimcha_fanlar', [
     'fan_name' => $fanName,
     'fan_soat' => $fanSoat,
     'qoshimcha_dars_id' => $qoshimchaDarsId,
     'semestr_id' => $semestrId,
+    'subtype_code' => $subtypeCode,
+    'formula_meta' => $formulaMeta,
 ], 'id = ' . $qoshimchaFanId);
 
 if ($ok) {

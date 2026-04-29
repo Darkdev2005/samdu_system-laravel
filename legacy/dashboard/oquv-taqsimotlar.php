@@ -661,6 +661,7 @@ $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $current
                 'katta_ilmiy_tadqiqotchi': "Katta ilmiy tadqiqotchi",
                 'stajyor_tadqiqotchi': "Stajyor-tadqiqotchi",
                 'ochiq_dars': "Ochiq dars",
+                'yadak': "Yakuniy davlat attestatsiyasi",
                 'yakuniy_attestatsiya': "Yakuniy attestatsiya",
                 'boshqa_soatlar': "Boshqa soatlar"
             };
