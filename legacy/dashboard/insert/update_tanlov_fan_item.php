@@ -65,10 +65,10 @@ try {
                 return;
             }
             $talabalarSoni = (int)$talabaRaw;
-            if ($talabalarSoni < 0 || ($talabalarSoni > 0 && $talabalarSoni < 10)) {
+            if ($talabalarSoni < 0 || ($talabalarSoni > 0 && $talabalarSoni < 1)) {
                 echo json_encode([
                     'success' => false,
-                    'message' => "{$fanName}: aktiv variant kamida 10 talaba bo'lishi kerak",
+                    'message' => "{$fanName}: aktiv variant kamida 1 talaba bo'lishi kerak",
                 ], JSON_UNESCAPED_UNICODE);
                 return;
             }
@@ -176,10 +176,10 @@ try {
         ], JSON_UNESCAPED_UNICODE);
         return;
     }
-    if ($talabalarSoni > 0 && $talabalarSoni < 10) {
+    if ($talabalarSoni > 0 && $talabalarSoni < 1) {
         echo json_encode([
             'success' => false,
-            'message' => "Aktiv tanlov varianti kamida 10 talaba bo'lishi kerak",
+            'message' => "Aktiv tanlov varianti kamida 1 talaba bo'lishi kerak",
         ], JSON_UNESCAPED_UNICODE);
         return;
     }

@@ -13,7 +13,111 @@
         : $db->get_data_by_table_all('kafedralar');
     $ilmiy_unvonlar = $db->get_data_by_table_all('ilmiy_unvonlar');
     $ilmiy_darajalar = $db->get_data_by_table_all('ilmiy_darajalar');
-    $ish_turlar = $db->get_data_by_table_all('ish_turlar');
+
+    $normalizeIshturName = static function (string $value): string {
+        $value = trim($value);
+        $value = str_replace(['’', '‘', 'ʼ', 'ʻ', '`'], "'", $value);
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    };
+
+    $classifyIshtur = static function (string $normalized): string {
+        if ($normalized === '' || $normalized === 'tanlang') {
+            return 'skip';
+        }
+
+        $isOrindosh = strpos($normalized, 'rindosh') !== false || strpos($normalized, 'orindosh') !== false;
+        if ($isOrindosh && strpos($normalized, 'ichki') !== false) {
+            if (strpos($normalized, 'qoshimcha') !== false || strpos($normalized, "qo'shimcha") !== false) {
+                return 'ichki_qoshimcha';
+            }
+            return 'ichki_asosiy';
+        }
+        if ($isOrindosh && strpos($normalized, 'tashqi') !== false) {
+            return 'tashqi';
+        }
+        return 'other';
+    };
+
+    // Izoh: Yangi "ichki-qo'shimcha" shtat turi bo'lmasa avtomatik qo'shamiz.
+    $ishTurQoshimchaLabel = "O'rindosh (ichki-qo'shimcha)";
+    $ishTurRowsBefore = $db->get_data_by_table_all('ish_turlar');
+    $hasIchkiQoshimcha = false;
+    foreach ($ishTurRowsBefore as $row) {
+        $normalized = $normalizeIshturName((string)($row['name'] ?? ''));
+        if ($classifyIshtur($normalized) === 'ichki_qoshimcha') {
+            $hasIchkiQoshimcha = true;
+            break;
+        }
+    }
+    if (!$hasIchkiQoshimcha) {
+        $insertData = ['name' => $ishTurQoshimchaLabel];
+        $columnsRes = $db->query('SHOW COLUMNS FROM ish_turlar');
+        if ($columnsRes) {
+            while ($column = mysqli_fetch_assoc($columnsRes)) {
+                $field = (string)($column['Field'] ?? '');
+                if ($field === '' || $field === 'id' || $field === 'name') {
+                    continue;
+                }
+
+                if ($field === 'short_name') {
+                    $insertData[$field] = 'orindosh_ichki_qoshimcha';
+                    continue;
+                }
+
+                $isRequiredNoDefault = (($column['Null'] ?? 'YES') === 'NO') && (($column['Default'] ?? null) === null);
+                $isAutoIncrement = strpos((string)($column['Extra'] ?? ''), 'auto_increment') !== false;
+                if ($isRequiredNoDefault && !$isAutoIncrement) {
+                    $type = (string)($column['Type'] ?? '');
+                    $insertData[$field] = preg_match('/int|decimal|float|double|bit/i', $type) ? 0 : '';
+                }
+            }
+        }
+        $db->insert('ish_turlar', $insertData);
+    }
+
+    $ishTurDisplayOrder = [
+        "Asosiy shtatda" => 10,
+        "O'rindosh (ichki-asosiy)" => 20,
+        "O'rindosh (ichki-qo'shimcha)" => 30,
+        "O'rindosh (tashqi)" => 40,
+        "Soatbay" => 50,
+        "Vakant" => 60,
+    ];
+
+    $ishTurByDisplayName = [];
+    foreach ($db->get_data_by_table_all('ish_turlar') as $row) {
+        $name = trim((string)($row['name'] ?? ''));
+        $normalized = $normalizeIshturName($name);
+        $kind = $classifyIshtur($normalized);
+        if ($kind === 'skip') {
+            continue;
+        }
+
+        $displayName = $name;
+        if ($kind === 'ichki_asosiy') {
+            $displayName = "O'rindosh (ichki-asosiy)";
+        } elseif ($kind === 'ichki_qoshimcha') {
+            $displayName = "O'rindosh (ichki-qo'shimcha)";
+        } elseif ($kind === 'tashqi') {
+            $displayName = "O'rindosh (tashqi)";
+        }
+
+        $row['display_name'] = $displayName;
+        $displayName = (string)$displayName;
+        $existing = $ishTurByDisplayName[$displayName] ?? null;
+        if ($existing === null || (int)($row['id'] ?? 0) < (int)($existing['id'] ?? PHP_INT_MAX)) {
+            $ishTurByDisplayName[$displayName] = $row;
+        }
+    }
+    $ish_turlar = array_values($ishTurByDisplayName);
+    usort($ish_turlar, static function (array $a, array $b) use ($ishTurDisplayOrder): int {
+        $nameA = (string)($a['display_name'] ?? $a['name'] ?? '');
+        $nameB = (string)($b['display_name'] ?? $b['name'] ?? '');
+        $orderA = $ishTurDisplayOrder[$nameA] ?? (1000 + (int)($a['id'] ?? 0));
+        $orderB = $ishTurDisplayOrder[$nameB] ?? (1000 + (int)($b['id'] ?? 0));
+        return $orderA <=> $orderB;
+    });
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -37,12 +141,12 @@
         <main class="main-content">
             <header class="top-navbar">
                 <div class="navbar-left">
-                    <h1>OвЂqituvchilar</h1>
-                    <p class="navbar-subtitle">OвЂqituvchilarni boshqarish boвЂlimi</p>
+                    <h1>O'qituvchilar</h1>
+                    <p class="navbar-subtitle">O'qituvchilarni boshqarish bo'limi</p>
                 </div>
                 <div class="navbar-right">
                     <button class="btn btn-primary" id="addOqituvchiBtn">
-                        <i class="fas fa-plus"></i> OвЂqituvchi qoвЂshish
+                        <i class="fas fa-plus"></i> O'qituvchi qo'shish
                     </button>
                 </div>
             </header>
@@ -88,7 +192,7 @@
                 <div class="table-container">
                     <div class="table-header">
                         <div class="table-title">
-                            <h3>Barcha oвЂqituvchilar</h3>
+                            <h3>Barcha o'qituvchilar</h3>
                             <span class="badge" id="totalOqituvchilar">0 ta</span>
                         </div>
                         <div class="table-actions">
@@ -116,7 +220,7 @@
                                 </tr>
                             </thead>
                             <tbody id="oqituvchilarTable">
-                                <!-- AJAX orqali toвЂldiriladi -->
+                                <!-- AJAX orqali to'ldiriladi -->
                             </tbody>
                         </table>
                     </div>
@@ -128,7 +232,7 @@
     <div class="modal" id="oqituvchiModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="oqituvchiModalTitle">OвЂqituvchi qoвЂshish</h3>
+                <h3 id="oqituvchiModalTitle">O'qituvchi qo'shish</h3>
                 <button class="modal-close" id="closeOqituvchiModal">
                     <i class="fas fa-times"></i>
                 </button>
@@ -186,8 +290,9 @@
                         <select class="form-control" name="ishtur_id" id="ishturSelect" required>
                             <option value="">Tanlang</option>
                             <?php foreach ($ish_turlar as $t): ?>
+                                <?php if ($normalizeIshturName((string)($t['name'] ?? '')) === 'tanlang') { continue; } ?>
                                 <option value="<?= $t['id'] ?>">
-                                    <?= htmlspecialchars($t['name']) ?>
+                                    <?= htmlspecialchars((string)($t['display_name'] ?? $t['name'])) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -359,7 +464,7 @@
             const editIdInput = document.getElementById('oqituvchiEditId');
 
 	            document.getElementById('addOqituvchiBtn').onclick = () => {
-	                modalTitle.textContent = "OвЂqituvchi qoвЂshish";
+	                modalTitle.textContent = "O'qituvchi qo'shish";
 	                saveBtn.textContent = 'Saqlash';
 	                editIdInput.value = '';
 	                form.reset();
@@ -398,7 +503,7 @@
                     form.querySelector('[name="ilmiy_daraja_id"]').value = editBtn.dataset.ilmiyDarajaId || '';
                     toggleStavkaRequired();
 
-                    modalTitle.textContent = "OвЂqituvchini tahrirlash";
+                    modalTitle.textContent = "O'qituvchini tahrirlash";
                     saveBtn.textContent = 'Yangilash';
                     modal.classList.add('show');
                     return;
@@ -412,7 +517,7 @@
 
                 Swal.fire({
                     title: "Ishonchingiz komilmi?",
-                    text: "OвЂqituvchi o'chiriladi",
+                    text: "O'qituvchi o'chiriladi",
                     icon: "warning",
                     showCancelButton: true,
                     confirmButtonText: "Ha, o'chirilsin",
@@ -431,7 +536,7 @@
                     .then(data => {
                         Toast.fire({
                             icon: data.success ? 'success' : 'error',
-                            title: data.message || (data.success ? "OвЂqituvchi o'chirildi" : "Xatolik yuz berdi")
+                            title: data.message || (data.success ? "O'qituvchi o'chirildi" : "Xatolik yuz berdi")
                         });
                         if (data.success) {
                             loadOqituvchilar();

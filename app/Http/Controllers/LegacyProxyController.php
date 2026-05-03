@@ -58,6 +58,7 @@ class LegacyProxyController extends Controller
             'oquv-taqsimotlar.php',
             'oqituvchi-taqsimotlar.php',
             'oqituvchi-bildirgi.php',
+            'profil-sozlamalari.php',
             'get/oqituvchilar_table.php',
             'get/oquv_yuklama_table.php',
             'get/oquv_taqsimoti_table.php',
@@ -66,6 +67,7 @@ class LegacyProxyController extends Controller
             'insert/update_oqituvchi.php',
             'insert/delete_oqituvchi.php',
             'insert/add_oquv_taqsimot.php',
+            'insert/update_mening_hisobim.php',
             'api/get_oquv_reja_by_yuklama.php',
             'api/get_teacher_total_hours.php',
         ];

@@ -87,7 +87,7 @@ if ($qoshimchaDarsId === 16) {
         $effectiveSubtype = '';
     }
 
-    if ($effectiveSubtype !== '' && !in_array($effectiveSubtype, ['konsultatsiya', 'yozma_ish', 'bmi_himoyasi'], true)) {
+    if ($effectiveSubtype !== '' && !in_array($effectiveSubtype, ['konsultatsiya', 'yozma_ish', 'bmi_himoyasi', 'bmi_rahbarligi'], true)) {
         echo json_encode(['success' => false, 'message' => "YADAK turi noto'g'ri"]);
         return;
     }
@@ -99,12 +99,12 @@ if ($qoshimchaDarsId === 16) {
     $effectivePotokCount = $yadakPotokCountRaw !== '' ? (int)$yadakPotokCountRaw : (int)($meta['potok_count'] ?? 0);
 
     if ($effectiveSubtype !== '') {
-        if ($effectiveSubtype === 'bmi_himoyasi' && $effectiveTeacherCount <= 0) {
-            echo json_encode(['success' => false, 'message' => "BMI himoyasi uchun o'qituvchi soni noto'g'ri"]);
+        if (in_array($effectiveSubtype, ['bmi_himoyasi', 'bmi_rahbarligi'], true) && $effectiveTeacherCount <= 0) {
+            echo json_encode(['success' => false, 'message' => "BMI uchun o'qituvchi soni noto'g'ri"]);
             return;
         }
 
-        if (in_array($effectiveSubtype, ['bmi_himoyasi', 'yozma_ish'], true) && $effectiveBmiTalabaCount < 0) {
+        if (in_array($effectiveSubtype, ['bmi_himoyasi', 'bmi_rahbarligi', 'yozma_ish'], true) && $effectiveBmiTalabaCount < 0) {
             echo json_encode(['success' => false, 'message' => "BMI talaba soni noto'g'ri"]);
             return;
         }
@@ -130,6 +130,14 @@ if ($qoshimchaDarsId === 16) {
         if ($formulaMeta === false) {
             $formulaMeta = '';
         }
+    }
+} elseif ($qoshimchaDarsId === 8) {
+    $subtypeCode = '';
+    if (trim((string)$formulaMeta) === '') {
+        $formulaMeta = json_encode([
+            'bmi_talaba_count' => 0,
+            'bmi_is_tech' => 0,
+        ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '';
     }
 } else {
     $subtypeCode = '';

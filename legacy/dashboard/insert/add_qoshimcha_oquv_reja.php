@@ -28,10 +28,33 @@
     $yadak_fan_counts  = $_POST['yadak_fan_count'] ?? [];
     $yadak_bmi_talabalar = $_POST['yadak_bmi_talaba'] ?? [];
     $yadak_potok_counts = $_POST['yadak_potok_count'] ?? [];
+    $bmi_talaba_sonlari = $_POST['bmi_talaba_soni'] ?? [];
+    $bmi_is_tech_flags = $_POST['bmi_is_tech'] ?? [];
     $izoh              = trim($_POST['izoh'] ?? '');
     
     $insertCount = 0;
     $errors = [];
+    $yadakBmiByFanKey = [];
+
+    foreach ($fan_nomlar as $fanIndex => $fanNameRawForMap) {
+        $qoshimchaDarsIdForMap = (int)($qoshimcha_dars_ids[$fanIndex] ?? 0);
+        if ($qoshimchaDarsIdForMap !== 16) {
+            continue;
+        }
+
+        $subtypeForMap = trim((string)($yadak_subtypes[$fanIndex] ?? ''));
+        if (!in_array($subtypeForMap, ['bmi_himoyasi', 'bmi_rahbarligi'], true)) {
+            continue;
+        }
+
+        $fanKey = trim((string)$fanNameRawForMap);
+        if ($fanKey === '') {
+            continue;
+        }
+
+        $bmiTalabaForMap = max(0, (int)($yadak_bmi_talabalar[$fanIndex] ?? 0));
+        $yadakBmiByFanKey[$fanKey] = $bmiTalabaForMap;
+    }
 
     foreach ($fan_nomlar as $fanIndex => $fanNameRaw) {
         $fanNameRaw = trim($fanNameRaw);
@@ -60,18 +83,23 @@
             $fanCount = (int)($yadak_fan_counts[$fanIndex] ?? 0);
             $bmiTalabaCount = (int)($yadak_bmi_talabalar[$fanIndex] ?? 0);
             $potokCount = (int)($yadak_potok_counts[$fanIndex] ?? 0);
+            $fanKey = trim((string)($fan_nomlar[$fanIndex] ?? ''));
 
-            if (!in_array($subtypeCode, ['konsultatsiya', 'yozma_ish', 'bmi_himoyasi'], true)) {
+            if ($subtypeCode === 'yozma_ish' && $bmiTalabaCount <= 0 && isset($yadakBmiByFanKey[$fanKey])) {
+                $bmiTalabaCount = (int)$yadakBmiByFanKey[$fanKey];
+            }
+
+            if (!in_array($subtypeCode, ['konsultatsiya', 'yozma_ish', 'bmi_himoyasi', 'bmi_rahbarligi'], true)) {
                 $errors[] = ($fanIndex + 1) . "-fan uchun YADAK turi noto'g'ri";
                 continue;
             }
 
-            if ($subtypeCode === 'bmi_himoyasi' && $teacherCount <= 0) {
-                $errors[] = ($fanIndex + 1) . "-fan uchun BMI himoyasi o'qituvchi soni noto'g'ri";
+            if (in_array($subtypeCode, ['bmi_himoyasi', 'bmi_rahbarligi'], true) && $teacherCount <= 0) {
+                $errors[] = ($fanIndex + 1) . "-fan uchun BMI o'qituvchi soni noto'g'ri";
                 continue;
             }
 
-            if (in_array($subtypeCode, ['bmi_himoyasi', 'yozma_ish'], true) && $bmiTalabaCount < 0) {
+            if (in_array($subtypeCode, ['bmi_himoyasi', 'bmi_rahbarligi', 'yozma_ish'], true) && $bmiTalabaCount < 0) {
                 $errors[] = ($fanIndex + 1) . "-fan uchun BMI talaba soni noto'g'ri";
                 continue;
             }
@@ -92,6 +120,22 @@
                 'fan_count' => $fanCount,
                 'bmi_talaba_count' => $bmiTalabaCount,
                 'potok_count' => $potokCount,
+            ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            if ($formulaMeta === false) {
+                $formulaMeta = '';
+            }
+        } elseif ($qoshimchaDarsId === 8) {
+            $bmiTalabaCount = (int)($bmi_talaba_sonlari[$fanIndex] ?? 0);
+            $bmiIsTech = (int)($bmi_is_tech_flags[$fanIndex] ?? 0) === 1 ? 1 : 0;
+
+            if ($bmiTalabaCount < 0) {
+                $errors[] = ($fanIndex + 1) . "-fan uchun BMI rahbarligi talaba soni noto'g'ri";
+                continue;
+            }
+
+            $formulaMeta = json_encode([
+                'bmi_talaba_count' => $bmiTalabaCount,
+                'bmi_is_tech' => $bmiIsTech,
             ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             if ($formulaMeta === false) {
                 $formulaMeta = '';
@@ -139,13 +183,14 @@
     if ($insertCount === 0) {
         echo json_encode([
             'success' => false,
-            'message' => 'Saqlash uchun yaroqli maʼlumot topilmadi' 
+            'message' => $errors[0] ?? 'Saqlash uchun yaroqli maʼlumot topilmadi'
         ]);
         return;
     }
     
     echo json_encode([
         'success' => true,
-        'message' => "Qoʻshimcha oʻquv reja muvaffaqiyatli saqlandi ({$insertCount} ta)"    
+        'message' => "Qoʻshimcha oʻquv reja muvaffaqiyatli saqlandi ({$insertCount} ta)",
+        'warnings' => $errors
     ]);
 ?>

@@ -763,6 +763,22 @@ body {
     background-color: rgba(231, 76, 60, 0.1);
 }
 
+.profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 15px;
+    margin-bottom: 6px;
+    text-decoration: none;
+    color: #0f766e;
+    border-radius: 10px;
+    transition: var(--transition);
+}
+
+.profile-btn:hover {
+    background-color: rgba(15, 118, 110, 0.1);
+}
+
 /* 5. Asosiy content */
 .main-content {
     flex: 1;

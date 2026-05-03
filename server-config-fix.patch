@@ -1,0 +1,535 @@
+diff --git a/legacy/dashboard/config.php b/legacy/dashboard/config.php
+index 94464e1..5ae4c22 100644
+--- a/legacy/dashboard/config.php
++++ b/legacy/dashboard/config.php
+@@ -1899,6 +1899,8 @@ public function get_oquv_yuklamalar($filters = []){
+             umumtalim_guruh_agg AS (
+                 SELECT
+                     ub.umumtalim_fan_id,
++                    MIN(ub.id) AS biriktirish_id,
++                    ubg.semestr_id,
+                     ubg.yonalish_id,
+                     s.semestr,
+                     GROUP_CONCAT(DISTINCT g.guruh_nomer ORDER BY g.guruh_nomer SEPARATOR ' | ') AS guruh_raqami,
+@@ -1907,17 +1909,18 @@ public function get_oquv_yuklamalar($filters = []){
+                 FROM umumtalim_fan_biriktirish_guruhlar ubg
+                 JOIN umumtalim_fan_biriktirish ub ON ub.id = ubg.biriktirish_id
+                 JOIN semestrlar s ON s.id = ubg.semestr_id
+-                JOIN guruhlar g ON g.id = ubg.guruh_id
+-                GROUP BY ub.umumtalim_fan_id, ubg.yonalish_id, s.semestr
++                JOIN guruhlar g ON g.id = ubg.guruh_id AND g.yonalish_id = ubg.yonalish_id
++                GROUP BY ub.umumtalim_fan_id, ubg.semestr_id, ubg.yonalish_id, s.semestr
+             ),
+             umumtalim_fan_soat AS (
+                 SELECT
++                    ub.biriktirish_id,
+                     ub.umumtalim_fan_id,
+                     s.semestr,
+-                    MAX(COALESCE(fr_src.maruza_soat, fr_fb.maruza_soat, fr_name.maruza_soat, 0)) AS maruza_soat,
+-                    MAX(COALESCE(fr_src.amaliy_soat, fr_fb.amaliy_soat, fr_name.amaliy_soat, 0)) AS amaliy_soat,
+-                    MAX(COALESCE(fr_src.laboratoriya_soat, fr_fb.laboratoriya_soat, fr_name.laboratoriya_soat, 0)) AS laboratoriya_soat,
+-                    MAX(COALESCE(fr_src.seminar_soat, fr_fb.seminar_soat, fr_name.seminar_soat, 0)) AS seminar_soat
++                    COALESCE(fr_src.maruza_soat, fr_fb.maruza_soat, fr_name.maruza_soat, 0) AS maruza_soat,
++                    COALESCE(fr_src.amaliy_soat, fr_fb.amaliy_soat, fr_name.amaliy_soat, 0) AS amaliy_soat,
++                    COALESCE(fr_src.laboratoriya_soat, fr_fb.laboratoriya_soat, fr_name.laboratoriya_soat, 0) AS laboratoriya_soat,
++                    COALESCE(fr_src.seminar_soat, fr_fb.seminar_soat, fr_name.seminar_soat, 0) AS seminar_soat
+                 FROM umumtalim_birik ub
+                 JOIN semestrlar s ON s.id = ub.semestr_id
+                 LEFT JOIN fan_reja fr_src ON fr_src.fan_id = ub.source_fan_id
+@@ -1930,7 +1933,6 @@ public function get_oquv_yuklamalar($filters = []){
+                     ON fr_name.semestr_id = ub.semestr_id
+                    AND fr_name.kafedra_id = COALESCE(ub.source_kafedra_id, ub.kafedra_id)
+                    AND fr_name.fan_name = ub.fan_name
+-                GROUP BY ub.umumtalim_fan_id, s.semestr
+             ),
+             umumtalim_birik_info AS (
+                 SELECT
+@@ -1947,54 +1949,83 @@ public function get_oquv_yuklamalar($filters = []){
+                 JOIN semestrlar s ON s.id = ub.semestr_id
+                 GROUP BY ub.umumtalim_fan_id, s.semestr
+             ),
+-            umumtalim_lecture AS (
++            umumtalim_direction_rows AS (
+                 SELECT
+                     ub.umumtalim_fan_id,
+-                    ub.fan_code,
++                    ub.biriktirish_id,
++                    ub.semestr_id,
++                    ub.yonalish_id,
+                     ub.fan_name,
+-                    ub.kafedra_id,
++                    ub.kafedra_id
++                FROM umumtalim_birik ub
++
++                UNION
++
++                SELECT
++                    uga.umumtalim_fan_id,
++                    uga.biriktirish_id,
++                    uga.semestr_id,
++                    uga.yonalish_id,
++                    MAX(ub.fan_name) AS fan_name,
++                    MAX(ub.kafedra_id) AS kafedra_id
++                FROM umumtalim_guruh_agg uga
++                JOIN umumtalim_birik ub
++                  ON ub.umumtalim_fan_id = uga.umumtalim_fan_id
++                 AND ub.semestr_id = uga.semestr_id
++                GROUP BY
++                    uga.umumtalim_fan_id,
++                    uga.biriktirish_id,
++                    uga.semestr_id,
++                    uga.yonalish_id
++            ),
++            umumtalim_lecture AS (
++                SELECT
++                    dr.umumtalim_fan_id,
++                    dr.fan_name,
++                    dr.kafedra_id,
++                    dr.biriktirish_id,
+                     s.semestr,
+                     FLOOR((s.semestr + 1)/2) AS kurs,
+-                    COALESCE(GROUP_CONCAT(DISTINCT uga.guruh_raqami ORDER BY uga.guruh_raqami SEPARATOR ' | '), GROUP_CONCAT(DISTINCT ga.guruh_raqami ORDER BY ga.guruh_raqami SEPARATOR ' | ')) AS guruh_raqami,
+-                    COALESCE(SUM(uga.guruhlar_soni), SUM(COALESCE(ga.guruhlar_soni, 0))) AS guruhlar_soni,
+-                    COALESCE(SUM(uga.talabalar_soni), SUM(COALESCE(ga.talabalar_soni, 0))) AS talabalar_soni,
+-                    GROUP_CONCAT(DISTINCT y.code ORDER BY y.code SEPARATOR ', ') AS yonalish_code,
+-                    GROUP_CONCAT(DISTINCT CONCAT(y.name, ' - ', y.kirish_yili) ORDER BY y.code SEPARATOR ' | ') AS talim_yonalishi,
+-                    GROUP_CONCAT(DISTINCT tsh.name ORDER BY tsh.name SEPARATOR ' | ') AS oquv_shakli
+-                FROM umumtalim_birik ub
+-                JOIN semestrlar s ON s.id = ub.semestr_id
+-                JOIN yonalishlar y ON y.id = ub.yonalish_id
++                    COALESCE(uga.guruh_raqami, ga.guruh_raqami, '') AS guruh_raqami,
++                    COALESCE(uga.guruhlar_soni, ga.guruhlar_soni, 0) AS guruhlar_soni,
++                    COALESCE(uga.talabalar_soni, ga.talabalar_soni, 0) AS talabalar_soni,
++                    y.code AS yonalish_code,
++                    CONCAT(y.name, ' - ', y.kirish_yili) AS talim_yonalishi,
++                    tsh.name AS oquv_shakli,
++                    COALESCE(y.patok_soni, 1) AS patok_soni,
++                    COALESCE(NULLIF(uga.guruhlar_soni, 0), y.kattaguruh_soni, 0) AS kattaguruh_soni,
++                    COALESCE(NULLIF(uga.guruhlar_soni, 0), y.kichikguruh_soni, 0) AS kichikguruh_soni,
++                    CASE
++                        WHEN dr.biriktirish_id = (
++                            SELECT MIN(ub2.biriktirish_id)
++                            FROM umumtalim_birik ub2
++                            JOIN semestrlar s2 ON s2.id = ub2.semestr_id
++                            WHERE ub2.umumtalim_fan_id = dr.umumtalim_fan_id
++                              AND s2.semestr = s.semestr
++                        ) THEN 1
++                        ELSE 0
++                    END AS is_maruza_qator
++                FROM umumtalim_direction_rows dr
++                JOIN semestrlar s ON s.id = dr.semestr_id
++                JOIN yonalishlar y ON y.id = dr.yonalish_id
+                 JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
+                 LEFT JOIN guruh_agg ga ON ga.yonalish_id = y.id
+                 LEFT JOIN umumtalim_guruh_agg uga
+-                    ON uga.umumtalim_fan_id = ub.umumtalim_fan_id
+-                   AND uga.yonalish_id = ub.yonalish_id
++                    ON uga.umumtalim_fan_id = dr.umumtalim_fan_id
++                   AND uga.yonalish_id = dr.yonalish_id
+                    AND uga.semestr = s.semestr
+                 WHERE 1=1
+                 $filterYonalish
+                 $filterCurrentSemestr
+                 $filterOquvYil
+-                GROUP BY ub.umumtalim_fan_id, s.semestr
+             ),
+             umumtalim_kopaytirgich AS (
+                 SELECT
+-                    ub.umumtalim_fan_id,
+-                    s.semestr,
+-                    COALESCE(CEIL(SUM(uga.talabalar_soni) / 120), MAX(y.patok_soni)) AS patok_soni,
+-                    COALESCE(SUM(uga.guruhlar_soni), SUM(y.kattaguruh_soni)) AS kattaguruh_soni,
+-                    COALESCE(SUM(uga.guruhlar_soni), SUM(y.kichikguruh_soni)) AS kichikguruh_soni
+-                FROM umumtalim_birik ub
+-                JOIN semestrlar s ON s.id = ub.semestr_id
+-                JOIN yonalishlar y ON y.id = ub.yonalish_id
+-                LEFT JOIN umumtalim_guruh_agg uga
+-                    ON uga.umumtalim_fan_id = ub.umumtalim_fan_id
+-                   AND uga.yonalish_id = ub.yonalish_id
+-                   AND uga.semestr = s.semestr
+-                WHERE 1=1
+-                $filterYonalish
+-                $filterCurrentSemestr
+-                $filterOquvYil
+-                GROUP BY ub.umumtalim_fan_id, s.semestr
++                    ul.umumtalim_fan_id,
++                    ul.semestr,
++                    MAX(ul.patok_soni) AS patok_soni
++                FROM umumtalim_lecture ul
++                GROUP BY ul.umumtalim_fan_id, ul.semestr
+             )
+ 
+             SELECT *
+@@ -2019,10 +2050,7 @@ public function get_oquv_yuklamalar($filters = []){
+                     END AS guruhlar_soni,
+                     COALESCE(tft.talabalar_soni, ga.talabalar_soni) AS talabalar_soni,
+ 
+-                    CASE
+-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+-                        ELSE y.patok_soni
+-                    END AS patok_soni,
++                    y.patok_soni AS patok_soni,
+                     CASE
+                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                         ELSE y.kattaguruh_soni
+@@ -2036,11 +2064,7 @@ public function get_oquv_yuklamalar($filters = []){
+                     fr.amaliy_soat,
+                     fr.laboratoriya_soat,
+                     fr.seminar_soat,
+-                    fr.maruza_soat *
+-                    CASE
+-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+-                        ELSE y.patok_soni
+-                    END AS amalda_maruz,
++                    fr.maruza_soat * y.patok_soni AS amalda_maruz,
+                     fr.amaliy_soat *
+                     CASE
+                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+@@ -2056,11 +2080,7 @@ public function get_oquv_yuklamalar($filters = []){
+                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                         ELSE y.kattaguruh_soni
+                     END AS amalda_seminar,
+-                    fr.maruza_soat *
+-                    CASE
+-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+-                        ELSE y.patok_soni
+-                    END
++                    fr.maruza_soat * y.patok_soni
+                     + fr.amaliy_soat *
+                     CASE
+                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+@@ -2079,7 +2099,8 @@ public function get_oquv_yuklamalar($filters = []){
+                     AS jami_soat,
+                     '' AS biriktirilgan_yonalish_code,
+                     '' AS biriktirilgan_yonalishlar,
+-                    0 AS is_birlashtirilgan
++                    0 AS is_birlashtirilgan,
++                    0 AS is_maruza_qator
+                 FROM fan_reja fr
+                 JOIN semestrlar s ON s.id = fr.semestr_id
+                 JOIN yonalishlar y ON y.id = s.yonalish_id
+@@ -2110,11 +2131,6 @@ public function get_oquv_yuklamalar($filters = []){
+                             AND ub.kafedra_id = fr.kafedra_id
+                             )
+                        )
+-                       AND NOT EXISTS (
+-                           SELECT 1
+-                           FROM umumtalim_fan_biriktirish_guruhlar ubg
+-                           WHERE ubg.biriktirish_id = ub.biriktirish_id
+-                       )
+                 )
+                 AND (
+                     tft.variant_fan_id IS NOT NULL
+@@ -2135,7 +2151,7 @@ public function get_oquv_yuklamalar($filters = []){
+ 
+                 UNION ALL
+ 
+-                -- Izoh: Umumta'lim fanlari uchun birlashtirilgan MA'RUZA satri.
++                -- Izoh: Umumta'lim fanlari yo'nalishlar kesimida chiqadi, faqat birinchi qatorda ma'ruza beriladi.
+                 SELECT
+                     ul.fan_name,
+                     ul.talim_yonalishi,
+@@ -2149,29 +2165,42 @@ public function get_oquv_yuklamalar($filters = []){
+                     ul.guruhlar_soni,
+                     ul.talabalar_soni,
+ 
+-                    uk.patok_soni,
+-                    COALESCE(NULLIF(ul.guruhlar_soni, 0), uk.kattaguruh_soni) AS kattaguruh_soni,
+-                    uk.kichikguruh_soni,
++                    CASE
++                        WHEN ul.is_maruza_qator = 1 THEN COALESCE(uk.patok_soni, ul.patok_soni, 0)
++                        ELSE ul.patok_soni
++                    END AS patok_soni,
++                    ul.kattaguruh_soni,
++                    ul.kichikguruh_soni,
+ 
+-                    COALESCE(ufs.maruza_soat, 0) AS maruza_soat,
++                    CASE
++                        WHEN ul.is_maruza_qator = 1 THEN COALESCE(ufs.maruza_soat, 0)
++                        ELSE 0
++                    END AS maruza_soat,
+                     COALESCE(ufs.amaliy_soat, 0) AS amaliy_soat,
+                     COALESCE(ufs.laboratoriya_soat, 0) AS laboratoriya_soat,
+                     COALESCE(ufs.seminar_soat, 0) AS seminar_soat,
+-                    COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1) AS amalda_maruz,
+-                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_amaliy,
+-                    COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0) AS amalda_lab,
+-                    COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_seminar,
+-                    (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1))
+-                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
+-                    + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0))
+-                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
++                    CASE
++                        WHEN ul.is_maruza_qator = 1 THEN COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, ul.patok_soni, 1)
++                        ELSE 0
++                    END AS amalda_maruz,
++                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(ul.kattaguruh_soni, 0) AS amalda_amaliy,
++                    COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(ul.kichikguruh_soni, 0) AS amalda_lab,
++                    COALESCE(ufs.seminar_soat, 0) * COALESCE(ul.kattaguruh_soni, 0) AS amalda_seminar,
++                    (CASE
++                        WHEN ul.is_maruza_qator = 1 THEN COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, ul.patok_soni, 1)
++                        ELSE 0
++                    END)
++                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(ul.kattaguruh_soni, 0))
++                    + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(ul.kichikguruh_soni, 0))
++                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(ul.kattaguruh_soni, 0))
+                     AS jami_soat,
+                     COALESCE(ubi.biriktirilgan_yonalish_code, '') AS biriktirilgan_yonalish_code,
+                     COALESCE(ubi.biriktirilgan_yonalishlar, '') AS biriktirilgan_yonalishlar,
+-                    1 AS is_birlashtirilgan
++                    1 AS is_birlashtirilgan,
++                    ul.is_maruza_qator AS is_maruza_qator
+                 FROM umumtalim_lecture ul
+                 LEFT JOIN umumtalim_fan_soat ufs
+-                    ON ufs.umumtalim_fan_id = ul.umumtalim_fan_id
++                    ON ufs.biriktirish_id = ul.biriktirish_id
+                    AND ufs.semestr = ul.semestr
+                 LEFT JOIN umumtalim_kopaytirgich uk
+                     ON uk.umumtalim_fan_id = ul.umumtalim_fan_id
+@@ -2603,24 +2632,22 @@ public function get_oquv_taqsimotlar($filters=[]){
+                 FROM umumtalim_fan_biriktirish_guruhlar ubg
+                 JOIN umumtalim_fan_biriktirish ub ON ub.id = ubg.biriktirish_id
+                 JOIN semestrlar s ON s.id = ubg.semestr_id
+-                JOIN guruhlar g ON g.id = ubg.guruh_id
++                JOIN guruhlar g ON g.id = ubg.guruh_id AND g.yonalish_id = ubg.yonalish_id
+                 GROUP BY ub.umumtalim_fan_id, ubg.yonalish_id, s.semestr
+             ),
+             umumtalim_fan_soat AS (
+                 SELECT
++                    ub.biriktirish_id,
+                     ub.umumtalim_fan_id,
+-                    ub.fan_name_key,
+-                    ub.kafedra_id,
+                     s.semestr,
+-                    MAX(ub.fan_name) AS fan_name,
+                     MIN(COALESCE(fr_src.maruza_reja_id, fr_fb.maruza_reja_id, fr_name.maruza_reja_id)) AS maruza_reja_id,
+                     MIN(COALESCE(fr_src.amaliy_reja_id, fr_fb.amaliy_reja_id, fr_name.amaliy_reja_id)) AS amaliy_reja_id,
+                     MIN(COALESCE(fr_src.laboratoriya_reja_id, fr_fb.laboratoriya_reja_id, fr_name.laboratoriya_reja_id)) AS laboratoriya_reja_id,
+                     MIN(COALESCE(fr_src.seminar_reja_id, fr_fb.seminar_reja_id, fr_name.seminar_reja_id)) AS seminar_reja_id,
+-                    MAX(COALESCE(fr_src.maruza_soat, fr_fb.maruza_soat, fr_name.maruza_soat, 0)) AS maruza_soat,
+-                    MAX(COALESCE(fr_src.amaliy_soat, fr_fb.amaliy_soat, fr_name.amaliy_soat, 0)) AS amaliy_soat,
+-                    MAX(COALESCE(fr_src.laboratoriya_soat, fr_fb.laboratoriya_soat, fr_name.laboratoriya_soat, 0)) AS laboratoriya_soat,
+-                    MAX(COALESCE(fr_src.seminar_soat, fr_fb.seminar_soat, fr_name.seminar_soat, 0)) AS seminar_soat
++                    COALESCE(fr_src.maruza_soat, fr_fb.maruza_soat, fr_name.maruza_soat, 0) AS maruza_soat,
++                    COALESCE(fr_src.amaliy_soat, fr_fb.amaliy_soat, fr_name.amaliy_soat, 0) AS amaliy_soat,
++                    COALESCE(fr_src.laboratoriya_soat, fr_fb.laboratoriya_soat, fr_name.laboratoriya_soat, 0) AS laboratoriya_soat,
++                    COALESCE(fr_src.seminar_soat, fr_fb.seminar_soat, fr_name.seminar_soat, 0) AS seminar_soat
+                 FROM umumtalim_birik ub
+                 JOIN semestrlar s ON s.id = ub.semestr_id
+                 LEFT JOIN fan_reja fr_src ON fr_src.fan_id = ub.source_fan_id
+@@ -2633,30 +2660,49 @@ public function get_oquv_taqsimotlar($filters=[]){
+                     ON fr_name.semestr_id = ub.semestr_id
+                    AND fr_name.kafedra_id = ub.kafedra_id
+                    AND fr_name.fan_name = ub.fan_name
+-                GROUP BY ub.umumtalim_fan_id, ub.fan_name_key, ub.kafedra_id, s.semestr
++                GROUP BY
++                    ub.biriktirish_id,
++                    ub.umumtalim_fan_id,
++                    s.semestr,
++                    COALESCE(fr_src.maruza_soat, fr_fb.maruza_soat, fr_name.maruza_soat, 0),
++                    COALESCE(fr_src.amaliy_soat, fr_fb.amaliy_soat, fr_name.amaliy_soat, 0),
++                    COALESCE(fr_src.laboratoriya_soat, fr_fb.laboratoriya_soat, fr_name.laboratoriya_soat, 0),
++                    COALESCE(fr_src.seminar_soat, fr_fb.seminar_soat, fr_name.seminar_soat, 0)
+             ),
+             umumtalim_lecture AS (
+                 SELECT
+                     ub.umumtalim_fan_id,
+-                    ub.fan_name_key,
+-                    MAX(ub.fan_name) AS fan_name,
++                    ub.fan_name,
+                     ub.kafedra_id,
++                    ub.biriktirish_id,
++                    y.id AS yonalish_id,
++                    y.code AS yonalish_code,
++                    y.name AS talim_yonalishi,
+                     s.semestr,
+                     FLOOR((s.semestr + 1)/2) AS kurs,
+-                    COALESCE(GROUP_CONCAT(DISTINCT uga.guruh_raqami ORDER BY uga.guruh_raqami SEPARATOR ' | '), GROUP_CONCAT(DISTINCT ga.guruh_raqami ORDER BY ga.guruh_raqami SEPARATOR ' | ')) AS guruh_raqami,
+-                    COALESCE(SUM(uga.guruhlar_soni), SUM(COALESCE(ga.guruhlar_soni, 0))) AS guruhlar_soni,
+-                    COALESCE(SUM(uga.talabalar_soni), SUM(COALESCE(ga.talabalar_soni, 0))) AS talabalar_soni,
+-                    GROUP_CONCAT(DISTINCT y.code ORDER BY y.code SEPARATOR ', ') AS yonalish_code,
+-                    GROUP_CONCAT(DISTINCT CONCAT(y.name, ' - ', y.kirish_yili) ORDER BY y.code SEPARATOR ' | ') AS talim_yonalishi,
+-                    GROUP_CONCAT(DISTINCT tsh.name ORDER BY tsh.name SEPARATOR ' | ') AS oquv_shakli,
+-                    MAX(
+-                        CASE WHEN EXISTS (
+-                            SELECT 1
+-                            FROM taqsimot_resync_events tre
+-                            WHERE tre.yonalish_id = y.id
+-                              AND tre.status = 'pending'
+-                        ) THEN 1 ELSE 0 END
+-                    ) AS needs_resync
++                    tsh.name AS oquv_shakli,
++                    COALESCE(uga.guruh_raqami, ga.guruh_raqami, '') AS guruh_raqami,
++                    COALESCE(uga.guruhlar_soni, ga.guruhlar_soni, 0) AS guruhlar_soni,
++                    COALESCE(uga.talabalar_soni, ga.talabalar_soni, 0) AS talabalar_soni,
++                    COALESCE(y.patok_soni, 1) AS patok_soni,
++                    COALESCE(NULLIF(uga.guruhlar_soni, 0), y.kattaguruh_soni, 0) AS kattaguruh_soni,
++                    COALESCE(NULLIF(uga.guruhlar_soni, 0), y.kichikguruh_soni, 0) AS kichikguruh_soni,
++                    CASE WHEN EXISTS (
++                        SELECT 1
++                        FROM taqsimot_resync_events tre
++                        WHERE tre.yonalish_id = y.id
++                          AND tre.status = 'pending'
++                    ) THEN 1 ELSE 0 END AS needs_resync,
++                    CASE
++                        WHEN ub.biriktirish_id = (
++                            SELECT MIN(ub2.biriktirish_id)
++                            FROM umumtalim_birik ub2
++                            JOIN semestrlar s2 ON s2.id = ub2.semestr_id
++                            WHERE ub2.umumtalim_fan_id = ub.umumtalim_fan_id
++                              AND s2.semestr = s.semestr
++                        ) THEN 1
++                        ELSE 0
++                    END AS is_maruza_qator
+                 FROM umumtalim_birik ub
+                 JOIN semestrlar s ON s.id = ub.semestr_id
+                 JOIN yonalishlar y ON y.id = ub.yonalish_id
+@@ -2666,25 +2712,14 @@ public function get_oquv_taqsimotlar($filters=[]){
+                     ON uga.umumtalim_fan_id = ub.umumtalim_fan_id
+                    AND uga.yonalish_id = ub.yonalish_id
+                    AND uga.semestr = s.semestr
+-                GROUP BY ub.umumtalim_fan_id, ub.fan_name_key, ub.kafedra_id, s.semestr
+             ),
+             umumtalim_kopaytirgich AS (
+                 SELECT
+-                    ub.umumtalim_fan_id,
+-                    ub.fan_name_key,
+-                    ub.kafedra_id,
+-                    s.semestr,
+-                    COALESCE(CEIL(SUM(uga.talabalar_soni) / 120), MAX(y.patok_soni)) AS patok_soni,
+-                    COALESCE(SUM(uga.guruhlar_soni), SUM(y.kattaguruh_soni)) AS kattaguruh_soni,
+-                    COALESCE(SUM(uga.guruhlar_soni), SUM(y.kichikguruh_soni)) AS kichikguruh_soni
+-                FROM umumtalim_birik ub
+-                JOIN semestrlar s ON s.id = ub.semestr_id
+-                JOIN yonalishlar y ON y.id = ub.yonalish_id
+-                LEFT JOIN umumtalim_guruh_agg uga
+-                    ON uga.umumtalim_fan_id = ub.umumtalim_fan_id
+-                   AND uga.yonalish_id = ub.yonalish_id
+-                   AND uga.semestr = s.semestr
+-                GROUP BY ub.umumtalim_fan_id, ub.fan_name_key, ub.kafedra_id, s.semestr
++                    ul.umumtalim_fan_id,
++                    ul.semestr,
++                    MAX(ul.patok_soni) AS patok_soni
++                FROM umumtalim_lecture ul
++                GROUP BY ul.umumtalim_fan_id, ul.semestr
+             )
+             SELECT *
+             FROM (
+@@ -2710,10 +2745,7 @@ public function get_oquv_taqsimotlar($filters=[]){
+                         ELSE ga.guruhlar_soni
+                     END AS guruhlar_soni,
+                     COALESCE(tft.talabalar_soni, ga.talabalar_soni) AS talabalar_soni,
+-                    CASE
+-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+-                        ELSE y.patok_soni
+-                    END AS patok_soni,
++                    y.patok_soni AS patok_soni,
+                     CASE
+                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                         ELSE y.kattaguruh_soni
+@@ -2732,11 +2764,7 @@ public function get_oquv_taqsimotlar($filters=[]){
+                     fr.amaliy_soat AS reja_amaliy,
+                     fr.laboratoriya_soat AS reja_laboratoriya,
+                     fr.seminar_soat AS reja_seminar,
+-                    fr.maruza_soat *
+-                    CASE
+-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+-                        ELSE y.patok_soni
+-                    END AS amalda_maruz,
++                    fr.maruza_soat * y.patok_soni AS amalda_maruz,
+                     fr.amaliy_soat *
+                     CASE
+                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+@@ -2752,11 +2780,7 @@ public function get_oquv_taqsimotlar($filters=[]){
+                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                         ELSE y.kattaguruh_soni
+                     END AS amalda_seminar,
+-                    fr.maruza_soat *
+-                    CASE
+-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
+-                        ELSE y.patok_soni
+-                    END
++                    fr.maruza_soat * y.patok_soni
+                     + fr.amaliy_soat *
+                     CASE
+                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+@@ -2803,11 +2827,6 @@ public function get_oquv_taqsimotlar($filters=[]){
+                             AND ub.kafedra_id = fr.kafedra_id
+                             )
+                        )
+-                       AND NOT EXISTS (
+-                           SELECT 1
+-                           FROM umumtalim_fan_biriktirish_guruhlar ubg
+-                           WHERE ubg.biriktirish_id = ub.biriktirish_id
+-                       )
+                 )
+                 AND (
+                     tft.variant_fan_id IS NOT NULL
+@@ -2827,7 +2846,7 @@ public function get_oquv_taqsimotlar($filters=[]){
+                     ufs.amaliy_reja_id,
+                     ufs.laboratoriya_reja_id,
+                     ufs.seminar_reja_id,
+-                    0 AS yonalish_id,
++                    ul.yonalish_id AS yonalish_id,
+                     ul.fan_name AS fan_nomi,
+                     ul.talim_yonalishi,
+                     ul.yonalish_code,
+@@ -2838,33 +2857,41 @@ public function get_oquv_taqsimotlar($filters=[]){
+                     ul.guruh_raqami,
+                     ul.guruhlar_soni,
+                     ul.talabalar_soni,
+-                    uk.patok_soni,
+-                    COALESCE(NULLIF(ul.guruhlar_soni, 0), uk.kattaguruh_soni) AS kattaguruh_soni,
+-                    uk.kichikguruh_soni,
++                    CASE
++                        WHEN ul.is_maruza_qator = 1 THEN COALESCE(uk.patok_soni, ul.patok_soni, 0)
++                        ELSE ul.patok_soni
++                    END AS patok_soni,
++                    ul.kattaguruh_soni,
++                    ul.kichikguruh_soni,
+                     ul.needs_resync,
+-                    COALESCE(ufs.maruza_soat, 0) AS reja_maruz,
++                    CASE
++                        WHEN ul.is_maruza_qator = 1 THEN COALESCE(ufs.maruza_soat, 0)
++                        ELSE 0
++                    END AS reja_maruz,
+                     COALESCE(ufs.amaliy_soat, 0) AS reja_amaliy,
+                     COALESCE(ufs.laboratoriya_soat, 0) AS reja_laboratoriya,
+                     COALESCE(ufs.seminar_soat, 0) AS reja_seminar,
+-                    COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1) AS amalda_maruz,
+-                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_amaliy,
+-                    COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0) AS amalda_laboratoriya,
+-                    COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)) AS amalda_seminar,
+-                    (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1))
+-                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
+-                    + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(uk.kichikguruh_soni, 0))
+-                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(NULLIF(ul.guruhlar_soni, 0), COALESCE(uk.kattaguruh_soni, 0)))
++                    CASE
++                        WHEN ul.is_maruza_qator = 1 THEN COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, ul.patok_soni, 1)
++                        ELSE 0
++                    END AS amalda_maruz,
++                    COALESCE(ufs.amaliy_soat, 0) * COALESCE(ul.kattaguruh_soni, 0) AS amalda_amaliy,
++                    COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(ul.kichikguruh_soni, 0) AS amalda_laboratoriya,
++                    COALESCE(ufs.seminar_soat, 0) * COALESCE(ul.kattaguruh_soni, 0) AS amalda_seminar,
++                    (CASE
++                        WHEN ul.is_maruza_qator = 1 THEN COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, ul.patok_soni, 1)
++                        ELSE 0
++                    END)
++                    + (COALESCE(ufs.amaliy_soat, 0) * COALESCE(ul.kattaguruh_soni, 0))
++                    + (COALESCE(ufs.laboratoriya_soat, 0) * COALESCE(ul.kichikguruh_soni, 0))
++                    + (COALESCE(ufs.seminar_soat, 0) * COALESCE(ul.kattaguruh_soni, 0))
+                     AS jami_soat
+                 FROM umumtalim_lecture ul
+                 LEFT JOIN umumtalim_fan_soat ufs
+-                    ON ufs.umumtalim_fan_id = ul.umumtalim_fan_id
+-                   AND ufs.fan_name_key = ul.fan_name_key
+-                   AND ufs.kafedra_id = ul.kafedra_id
++                    ON ufs.biriktirish_id = ul.biriktirish_id
+                    AND ufs.semestr = ul.semestr
+                 LEFT JOIN umumtalim_kopaytirgich uk
+                     ON uk.umumtalim_fan_id = ul.umumtalim_fan_id
+-                   AND uk.fan_name_key = ul.fan_name_key
+-                   AND uk.kafedra_id = ul.kafedra_id
+                    AND uk.semestr = ul.semestr
+                 JOIN kafedralar k ON k.id = ul.kafedra_id
+                 WHERE 1=1

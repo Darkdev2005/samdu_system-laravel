@@ -374,7 +374,7 @@ if ($kafedralarJson === false) {
                                 </div>
                                 <div class="form-group">
                                     <label>Qo'shimcha dars turi</label>
-                                    <select class="form-control" name="qoshimcha_dars_id[]" required>
+                                    <select class="form-control qoshimcha-select" name="qoshimcha_dars_id[]" required>
                                         <option value="">Tanlang</option>
                                         <?php foreach ($asosiy_qoshimcha_dars_turlar as $qdt): ?>
                                             <option value="<?= $qdt['id'] ?>"
@@ -400,6 +400,11 @@ if ($kafedralarJson === false) {
                                 </div>
                                 <div class="form-grid-3 extra-field extra-bmi" style="display:none;">
                                     <div class="form-group">
+                                        <label>BMI rahbarligi uchun talaba soni</label>
+                                        <input type="number" class="form-control bmi-talaba-input" name="bmi_talaba_soni[]" min="0" step="1" value="0">
+                                        <input type="hidden" class="bmi-tech-hidden" name="bmi_is_tech[]" value="0">
+                                    </div>
+                                    <div class="form-group">
                                         <label>
                                             <input type="checkbox" class="calc-input bmi-tech"> Texnik yo'nalish (30 soat)
                                         </label>
@@ -422,11 +427,11 @@ if ($kafedralarJson === false) {
                                         </select>
                                     </div>
                                     <div class="form-group yadak-teacher-wrap" style="display:none;">
-                                        <label>BMI himoyasi uchun o'qituvchi soni</label>
+                                        <label>BMI uchun o'qituvchi soni</label>
                                         <input type="number" class="form-control calc-input yadak-teacher" name="yadak_teacher[]" min="0" step="1" value="1">
                                     </div>
                                     <div class="form-group yadak-bmi-talaba-wrap" style="display:none;">
-                                        <label>BMI himoyasi uchun talaba soni</label>
+                                        <label>BMI uchun talaba soni</label>
                                         <input type="number" class="form-control calc-input yadak-bmi-talaba" name="yadak_bmi_talaba[]" min="0" step="1" value="0">
                                     </div>
                                     <div class="form-group yadak-fan-wrap">
@@ -441,7 +446,7 @@ if ($kafedralarJson === false) {
                                 <div class="form-grid-3 extra-field extra-yadak-note" style="display:none;">
                                     <div class="form-group" style="grid-column: 1 / -1;">
                                         <small class="calc-hint-static yadak-static-note" style="color:#64748b;">
-                                            BMI himoyasi: talaba soni × o'qituvchi soni × 0.4
+                                            BMI: talaba soni × o'qituvchi soni × 0.4
                                         </small>
                                     </div>
                                 </div>
@@ -456,7 +461,7 @@ if ($kafedralarJson === false) {
                                 <div class="form-grid-2 dars-soat-row">
                                     <div class="form-group">
                                         <label>Kafedra</label>
-                                        <select class="form-control" name="kafedra_id[0][]" required>
+                                        <select class="form-control kafedra-select" name="kafedra_id[0][]" required>
                                             <option value="">Tanlang</option>
                                             <?php foreach ($kafedralar as $k): ?>
                                                 <option value="<?= $k['id'] ?>">
@@ -657,27 +662,29 @@ if ($kafedralarJson === false) {
                     return;
                 }
 
+                card.removeAttr('data-yadak-batch-detached');
+
+                maybeCreateYadakBatchForCard(card);
                 calculateForSingleCard(card);
+                syncYadakFromBmiSource(card);
             });
 
             $(document).on('change', 'select[name="fan_nomi[]"]', function() {
                 const card = $(this).closest('.reja-card');
+                maybeCreateYadakBatchForCard(card);
                 calculateForSingleCard(card);
                 syncYadakBatchFan(card);
+                syncYadakFromBmiSource(card);
             });
 
             $(document).on('change', '.yadak-type', function() {
                 const card = $(this).closest('.reja-card');
+                normalizeYadakBatchState(card);
                 const lockedSubtype = getLockedYadakSubtype(card);
+                const selectedSubtype = String($(this).val() || '');
 
-                if (lockedSubtype && String($(this).val() || '') !== lockedSubtype) {
+                if (isLockedYadakBatchCard(card) && lockedSubtype && selectedSubtype !== lockedSubtype) {
                     $(this).val(lockedSubtype);
-                    updateYadakMode(card);
-                    Toast.fire({
-                        icon: 'info',
-                        title: 'YADAK paketi subtype avtomatik belgilangan'
-                    });
-                    return;
                 }
 
                 calculateForSingleCard(card);
@@ -686,6 +693,23 @@ if ($kafedralarJson === false) {
             $(document).on('input change', '.yadak-bmi-talaba', function() {
                 const card = $(this).closest('.reja-card');
                 syncYadakBatchBmiTalaba(card);
+            });
+
+            $(document).on('input change', '.bmi-talaba-input', function() {
+                const card = $(this).closest('.reja-card');
+                calculateForSingleCard(card);
+                syncYadakFromBmiSource(card);
+            });
+
+            $(document).on('change', '.bmi-tech', function() {
+                const card = $(this).closest('.reja-card');
+                card.find('.bmi-tech-hidden').val($(this).is(':checked') ? '1' : '0');
+                calculateForSingleCard(card);
+                syncYadakFromBmiSource(card);
+            });
+
+            $(document).on('input change', '.yadak-potok-count', function() {
+                $(this).attr('data-user-edited', '1');
             });
 
             $(document).on('input change', '.calc-input:not(.yadak-type)', function() {
@@ -852,6 +876,8 @@ if ($kafedralarJson === false) {
                 semestr_id: String(item.semestr_id || targetSemestrId),
                 value: String(item.value || ''),
                 label: String(item.label || ''),
+                fan_name: String(item.fan_name || ''),
+                tanlov_fan: Number(item.tanlov_fan || 0),
                 auditoriya_soat: Number(item.auditoriya_soat || 0)
             })).filter(item => item.value !== '' && item.label !== '');
 
@@ -1623,11 +1649,53 @@ if ($kafedralarJson === false) {
             return match ? match.label : 'YADAK';
         }
 
+        function isYadakBmiSubtype(subtypeCode) {
+            const normalized = String(subtypeCode || '').trim();
+            return normalized === 'bmi_himoyasi';
+        }
+
         function getLockedYadakSubtype(card) {
             return String(card.attr('data-yadak-locked-subtype') || '').trim();
         }
 
+        function getCardYadakSubtype(card) {
+            return getLockedYadakSubtype(card) || String(card.find('.yadak-type').val() || '').trim();
+        }
+
+        function normalizeYadakBatchState(card) {
+            const groupId = String(card.attr('data-yadak-batch-group') || '').trim();
+            if (groupId === '') {
+                return;
+            }
+
+            const groupCards = $(`.reja-card[data-yadak-batch-group="${groupId}"]`);
+            if (groupCards.length <= 1) {
+                groupCards.each(function() {
+                    const singleCard = $(this);
+                    singleCard.removeAttr('data-yadak-batch-group');
+                    singleCard.removeAttr('data-yadak-locked-subtype');
+                    singleCard.removeAttr('data-yadak-batch-generated');
+                });
+            }
+        }
+
+        function detachYadakBatchCard(card) {
+            const groupId = String(card.attr('data-yadak-batch-group') || '').trim();
+            card.removeAttr('data-yadak-batch-group');
+            card.removeAttr('data-yadak-locked-subtype');
+            card.removeAttr('data-yadak-batch-generated');
+            card.attr('data-yadak-batch-detached', '1');
+
+            if (groupId !== '') {
+                const remainCard = $(`.reja-card[data-yadak-batch-group="${groupId}"]`).first();
+                if (remainCard.length) {
+                    normalizeYadakBatchState(remainCard);
+                }
+            }
+        }
+
         function isLockedYadakBatchCard(card) {
+            normalizeYadakBatchState(card);
             return String(card.attr('data-yadak-batch-group') || '').trim() !== '';
         }
 
@@ -1635,8 +1703,23 @@ if ($kafedralarJson === false) {
             card.attr('data-yadak-batch-group', groupId);
             card.attr('data-yadak-locked-subtype', subtypeCode);
             card.attr('data-yadak-batch-generated', '1');
+            card.removeAttr('data-yadak-batch-detached');
             card.find('.yadak-type').val(subtypeCode);
             updateYadakMode(card);
+        }
+
+        function maybeCreateYadakBatchForCard(card) {
+            const qoshimchaId = parseInt(card.find('.qoshimcha-select').val(), 10) || 0;
+            if (qoshimchaId !== QOSHIMCHA_IDS.YADAK) {
+                return;
+            }
+
+            if (String(card.attr('data-yadak-batch-detached') || '') === '1') {
+                return;
+            }
+
+            const fanId = String(card.find('.fan-select').val() || '').trim();
+            maybeCreateYadakBatch(card, qoshimchaId, fanId);
         }
 
         function getPrimaryKafedraId(card) {
@@ -1651,7 +1734,11 @@ if ($kafedralarJson === false) {
         }
 
         async function maybeCreateYadakBatch(card, qoshimchaId, fanId) {
-            if (qoshimchaId !== QOSHIMCHA_IDS.YADAK || !fanId) {
+            if (qoshimchaId !== QOSHIMCHA_IDS.YADAK) {
+                return;
+            }
+
+            if (String(card.attr('data-yadak-batch-detached') || '') === '1') {
                 return;
             }
 
@@ -1660,9 +1747,6 @@ if ($kafedralarJson === false) {
             }
 
             const fanValue = String(fanId || '').trim();
-            if (fanValue === '') {
-                return;
-            }
 
             const groupId = `yadak-batch-${Date.now()}-${fanIndex}`;
             const primaryKafedraId = getPrimaryKafedraId(card);
@@ -1677,7 +1761,9 @@ if ($kafedralarJson === false) {
 
                 markYadakBatchCard(newCard, groupId, subtype.code);
                 newCard.find('.qoshimcha-select').val(String(QOSHIMCHA_IDS.YADAK)).trigger('change.select2');
-                newCard.find('.fan-select').val(fanValue).trigger('change.select2');
+                if (fanValue !== '') {
+                    newCard.find('.fan-select').val(fanValue).trigger('change.select2');
+                }
                 applyPrimaryKafedraId(newCard, primaryKafedraId);
                 calculateForSingleCard(newCard);
                 insertAfterCard = newCard;
@@ -1714,9 +1800,9 @@ if ($kafedralarJson === false) {
 
         function syncYadakBatchBmiTalaba(card) {
             const groupId = String(card.attr('data-yadak-batch-group') || '').trim();
-            const subtype = getLockedYadakSubtype(card);
+            const subtype = getCardYadakSubtype(card);
 
-            if (groupId === '' || subtype !== 'bmi_himoyasi') {
+            if (!isYadakBmiSubtype(subtype)) {
                 calculateForSingleCard(card);
                 return;
             }
@@ -1724,29 +1810,151 @@ if ($kafedralarJson === false) {
             const bmiTalabaInput = card.find('.yadak-bmi-talaba').first();
             const bmiTalaba = parseInt(bmiTalabaInput.val(), 10) || 0;
 
-            $(`.reja-card[data-yadak-batch-group="${groupId}"]`).not(card).each(function() {
-                $(this).find('.yadak-bmi-talaba').val(bmiTalaba);
-                calculateForSingleCard($(this));
-            });
+            if (groupId !== '') {
+                $(`.reja-card[data-yadak-batch-group="${groupId}"]`).not(card).each(function() {
+                    $(this).find('.yadak-bmi-talaba').val(bmiTalaba);
+                    calculateForSingleCard($(this));
+                });
+            } else {
+                const fanValue = String(card.find('.fan-select').val() || '').trim();
+                if (fanValue !== '') {
+                    $('.reja-card').not(card).each(function() {
+                        const peer = $(this);
+                        const peerQoshimchaId = parseInt(peer.find('.qoshimcha-select').val(), 10) || 0;
+                        if (peerQoshimchaId !== QOSHIMCHA_IDS.YADAK) return;
+                        if (String(peer.find('.fan-select').val() || '').trim() !== fanValue) return;
+
+                        peer.find('.yadak-bmi-talaba').val(bmiTalaba);
+                        calculateForSingleCard(peer);
+                    });
+                }
+            }
 
             calculateForSingleCard(card);
         }
 
-        function resolveYadakBmiTalaba(card, totalTalaba) {
-            let bmiTalaba = parseInt(card.find('.yadak-bmi-talaba').val(), 10) || 0;
-            const groupId = String(card.attr('data-yadak-batch-group') || '').trim();
+        function getBmiSourceCardByFan(card) {
+            const cardFan = String(card.find('.fan-select').val() || '').trim();
+            if (cardFan === '') {
+                return null;
+            }
 
-            if (groupId !== '') {
-                const bmiCard = $(`.reja-card[data-yadak-batch-group="${groupId}"][data-yadak-locked-subtype="bmi_himoyasi"]`).first();
-                if (bmiCard.length) {
-                    const sourceValue = parseInt(bmiCard.find('.yadak-bmi-talaba').val(), 10) || 0;
-                    bmiTalaba = sourceValue;
-                    card.find('.yadak-bmi-talaba').val(sourceValue);
+            const bmiCard = $('.reja-card').filter(function() {
+                const peer = $(this);
+                const peerQoshimchaId = parseInt(peer.find('.qoshimcha-select').val(), 10) || 0;
+                const peerFan = String(peer.find('.fan-select').val() || '').trim();
+                return peerQoshimchaId === QOSHIMCHA_IDS.BMI && peerFan === cardFan;
+            }).first();
+
+            return bmiCard.length ? bmiCard : null;
+        }
+
+        function getCardSelectedFanName(card) {
+            const fanId = String(card.find('.fan-select').val() || '').trim();
+            if (fanId === '') {
+                return '';
+            }
+
+            const fanMeta = fanMap[fanId] || {};
+            const directName = String(fanMeta.fan_name || '').trim();
+            if (directName !== '') {
+                return directName;
+            }
+
+            const rawText = String(card.find('.fan-select option:selected').text() || '').trim();
+            if (rawText === '') {
+                return '';
+            }
+
+            const delimiterPos = rawText.indexOf(' - ');
+            if (delimiterPos === -1) {
+                return rawText;
+            }
+            return rawText.slice(delimiterPos + 3).trim();
+        }
+
+        function getPersistedBmiTalabaByFanName(fanName) {
+            const targetFanName = String(fanName || '').trim();
+            if (targetFanName === '') {
+                return null;
+            }
+
+            const semestrId = String($('#semestrSelect').val() || '').trim();
+            const rows = Array.isArray(createdQoshimchaRowsAll) ? createdQoshimchaRowsAll : [];
+
+            for (const row of rows) {
+                if (String(row.qoshimcha_dars_id || '') !== String(QOSHIMCHA_IDS.BMI)) {
+                    continue;
+                }
+                if (semestrId !== '' && String(row.semestr_id || '') !== semestrId) {
+                    continue;
+                }
+                if (String(row.fan_name || '').trim() !== targetFanName) {
+                    continue;
+                }
+
+                let fromMeta = null;
+                try {
+                    const meta = JSON.parse(String(row.formula_meta || '{}'));
+                    const parsed = parseInt(meta.bmi_talaba_count, 10);
+                    if (!Number.isNaN(parsed) && parsed >= 0) {
+                        fromMeta = parsed;
+                    }
+                } catch (e) {
+                    fromMeta = null;
+                }
+
+                if (fromMeta !== null) {
+                    return fromMeta;
+                }
+
+                const fanSoat = parseInt(row.fan_soat || 0, 10) || 0;
+                if (fanSoat > 0) {
+                    if (fanSoat % 30 === 0 && fanSoat % 25 !== 0) {
+                        return Math.max(0, Math.floor(fanSoat / 30));
+                    }
+                    return Math.max(0, Math.floor(fanSoat / 25));
+                }
+
+                return 0;
+            }
+
+            return null;
+        }
+
+        function syncYadakFromBmiSource() {
+            $('.reja-card').each(function() {
+                const yadakCard = $(this);
+                const qoshimchaId = parseInt(yadakCard.find('.qoshimcha-select').val(), 10) || 0;
+                if (qoshimchaId !== QOSHIMCHA_IDS.YADAK) {
+                    return;
+                }
+
+                const subtype = getCardYadakSubtype(yadakCard);
+                if (!isYadakBmiSubtype(subtype)) {
+                    return;
+                }
+
+                calculateForSingleCard(yadakCard);
+            });
+        }
+
+        function resolveYadakBmiTalaba(card, totalTalaba) {
+            let bmiTalaba = 0;
+            const bmiSourceCard = getBmiSourceCardByFan(card);
+            if (bmiSourceCard && bmiSourceCard.length) {
+                const sourceValue = parseInt(bmiSourceCard.find('.bmi-talaba-input').val(), 10) || 0;
+                bmiTalaba = sourceValue;
+            } else {
+                const persisted = getPersistedBmiTalabaByFanName(getCardSelectedFanName(card));
+                if (persisted !== null) {
+                    bmiTalaba = persisted;
                 }
             }
 
             if (bmiTalaba < 0) bmiTalaba = 0;
             if (bmiTalaba > totalTalaba) bmiTalaba = totalTalaba;
+            card.find('.yadak-bmi-talaba').val(bmiTalaba);
             return bmiTalaba;
         }
 
@@ -1788,25 +1996,55 @@ if ($kafedralarJson === false) {
 
         function updateYadakMode(card) {
             const yadakSelect = card.find('.yadak-type');
-            const type = yadakSelect.val() || 'konsultatsiya';
+            const lockedSubtype = getLockedYadakSubtype(card);
+            const type = lockedSubtype || yadakSelect.val() || 'bmi_himoyasi';
             const teacherWrap = card.find('.yadak-teacher-wrap');
             const bmiTalabaWrap = card.find('.yadak-bmi-talaba-wrap');
+            const bmiTalabaInput = bmiTalabaWrap.find('.yadak-bmi-talaba');
             const fanWrap = card.find('.yadak-fan-wrap');
             const potokWrap = card.find('.yadak-potok-wrap');
             const fanCountLabel = fanWrap.find('label');
             const note = card.find('.yadak-static-note');
-            const prefix = isLockedYadakBatchCard(card) ? `${getYadakSubtypeLabel(type)}: ` : '';
+            const isLocked = isLockedYadakBatchCard(card);
+            const prefix = isLocked ? `${getYadakSubtypeLabel(type)}: ` : '';
+            const typeGroup = yadakSelect.closest('.form-group');
+            const typeLabel = getYadakSubtypeLabel(type);
+            const teacherLabel = teacherWrap.find('label');
+            const bmiTalabaLabel = bmiTalabaWrap.find('label');
 
-            if (type === 'bmi_himoyasi') {
+            if (lockedSubtype && yadakSelect.val() !== lockedSubtype) {
+                yadakSelect.val(lockedSubtype);
+            }
+
+            if (isLocked) {
+                typeGroup.hide();
+                let badge = card.find('.yadak-subtype-badge');
+                if (!badge.length) {
+                    badge = $('<div class="yadak-subtype-badge" style="font-size:13px;color:#334155;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;padding:8px 10px;margin-bottom:10px;"></div>');
+                    card.find('.extra-yadak').prepend(badge);
+                }
+                badge.text(`YADAK turi: ${typeLabel}`);
+            } else {
+                card.find('.yadak-subtype-badge').remove();
+                typeGroup.show();
+            }
+
+            if (isYadakBmiSubtype(type)) {
                 teacherWrap.show();
                 bmiTalabaWrap.show();
                 fanWrap.hide();
                 potokWrap.hide();
-                note.text(`${prefix}BMI talaba soni × o'qituvchi soni × 0.4`);
+                teacherLabel.text(`${typeLabel} uchun o'qituvchi soni`);
+                bmiTalabaLabel.text(`${typeLabel} uchun talaba soni`);
+                bmiTalabaInput.prop('readonly', true);
+                bmiTalabaInput.attr('title', "Qiymat BMI rahbarligidan avtomatik olinadi");
+                note.text(`${prefix}talaba soni × o'qituvchi soni × 0.4`);
             } else {
                 teacherWrap.hide();
                 bmiTalabaWrap.hide();
                 fanWrap.show();
+                bmiTalabaInput.prop('readonly', false);
+                bmiTalabaInput.removeAttr('title');
                 if (type === 'yozma_ish') {
                     fanCountLabel.text("Yozma ish fan soni");
                     potokWrap.hide();
@@ -1818,14 +2056,26 @@ if ($kafedralarJson === false) {
                 }
             }
 
-            if (type === 'bmi_himoyasi') {
+            if (isYadakBmiSubtype(type)) {
                 teacherWrap.find('.yadak-teacher').val(teacherWrap.find('.yadak-teacher').val() || 1);
             } else {
                 fanWrap.find('.yadak-fan-count').val(fanWrap.find('.yadak-fan-count').val() || 5);
             }
 
             if (type === 'konsultatsiya') {
-                potokWrap.find('.yadak-potok-count').val(potokWrap.find('.yadak-potok-count').val() || 0);
+                const potokInput = potokWrap.find('.yadak-potok-count');
+                const rawValue = String(potokInput.val() ?? '').trim();
+                const parsedPotok = parseInt(rawValue, 10);
+                const hasUserEdited = String(potokInput.attr('data-user-edited') || '') === '1';
+
+                if (!hasUserEdited && (rawValue === '' || !Number.isFinite(parsedPotok) || parsedPotok <= 0)) {
+                    const semestrPotok = getSemestrMeta().patok || 0;
+                    if (semestrPotok > 0) {
+                        potokInput.val(semestrPotok);
+                    } else {
+                        potokInput.val(1);
+                    }
+                }
             }
         }
 
@@ -1836,7 +2086,7 @@ if ($kafedralarJson === false) {
             const konsultatsiyaPotok = parseInt(card.find('.yadak-potok-count').val(), 10) || 0;
             const bmiTalaba = resolveYadakBmiTalaba(card, semestrMeta.talaba);
 
-            if (yadakType === 'bmi_himoyasi') {
+            if (isYadakBmiSubtype(yadakType)) {
                 const fanSoat = Math.round(bmiTalaba * teacherCount * 0.4);
                 return {
                     fanSoat,
@@ -1879,15 +2129,12 @@ if ($kafedralarJson === false) {
                 return;
             }
 
-            if (qoshimchaId === QOSHIMCHA_IDS.YADAK) {
-                maybeCreateYadakBatch(card, qoshimchaId, fanId);
-            }
-
             const semestrMeta = getSemestrMeta();
             const isExternal = isExternalTalim(semestrMeta.talimShakli);
             const koef = parseFloat(qoshimchaSelect.find('option:selected').data('koef')) || 0;
             const fanMeta = fanMap[String(fanId)] || {};
             const auditoriyaSoat = parseFloat(fanMeta.auditoriya_soat) || 0;
+            const isCreatedSpecialFan = (parseInt(fanMeta.tanlov_fan || 0, 10) || 0) !== 0;
 
             let fanSoat = null;
             let auto = true;
@@ -1913,7 +2160,10 @@ if ($kafedralarJson === false) {
 
             switch (qoshimchaId) {
                 case QOSHIMCHA_IDS.ORALIQ:
-                    if (isExternal) {
+                    if (isCreatedSpecialFan) {
+                        fanSoat = 0;
+                        hintText = "Yaratilgan fan uchun reyting nazorati hisoblanmaydi: 0";
+                    } else if (isExternal) {
                         fanSoat = 0;
                         hintText = "Sirtqi/masofaviy/kechki: 0";
                     } else if (auditoriyaSoat >= 60) {
@@ -1963,8 +2213,13 @@ if ($kafedralarJson === false) {
                 case QOSHIMCHA_IDS.BMI: {
                     const isTech = card.find('.bmi-tech').is(':checked');
                     const per = isTech ? 30 : 25;
-                    fanSoat = Math.round(semestrMeta.talaba * per);
-                    hintText = buildMulHint(semestrMeta.talaba, per, fanSoat);
+                    let bmiTalaba = parseInt(card.find('.bmi-talaba-input').val(), 10) || 0;
+                    if (bmiTalaba < 0) bmiTalaba = 0;
+                    if (bmiTalaba > semestrMeta.talaba) bmiTalaba = semestrMeta.talaba;
+                    fanSoat = Math.round(bmiTalaba * per);
+                    hintText = buildMulHint(bmiTalaba, per, fanSoat);
+                    card.find('.bmi-talaba-input').val(bmiTalaba);
+                    card.find('.bmi-tech-hidden').val(isTech ? '1' : '0');
                     break;
                 }
                 case QOSHIMCHA_IDS.OCHIQ_DARS: {
@@ -2208,6 +2463,11 @@ if ($kafedralarJson === false) {
                         </div>
                         <div class="form-grid-3 extra-field extra-bmi" style="display:none;">
                             <div class="form-group">
+                                <label>BMI rahbarligi uchun talaba soni</label>
+                                <input type="number" class="form-control bmi-talaba-input" name="bmi_talaba_soni[]" min="0" step="1" value="0">
+                                <input type="hidden" class="bmi-tech-hidden" name="bmi_is_tech[]" value="0">
+                            </div>
+                            <div class="form-group">
                                 <label>
                                     <input type="checkbox" class="calc-input bmi-tech"> Texnik yo'nalish (30 soat)
                                 </label>
@@ -2230,11 +2490,11 @@ if ($kafedralarJson === false) {
                                 </select>
                             </div>
                             <div class="form-group yadak-teacher-wrap" style="display:none;">
-                                <label>BMI himoyasi uchun o'qituvchi soni</label>
+                                <label>BMI uchun o'qituvchi soni</label>
                                 <input type="number" class="form-control calc-input yadak-teacher" name="yadak_teacher[]" min="0" step="1" value="1">
                             </div>
                             <div class="form-group yadak-bmi-talaba-wrap" style="display:none;">
-                                <label>BMI himoyasi uchun talaba soni</label>
+                                <label>BMI uchun talaba soni</label>
                                 <input type="number" class="form-control calc-input yadak-bmi-talaba" name="yadak_bmi_talaba[]" min="0" step="1" value="0">
                             </div>
                             <div class="form-group yadak-fan-wrap">
@@ -2249,7 +2509,7 @@ if ($kafedralarJson === false) {
                         <div class="form-grid-3 extra-field extra-yadak-note" style="display:none;">
                             <div class="form-group" style="grid-column: 1 / -1;">
                                 <small class="calc-hint-static yadak-static-note" style="color:#64748b;">
-                                    BMI himoyasi: talaba soni × o'qituvchi soni × 0.4
+                                    BMI: talaba soni × o'qituvchi soni × 0.4
                                 </small>
                             </div>
                         </div>
@@ -2376,6 +2636,7 @@ if ($kafedralarJson === false) {
             const rejas = $('.reja-card');
             const currentReja = $(this).closest('.reja-card');
             const currentIndex = currentReja.data('index');
+            const groupId = String(currentReja.attr('data-yadak-batch-group') || '').trim();
 
             if (rejas.length > 1 && currentIndex !== 0) {
                 currentReja.find('select').each(function() {
@@ -2385,6 +2646,13 @@ if ($kafedralarJson === false) {
                 });
 
                 currentReja.remove();
+
+                if (groupId !== '') {
+                    const remainCard = $(`.reja-card[data-yadak-batch-group="${groupId}"]`).first();
+                    if (remainCard.length) {
+                        normalizeYadakBatchState(remainCard);
+                    }
+                }
             }
         });
 
@@ -2499,6 +2767,19 @@ if ($kafedralarJson === false) {
                     haftaInput.css('border-color', '#e74c3c');
                 } else {
                     haftaInput.css('border-color', '');
+                }
+
+                const bmiTalabaInput = card.find('.bmi-talaba-input:visible');
+                if (bmiTalabaInput.length) {
+                    const bmiTalabaValue = parseFloat(bmiTalabaInput.val());
+                    const jamiTalaba = getSemestrMeta().talaba;
+                    if (Number.isNaN(bmiTalabaValue) || bmiTalabaValue < 0 || bmiTalabaValue > jamiTalaba) {
+                        isValid = false;
+                        errors.push(`${cardIndex}-fan uchun BMI rahbarligi talaba soni noto'g'ri`);
+                        bmiTalabaInput.css('border-color', '#e74c3c');
+                    } else {
+                        bmiTalabaInput.css('border-color', '');
+                    }
                 }
 
                 const yadakTeacher = card.find('.yadak-teacher:visible');

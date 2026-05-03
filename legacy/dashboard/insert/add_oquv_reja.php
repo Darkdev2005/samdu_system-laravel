@@ -300,10 +300,10 @@
                         ]);
                         return;
                     }
-                    if ((int)$talabaRaw > 0 && (int)$talabaRaw < 10) {
+                    if ((int)$talabaRaw > 0 && (int)$talabaRaw < 1) {
                         echo json_encode([
                             'success' => false,
-                            'message' => "{$fanName}: aktiv tanlov varianti kamida 10 talaba bo'lishi kerak"
+                            'message' => "{$fanName}: aktiv tanlov varianti kamida 1 talaba bo'lishi kerak"
                         ]);
                         return;
                     }

@@ -220,8 +220,9 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                                     <th>Kirgan yili</th>
                                     <th>Dars soati</th>
                                     <th>Kurs</th>
-                                    <th>Harakat</th>
-                                </tr>
+                                    <th>Harakat</th>                  
+      
+                              </tr>
                             </thead>
                             <tbody id="qoshimchaTableBody">
                                 <tr>

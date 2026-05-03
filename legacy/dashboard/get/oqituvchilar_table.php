@@ -10,6 +10,31 @@
     }
     legacy_apply_kafedra_scope($filters);
     $oqituvchilar = $db->get_oqtuvchilar($filters);
+
+    $normalizeIshturName = static function (string $value): string {
+        $value = trim($value);
+        $value = str_replace(['’', '‘', 'ʼ', 'ʻ', '`'], "'", $value);
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    };
+
+    $formatIshturLabel = static function (string $name) use ($normalizeIshturName): string {
+        $normalized = $normalizeIshturName($name);
+        if (
+            (strpos($normalized, 'rindosh') !== false || strpos($normalized, 'orindosh') !== false)
+            && strpos($normalized, 'ichki') !== false
+            && (strpos($normalized, 'qoshimcha') !== false || strpos($normalized, "qo'shimcha") !== false)
+        ) {
+            return "O'rindosh (ichki-qo'shimcha)";
+        }
+        if (strpos($normalized, 'ichki') !== false && strpos($normalized, 'rindosh') !== false) {
+            return "O'rindosh (ichki-asosiy)";
+        }
+        if (strpos($normalized, 'tashqi') !== false && strpos($normalized, 'rindosh') !== false) {
+            return "O'rindosh (tashqi)";
+        }
+        return $name;
+    };
 ?>
 <?php foreach ($oqituvchilar as $oqituvchi): ?>
     <tr>
@@ -19,7 +44,7 @@
         <td><?php echo htmlspecialchars($oqituvchi['kafedra_name']); ?></td>
         <td><?php echo htmlspecialchars($oqituvchi['lavozim']); ?></td>
         <td><?php echo htmlspecialchars($oqituvchi['stavka']); ?></td>
-        <td><?php echo htmlspecialchars($oqituvchi['ishtur_name']); ?></td>
+        <td><?php echo htmlspecialchars($formatIshturLabel((string)($oqituvchi['ishtur_name'] ?? ''))); ?></td>
         <td><?php echo htmlspecialchars($oqituvchi['ilmiy_unvon_name']); ?></td>
         <td><?php echo htmlspecialchars($oqituvchi['ilmiy_daraja_name']); ?></td>
         <td>

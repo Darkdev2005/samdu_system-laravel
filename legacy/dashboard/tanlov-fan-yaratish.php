@@ -1223,8 +1223,8 @@
                         firstError = `Fan #${index + 1}: talaba sonlarini to'g'ri kiriting`;
                         return false;
                     }
-                    if (value > 0 && value < 10) {
-                        firstError = `Fan #${index + 1}: aktiv tanlov varianti kamida 10 talaba bo'lishi kerak`;
+                    if (value > 0 && value < 1) {
+                        firstError = `Fan #${index + 1}: aktiv tanlov varianti kamida 1 talaba bo'lishi kerak`;
                         return false;
                     }
                     used += value;
@@ -1517,7 +1517,7 @@
                             </table>
                         </div>
                         <div class="tanlov-edit-help">
-                            Eslatma: aktiv variant kamida 10 talaba bo'lishi kerak. Barcha variantlar yig'indisi jami talaba soniga teng bo'lsa saqlanadi.
+                            Eslatma: aktiv variant kamida 1 talaba bo'lishi kerak. Barcha variantlar yig'indisi jami talaba soniga teng bo'lsa saqlanadi.
                         </div>
                     </div>
                 `,
@@ -1550,8 +1550,8 @@
                             hasError = `Variant #${index + 1}: talaba sonini to'g'ri kiriting`;
                             return false;
                         }
-                        if (talabalarSoni > 0 && talabalarSoni < 10) {
-                            hasError = `Variant #${index + 1}: aktiv variant kamida 10 talaba bo'lishi kerak`;
+                        if (talabalarSoni > 0 && talabalarSoni < 1) {
+                            hasError = `Variant #${index + 1}: aktiv variant kamida 1 talaba bo'lishi kerak`;
                             return false;
                         }
                         used += talabalarSoni;

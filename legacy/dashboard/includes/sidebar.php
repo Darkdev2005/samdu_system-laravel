@@ -273,6 +273,10 @@ $roleLabel = function_exists('legacy_user_role_label') ? legacy_user_role_label(
                     <small><?= htmlspecialchars($roleLabel, ENT_QUOTES, 'UTF-8') ?></small>
                 </div>
             </div>
+            <a href="profil-sozlamalari.php" class="profile-btn">
+                <i class="fas fa-key"></i>
+                <span>Profil sozlamalari</span>
+            </a>
             <a href="/logout" class="logout-btn">
                 <i class="fas fa-sign-out-alt"></i>
                 <span>Chiqish</span>
