@@ -18,6 +18,24 @@ if (isset($_POST['semestr']) && !empty($_POST['semestr'])) {
 legacy_apply_kafedra_scope($filters);
 
 $oquv_taqsimotlar = $db->get_oquv_taqsimotlar($filters);
+$maxsus_oquv_taqsimotlar = [];
+if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
+    $maxsus_oquv_taqsimotlar = $db->get_maxsus_oquv_taqsimotlar($filters);
+} else {
+    $remainingLimitForMaxsus = max(0, (int)$filters['limit'] - count($oquv_taqsimotlar));
+    if ($remainingLimitForMaxsus > 0) {
+        $maxsus_oquv_taqsimotlar = $db->get_maxsus_oquv_taqsimotlar($filters + ['limit' => $remainingLimitForMaxsus]);
+    }
+}
+$oquv_taqsimotlar = array_merge($oquv_taqsimotlar, $maxsus_oquv_taqsimotlar);
+usort($oquv_taqsimotlar, static function (array $a, array $b): int {
+    $aSem = (int)($a['semestr'] ?? 0);
+    $bSem = (int)($b['semestr'] ?? 0);
+    if ($aSem !== $bSem) {
+        return $aSem <=> $bSem;
+    }
+    return strcmp((string)($a['fan_nomi'] ?? ''), (string)($b['fan_nomi'] ?? ''));
+});
 $qoshimcha_oquv_taqsimotlar = [];
 if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
     $qoshimcha_oquv_taqsimotlar = $db->get_qoshimcha_oquv_taqsimotlar($filters);
@@ -84,6 +102,19 @@ if (!empty($allYonalishIds)) {
     background: #dc3545;
 }
 .guruh-cell {
+    white-space: normal;
+    word-break: break-word;
+}
+.maxsus-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    background: #0ea5e9;
+    vertical-align: middle;
     white-space: nowrap;
 }
 
@@ -167,57 +198,72 @@ if (!empty($allYonalishIds)) {
                         return [];
                     }
 
-                    $rejaIds = [];
+                    $rejaIdsByType = [];
 
                     foreach ($rows as $row) {
+                        $rowType = trim((string)($row['taqsimot_type'] ?? 'A'));
+                        if (!in_array($rowType, ['A', 'Q', 'M'], true)) {
+                            $rowType = 'A';
+                        }
                         foreach (['maruza_reja_id', 'amaliy_reja_id', 'laboratoriya_reja_id', 'seminar_reja_id'] as $field) {
                             $rejaId = (int)($row[$field] ?? 0);
                             if ($rejaId > 0) {
-                                $rejaIds[$rejaId] = true;
+                                if (!isset($rejaIdsByType[$rowType])) {
+                                    $rejaIdsByType[$rowType] = [];
+                                }
+                                $rejaIdsByType[$rowType][$rejaId] = true;
                             }
                         }
                     }
 
-                    if (empty($rejaIds)) {
+                    if (empty($rejaIdsByType)) {
                         return [];
                     }
 
                     $resultMap = [];
-                    $rejaIds = array_keys($rejaIds);
+                    foreach ($rejaIdsByType as $rowType => $ids) {
+                        $rejaIds = array_keys($ids);
+                        foreach (array_chunk($rejaIds, 500) as $idChunk) {
+                            $sql = "
+                                SELECT oquv_reja_id, SUM(soat) AS jami_soat
+                                FROM taqsimotlar
+                                WHERE type = '{$rowType}'
+                                  AND oquv_reja_id IN (" . implode(',', array_map('intval', $idChunk)) . ")
+                                GROUP BY oquv_reja_id
+                            ";
+                            $queryResult = $db->query($sql);
+                            if ($queryResult === false) {
+                                continue;
+                            }
 
-                    foreach (array_chunk($rejaIds, 500) as $idChunk) {
-                        $sql = "
-                            SELECT oquv_reja_id, SUM(soat) AS jami_soat
-                            FROM taqsimotlar
-                            WHERE type = 'A'
-                              AND oquv_reja_id IN (" . implode(',', array_map('intval', $idChunk)) . ")
-                            GROUP BY oquv_reja_id
-                        ";
-                        $queryResult = $db->query($sql);
-                        if ($queryResult === false) {
-                            continue;
-                        }
-
-                        while ($taqsimotRow = mysqli_fetch_assoc($queryResult)) {
-                            $resultMap[(int)($taqsimotRow['oquv_reja_id'] ?? 0)] = (float)($taqsimotRow['jami_soat'] ?? 0);
+                            while ($taqsimotRow = mysqli_fetch_assoc($queryResult)) {
+                                $rid = (int)($taqsimotRow['oquv_reja_id'] ?? 0);
+                                $resultMap[$rowType . ':' . $rid] = (float)($taqsimotRow['jami_soat'] ?? 0);
+                            }
                         }
                     }
 
                     return $resultMap;
                 }
-                function getMappedTaqsimotSoat($db, array &$taqsimotSoatMap, int $rejaId): float {
+                function getMappedTaqsimotSoat($db, array &$taqsimotSoatMap, int $rejaId, string $type = 'A'): float {
                     if ($rejaId <= 0) {
                         return 0.0;
                     }
 
-                    if (array_key_exists($rejaId, $taqsimotSoatMap)) {
-                        return (float)$taqsimotSoatMap[$rejaId];
+                    $type = trim($type);
+                    if (!in_array($type, ['A', 'Q', 'M'], true)) {
+                        $type = 'A';
+                    }
+                    $cacheKey = $type . ':' . $rejaId;
+
+                    if (array_key_exists($cacheKey, $taqsimotSoatMap)) {
+                        return (float)$taqsimotSoatMap[$cacheKey];
                     }
 
                     $sql = "
                         SELECT SUM(soat) AS jami_soat
                         FROM taqsimotlar
-                        WHERE type = 'A' AND oquv_reja_id = {$rejaId}
+                        WHERE type = '{$type}' AND oquv_reja_id = {$rejaId}
                     ";
                     $queryResult = $db->query($sql);
                     $jamiSoat = 0.0;
@@ -226,7 +272,7 @@ if (!empty($allYonalishIds)) {
                         $jamiSoat = (float)($taqsimotRow['jami_soat'] ?? 0);
                     }
 
-                    $taqsimotSoatMap[$rejaId] = $jamiSoat;
+                    $taqsimotSoatMap[$cacheKey] = $jamiSoat;
                     return $jamiSoat;
                 }
                 function getCellClass($jami, $max) {
@@ -247,15 +293,24 @@ if (!empty($allYonalishIds)) {
                         $amaliyRejaId = (int)($row['amaliy_reja_id'] ?? 0);
                         $labRejaId = (int)($row['laboratoriya_reja_id'] ?? 0);
                         $seminarRejaId = (int)($row['seminar_reja_id'] ?? 0);
-                        $maruzaJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $maruzaRejaId);
-                        $amaliyJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $amaliyRejaId);
-                        $labJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $labRejaId);
-                        $seminarJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $seminarRejaId);
+                        $rowType = trim((string)($row['taqsimot_type'] ?? 'A'));
+                        if ($rowType === '') {
+                            $rowType = 'A';
+                        }
+                        $maruzaJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $maruzaRejaId, $rowType);
+                        $amaliyJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $amaliyRejaId, $rowType);
+                        $labJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $labRejaId, $rowType);
+                        $seminarJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $seminarRejaId, $rowType);
 
                 ?>
                 <tr class="<?= $needsResync ? 'needs-resync' : '' ?>">
                     <td><?= $counter++ ?></td>
-                    <td class="left fan-nomi"><?= htmlspecialchars($row['fan_nomi']) ?></td>
+                    <td class="left fan-nomi">
+                        <?= htmlspecialchars($row['fan_nomi']) ?>
+                        <?php if ($rowType === 'M' || !empty($row['is_maxsus'])): ?>
+                            <span class="maxsus-badge">Maxsus guruh</span>
+                        <?php endif; ?>
+                    </td>
                     <td class="left">
                         <?= htmlspecialchars($row['yonalish_code'] . ' - ' . $row['talim_yonalishi']) ?>
                         <?php if ($needsResync): ?>
@@ -271,7 +326,7 @@ if (!empty($allYonalishIds)) {
                     <td><?= $row['kattaguruh_soni'] ?></td>
                     <td><?= $row['kichikguruh_soni'] ?></td>
                     <td class="soat-cell  <?= getCellClass($maruzaJami, $row['amalda_maruz']) ?>"
-                        data-type="A"
+                        data-type="<?= htmlspecialchars($rowType) ?>"
                         data-yuklama-id="<?= $row['maruza_reja_id'] ?: 0 ?>"
                         data-soat-turi="amalda_maruz"
                         data-max-soat="<?= $row['amalda_maruz'] ?>">
@@ -280,7 +335,7 @@ if (!empty($allYonalishIds)) {
                     </td>
                     <!-- 🔥 AMALIY -->
                     <td class="soat-cell <?= getCellClass($amaliyJami, $row['amalda_amaliy']) ?>"
-                        data-type="A"
+                        data-type="<?= htmlspecialchars($rowType) ?>"
                         data-yuklama-id="<?= $row['amaliy_reja_id'] ?: 0 ?>"
                         data-soat-turi="amalda_amaliy"
                         data-max-soat="<?= $row['amalda_amaliy'] ?: 0 ?>">
@@ -289,7 +344,7 @@ if (!empty($allYonalishIds)) {
                     </td>
                     <!-- 🔥 LAB -->
                     <td class="soat-cell <?= getCellClass($labJami, $row['amalda_laboratoriya']) ?>"
-                        data-type="A"
+                        data-type="<?= htmlspecialchars($rowType) ?>"
                         data-yuklama-id="<?= $row['laboratoriya_reja_id'] ?: 0 ?>"
                         data-soat-turi="amalda_laboratoriya"
                         data-max-soat="<?= $row['amalda_laboratoriya'] ?: 0 ?>">
@@ -298,7 +353,7 @@ if (!empty($allYonalishIds)) {
                     </td>
                     <!-- 🔥 SEMINAR -->
                     <td class="soat-cell <?= getCellClass($seminarJami, $row['amalda_seminar']) ?>"
-                        data-type="A"
+                        data-type="<?= htmlspecialchars($rowType) ?>"
                         data-yuklama-id="<?= $row['seminar_reja_id'] ?: 0 ?>"
                         data-soat-turi="amalda_seminar"
                         data-max-soat="<?= $row['amalda_seminar'] ?: 0 ?>">

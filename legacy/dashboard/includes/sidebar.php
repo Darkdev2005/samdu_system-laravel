@@ -167,6 +167,12 @@ $roleLabel = function_exists('legacy_user_role_label') ? legacy_user_role_label(
                                 </a>
                             </li>
                             <li>
+                                <a href="maxsus-guruh-oquv-reja.php">
+                                    <i class="fas fa-users-cog"></i>
+                                    <span>Maxsus guruh uchun o‘quv reja</span>
+                                </a>
+                            </li>
+                            <li>
                                 <a href="magistr-doktorant-yuklama.php">
                                     <i class="fas fa-user-graduate"></i>
                                     <span>Magistr/Doktorant kiritish</span>

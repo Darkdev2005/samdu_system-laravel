@@ -598,6 +598,53 @@ class Database{
                 INDEX idx_tanlov_talab_yonalish (yonalish_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+        // Izoh: Maxsus guruhlar ro'yxati va ular uchun alohida o'quv reja.
+        mysqli_query($this->link, "
+            CREATE TABLE IF NOT EXISTS maxsus_guruhlar (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                yonalish_id INT NOT NULL,
+                guruh_id INT NOT NULL,
+                izoh TEXT NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                update_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_maxsus_guruh (yonalish_id, guruh_id),
+                INDEX idx_maxsus_guruh_yonalish (yonalish_id),
+                INDEX idx_maxsus_guruh_guruh (guruh_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        mysqli_query($this->link, "
+            CREATE TABLE IF NOT EXISTS maxsus_oquv_rejalar (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                fan_code VARCHAR(100) NOT NULL,
+                fan_name VARCHAR(255) NOT NULL,
+                kafedra_id INT NOT NULL,
+                semestr_id INT NOT NULL,
+                yonalish_id INT NOT NULL,
+                guruh_id INT NOT NULL,
+                izoh TEXT NULL,
+                create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                update_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_maxsus_reja (semestr_id, guruh_id, fan_code, fan_name, kafedra_id),
+                INDEX idx_maxsus_reja_kafedra (kafedra_id),
+                INDEX idx_maxsus_reja_semestr (semestr_id),
+                INDEX idx_maxsus_reja_yonalish (yonalish_id),
+                INDEX idx_maxsus_reja_guruh (guruh_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        mysqli_query($this->link, "
+            CREATE TABLE IF NOT EXISTS maxsus_oquv_reja_soatlar (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                maxsus_reja_id INT NOT NULL,
+                dars_tur_id INT NOT NULL,
+                dars_soat DECIMAL(10,2) NOT NULL DEFAULT 0,
+                create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                update_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_maxsus_reja_dars (maxsus_reja_id, dars_tur_id),
+                INDEX idx_maxsus_reja_soat_reja (maxsus_reja_id),
+                INDEX idx_maxsus_reja_soat_tur (dars_tur_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
 
         // Izoh: Magistr/doktorant yozuvlari o'quv/ishchi rejaga kirmaydi, faqat yuklama va taqsimotda ko'rinadi.
         mysqli_query($this->link, "
@@ -1710,6 +1757,271 @@ class Database{
         FROM `taqsimotlar` t 
         JOIN oqituvchilar o ON o.id = t.teacher_id
         WHERE t.oquv_reja_id=$oquvreja_id AND t.type='$type';";
+        $result = $this->query($sql);
+        $data = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $data[] = $row;
+        }
+        return $data;
+    }
+    public function get_maxsus_oquv_reja_created_list($filters = []){
+        $where = [];
+        if (!empty($filters['kafedra_id'])) {
+            $where[] = "mr.kafedra_id = " . (int)$filters['kafedra_id'];
+        }
+        if (!empty($filters['semestr_id'])) {
+            $where[] = "mr.semestr_id = " . (int)$filters['semestr_id'];
+        }
+        if (!empty($filters['yonalish_id'])) {
+            $where[] = "mr.yonalish_id = " . (int)$filters['yonalish_id'];
+        }
+        if (!empty($filters['guruh_id'])) {
+            $where[] = "mr.guruh_id = " . (int)$filters['guruh_id'];
+        }
+        $whereSql = !empty($where) ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+        $sql = "
+            SELECT
+                mr.id AS maxsus_reja_id,
+                mr.fan_code,
+                mr.fan_name,
+                mr.kafedra_id,
+                k.name AS kafedra_name,
+                mr.semestr_id,
+                s.semestr,
+                mr.yonalish_id,
+                y.name AS yonalish_name,
+                y.code AS yonalish_code,
+                mr.guruh_id,
+                g.guruh_nomer,
+                g.soni AS talabalar_soni,
+                mr.izoh,
+                mr.create_at
+            FROM maxsus_oquv_rejalar mr
+            JOIN semestrlar s ON s.id = mr.semestr_id
+            JOIN yonalishlar y ON y.id = mr.yonalish_id
+            JOIN guruhlar g ON g.id = mr.guruh_id
+            LEFT JOIN kafedralar k ON k.id = mr.kafedra_id
+            {$whereSql}
+            ORDER BY s.semestr DESC, mr.id DESC
+        ";
+        $result = $this->query($sql);
+        $rows = [];
+        $ids = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $row['dars'] = [];
+            $rows[] = $row;
+            $ids[] = (int)($row['maxsus_reja_id'] ?? 0);
+        }
+
+        if (!empty($ids)) {
+            $idSql = implode(',', array_map('intval', array_unique($ids)));
+            $darsRes = $this->query("
+                SELECT
+                    maxsus_reja_id,
+                    dars_tur_id,
+                    SUM(dars_soat) AS soat
+                FROM maxsus_oquv_reja_soatlar
+                WHERE maxsus_reja_id IN ({$idSql})
+                GROUP BY maxsus_reja_id, dars_tur_id
+            ");
+            $map = [];
+            while ($darsRow = mysqli_fetch_assoc($darsRes)) {
+                $rid = (int)($darsRow['maxsus_reja_id'] ?? 0);
+                $turId = (int)($darsRow['dars_tur_id'] ?? 0);
+                if ($rid <= 0 || $turId <= 0) {
+                    continue;
+                }
+                if (!isset($map[$rid])) {
+                    $map[$rid] = [];
+                }
+                $map[$rid][(string)$turId] = (float)($darsRow['soat'] ?? 0);
+            }
+
+            foreach ($rows as $index => $row) {
+                $rid = (int)($row['maxsus_reja_id'] ?? 0);
+                $rows[$index]['dars'] = $map[$rid] ?? [];
+            }
+        }
+
+        return $rows;
+    }
+    public function get_maxsus_oquv_yuklamalar($filters = []){
+        $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
+        $where = [];
+
+        if (!empty($filters['kafedra_id'])) {
+            $where[] = "mr.kafedra_id = " . (int)$filters['kafedra_id'];
+        }
+        if (!empty($filters['yonalish_id'])) {
+            $where[] = "mr.yonalish_id = " . (int)$filters['yonalish_id'];
+        }
+        if (!empty($filters['semestr'])) {
+            $where[] = "s.semestr = " . (int)$filters['semestr'];
+        } elseif (!empty($filters['oquv_yil_start'])) {
+            $startYear = (int)$filters['oquv_yil_start'];
+            $semType = !empty($filters['semestr_turi']) ? $filters['semestr_turi'] : '';
+            if ($semType !== 'fall' && $semType !== 'spring') {
+                $month = (int)date('n');
+                $semType = ($month >= 9 || $month === 1) ? 'fall' : 'spring';
+            }
+            $parityAdd = ($semType === 'fall') ? 1 : 2;
+            $semExpr = "GREATEST(1, LEAST(10, (({$startYear} - y.kirish_yili + 1) * 2) + " . ($parityAdd - 2) . "))";
+            $where[] = "s.semestr = {$semExpr}";
+        } elseif (!empty($filters['semestr_turi'])) {
+            if ($filters['semestr_turi'] === 'fall') {
+                $where[] = "MOD(s.semestr, 2) = 1";
+            } elseif ($filters['semestr_turi'] === 'spring') {
+                $where[] = "MOD(s.semestr, 2) = 0";
+            }
+        }
+        if (!empty($filters['kurs'])) {
+            $kurs = (int)$filters['kurs'];
+            if ($kurs > 0) {
+                $where[] = "FLOOR((s.semestr + 1)/2) = {$kurs}";
+            }
+        }
+
+        $whereSql = !empty($where) ? ('WHERE ' . implode(' AND ', $where)) : '';
+        $limitSql = $limit > 0 ? "LIMIT {$limit}" : '';
+
+        $sql = "
+            SELECT
+                mr.id AS maxsus_reja_id,
+                mr.fan_name AS fan_name,
+                1 AS is_maxsus,
+                y.name AS talim_yonalishi,
+                y.code AS yonalish_code,
+                COALESCE(k.name, 'Kafedra belgilanmagan') AS kafedra_nomi,
+                tsh.name AS oquv_shakli,
+                s.semestr,
+                FLOOR((s.semestr + 1)/2) AS kurs,
+                g.guruh_nomer AS guruh_raqami,
+                1 AS guruhlar_soni,
+                COALESCE(g.soni, 0) AS talabalar_soni,
+                1 AS patok_soni,
+                1 AS kattaguruh_soni,
+                1 AS kichikguruh_soni,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 1 THEN ms.dars_soat ELSE 0 END), 0) AS maruza_soat,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 2 THEN ms.dars_soat ELSE 0 END), 0) AS amaliy_soat,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 3 THEN ms.dars_soat ELSE 0 END), 0) AS laboratoriya_soat,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 4 THEN ms.dars_soat ELSE 0 END), 0) AS seminar_soat,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 1 THEN ms.dars_soat ELSE 0 END), 0) AS amalda_maruz,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 2 THEN ms.dars_soat ELSE 0 END), 0) AS amalda_amaliy,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 3 THEN ms.dars_soat ELSE 0 END), 0) AS amalda_lab,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 4 THEN ms.dars_soat ELSE 0 END), 0) AS amalda_seminar,
+                (
+                    COALESCE(SUM(CASE WHEN ms.dars_tur_id = 1 THEN ms.dars_soat ELSE 0 END), 0)
+                    + COALESCE(SUM(CASE WHEN ms.dars_tur_id = 2 THEN ms.dars_soat ELSE 0 END), 0)
+                    + COALESCE(SUM(CASE WHEN ms.dars_tur_id = 3 THEN ms.dars_soat ELSE 0 END), 0)
+                    + COALESCE(SUM(CASE WHEN ms.dars_tur_id = 4 THEN ms.dars_soat ELSE 0 END), 0)
+                ) AS jami_soat,
+                '' AS biriktirilgan_yonalish_code,
+                '' AS biriktirilgan_yonalishlar,
+                0 AS is_birlashtirilgan
+            FROM maxsus_oquv_rejalar mr
+            JOIN semestrlar s ON s.id = mr.semestr_id
+            JOIN yonalishlar y ON y.id = mr.yonalish_id
+            JOIN guruhlar g ON g.id = mr.guruh_id
+            JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
+            LEFT JOIN kafedralar k ON k.id = mr.kafedra_id
+            LEFT JOIN maxsus_oquv_reja_soatlar ms ON ms.maxsus_reja_id = mr.id
+            {$whereSql}
+            GROUP BY
+                mr.id, mr.fan_name, y.name, y.code, k.name, tsh.name, s.semestr,
+                g.guruh_nomer, g.soni
+            ORDER BY s.semestr, mr.fan_name
+            {$limitSql}
+        ";
+        $result = $this->query($sql);
+        $data = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $data[] = $row;
+        }
+        return $data;
+    }
+    public function get_maxsus_oquv_taqsimotlar($filters = []){
+        $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
+        $where = [];
+        $having = '';
+
+        if (!empty($filters['kafedra_id'])) {
+            $where[] = "mr.kafedra_id = " . (int)$filters['kafedra_id'];
+        }
+        if (!empty($filters['yonalish_id'])) {
+            $where[] = "mr.yonalish_id = " . (int)$filters['yonalish_id'];
+        }
+        if (!empty($filters['semestr'])) {
+            $s = (int)$filters['semestr'];
+            $pairStart = ($s % 2 === 0) ? $s - 1 : $s;
+            $pairEnd = $pairStart + 1;
+            $where[] = "s.semestr IN ({$pairStart}, {$pairEnd})";
+        }
+        if (!empty($filters['maxsus_oquv_reja_id'])) {
+            $rid = (int)$filters['maxsus_oquv_reja_id'];
+            $having = "HAVING {$rid} IN (maruza_reja_id, amaliy_reja_id, laboratoriya_reja_id, seminar_reja_id)";
+        }
+
+        $whereSql = !empty($where) ? ('WHERE ' . implode(' AND ', $where)) : '';
+        $limitSql = $limit > 0 ? "LIMIT {$limit}" : '';
+
+        $sql = "
+            SELECT
+                COALESCE(MAX(CASE WHEN ms.dars_tur_id = 1 THEN ms.id END), 0) AS maruza_reja_id,
+                COALESCE(MAX(CASE WHEN ms.dars_tur_id = 2 THEN ms.id END), 0) AS amaliy_reja_id,
+                COALESCE(MAX(CASE WHEN ms.dars_tur_id = 3 THEN ms.id END), 0) AS laboratoriya_reja_id,
+                COALESCE(MAX(CASE WHEN ms.dars_tur_id = 4 THEN ms.id END), 0) AS seminar_reja_id,
+                1 AS is_maxsus,
+                mr.yonalish_id,
+                mr.fan_name AS fan_nomi,
+                y.name AS talim_yonalishi,
+                y.code AS yonalish_code,
+                COALESCE(k.name, 'Kafedra belgilanmagan') AS kafedra_nomi,
+                tsh.name AS oquv_shakli,
+                s.semestr,
+                FLOOR((s.semestr + 1)/2) AS kurs,
+                g.guruh_nomer AS guruh_raqami,
+                1 AS guruhlar_soni,
+                COALESCE(g.soni, 0) AS talabalar_soni,
+                1 AS patok_soni,
+                1 AS kattaguruh_soni,
+                1 AS kichikguruh_soni,
+                EXISTS (
+                    SELECT 1
+                    FROM taqsimot_resync_events tre
+                    WHERE tre.yonalish_id = mr.yonalish_id
+                      AND tre.status = 'pending'
+                ) AS needs_resync,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 1 THEN ms.dars_soat ELSE 0 END), 0) AS reja_maruz,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 2 THEN ms.dars_soat ELSE 0 END), 0) AS reja_amaliy,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 3 THEN ms.dars_soat ELSE 0 END), 0) AS reja_laboratoriya,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 4 THEN ms.dars_soat ELSE 0 END), 0) AS reja_seminar,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 1 THEN ms.dars_soat ELSE 0 END), 0) AS amalda_maruz,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 2 THEN ms.dars_soat ELSE 0 END), 0) AS amalda_amaliy,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 3 THEN ms.dars_soat ELSE 0 END), 0) AS amalda_laboratoriya,
+                COALESCE(SUM(CASE WHEN ms.dars_tur_id = 4 THEN ms.dars_soat ELSE 0 END), 0) AS amalda_seminar,
+                (
+                    COALESCE(SUM(CASE WHEN ms.dars_tur_id = 1 THEN ms.dars_soat ELSE 0 END), 0)
+                    + COALESCE(SUM(CASE WHEN ms.dars_tur_id = 2 THEN ms.dars_soat ELSE 0 END), 0)
+                    + COALESCE(SUM(CASE WHEN ms.dars_tur_id = 3 THEN ms.dars_soat ELSE 0 END), 0)
+                    + COALESCE(SUM(CASE WHEN ms.dars_tur_id = 4 THEN ms.dars_soat ELSE 0 END), 0)
+                ) AS jami_soat,
+                'M' AS taqsimot_type
+            FROM maxsus_oquv_rejalar mr
+            JOIN semestrlar s ON s.id = mr.semestr_id
+            JOIN yonalishlar y ON y.id = mr.yonalish_id
+            JOIN guruhlar g ON g.id = mr.guruh_id
+            JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
+            LEFT JOIN kafedralar k ON k.id = mr.kafedra_id
+            LEFT JOIN maxsus_oquv_reja_soatlar ms ON ms.maxsus_reja_id = mr.id
+            {$whereSql}
+            GROUP BY
+                mr.id, mr.yonalish_id, mr.fan_name, y.name, y.code, k.name, tsh.name,
+                s.semestr, g.guruh_nomer, g.soni
+            {$having}
+            ORDER BY s.semestr, mr.fan_name
+            {$limitSql}
+        ";
         $result = $this->query($sql);
         $data = [];
         while ($row = mysqli_fetch_assoc($result)) {

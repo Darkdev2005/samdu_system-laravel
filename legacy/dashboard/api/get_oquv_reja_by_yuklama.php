@@ -49,7 +49,24 @@
                 'message' => legacy_is_kafedra_mudiri() ? 'Bu yuklama sizning kafedrangizga tegishli emas.' : 'Ma\'lumot topilmadi'
             ]);
         }
-        
+    } else if ($type === 'M') {
+        $filters = ['maxsus_oquv_reja_id' => $yuklama_id];
+        legacy_apply_kafedra_scope($filters);
+        $oquv_reja = $db->get_maxsus_oquv_taqsimotlar($filters);
+        $oquv_taqsimotlar = $db->get_taqsimot_by_teacher($yuklama_id, $type);
+        if (!empty($oquv_reja)) {
+            $data = $oquv_reja[0];
+            echo json_encode([
+                'success' => true,
+                'data' => $data,
+                'taqsimotlar' => $oquv_taqsimotlar
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => legacy_is_kafedra_mudiri() ? 'Bu yuklama sizning kafedrangizga tegishli emas.' : 'Ma\'lumot topilmadi'
+            ]);
+        }
     } else {
         echo json_encode([
             'success' => false,

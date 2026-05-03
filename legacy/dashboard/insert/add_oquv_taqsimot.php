@@ -23,6 +23,9 @@ if (legacy_is_kafedra_mudiri()) {
     } elseif ($type === 'Q') {
         $scopeFilters['qoshimcha_oquv_reja_id'] = $yuklama_id;
         $allowedRows = $db->get_qoshimcha_oquv_taqsimotlar($scopeFilters);
+    } elseif ($type === 'M') {
+        $scopeFilters['maxsus_oquv_reja_id'] = $yuklama_id;
+        $allowedRows = $db->get_maxsus_oquv_taqsimotlar($scopeFilters);
     } else {
         $allowedRows = [];
     }
@@ -86,6 +89,11 @@ if ($success) {
         if (!empty($row[0]['yonalish_id'])) {
             $yonalishId = (int)$row[0]['yonalish_id'];
         }
+    } elseif ($type === 'M') {
+        $row = $db->get_data_by_table_all('maxsus_oquv_reja_soatlar ms JOIN maxsus_oquv_rejalar mr ON mr.id = ms.maxsus_reja_id', "WHERE ms.id = {$yuklama_id} LIMIT 1");
+        if (!empty($row[0]['yonalish_id'])) {
+            $yonalishId = (int)$row[0]['yonalish_id'];
+        }
     }
 
     if ($yonalishId > 0) {
@@ -101,4 +109,3 @@ echo json_encode([
     'success' => $success,
     'message' => $success ? 'Taqsimot saqlandi' : 'Saqlashda xatolik'
 ]);
-
