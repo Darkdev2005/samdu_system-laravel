@@ -178,7 +178,7 @@ if (!function_exists('legacy_apply_kafedra_scope')) {
 }
 
 if (!function_exists('legacy_resolve_requested_kafedra_id')) {
-    function legacy_resolve_requested_kafedra_id($requestedKafedraId): int
+    function legacy_resolve_requested_kafedra_id(mixed $requestedKafedraId): int
     {
         if (legacy_is_kafedra_mudiri()) {
             return legacy_user_kafedra_id();
@@ -189,10 +189,10 @@ if (!function_exists('legacy_resolve_requested_kafedra_id')) {
 }
 
 if (!function_exists('legacy_current_kafedra_row')) {
-    function legacy_current_kafedra_row($db): ?array
+    function legacy_current_kafedra_row(Database $db): ?array
     {
         $kafedraId = legacy_user_kafedra_id();
-        if ($kafedraId <= 0 || !$db) {
+        if ($kafedraId <= 0) {
             return null;
         }
 
@@ -202,7 +202,7 @@ if (!function_exists('legacy_current_kafedra_row')) {
 }
 
 if (!function_exists('legacy_decode_formula_meta')) {
-    function legacy_decode_formula_meta($value): array
+    function legacy_decode_formula_meta(mixed $value): array
     {
         if (!is_string($value) || trim($value) === '') {
             return [];
@@ -247,7 +247,7 @@ if (!function_exists('legacy_qoshimcha_display_name')) {
 }
 
 if (!function_exists('legacy_can_access_teacher')) {
-    function legacy_can_access_teacher($db, int $teacherId): bool
+    function legacy_can_access_teacher(Database $db, int $teacherId): bool
     {
         if ($teacherId <= 0) {
             return false;
@@ -292,7 +292,7 @@ class Database{
     private $db_name = 'lm_db_laravel';
     private $username = 'root';
     private $password = '';
-    private $link;
+    private mysqli $link;
     private $auditTable = 'system_audit_logs';
     private $suppressQueryAudit = false;
     private $auditInProgress = false;
@@ -847,7 +847,7 @@ class Database{
         return (bool)preg_match('/(password|parol|token|secret|app_key|remember)/i', $key);
     }
 
-    private function sanitizeAuditValue($value)
+    private function sanitizeAuditValue(mixed $value): mixed
     {
         if (is_array($value)) {
             $clean = [];
@@ -872,7 +872,7 @@ class Database{
         return $value;
     }
 
-    private function encodeAuditPayload($payload): ?string
+    private function encodeAuditPayload(mixed $payload): ?string
     {
         if ($payload === null) {
             return null;
@@ -1094,7 +1094,7 @@ class Database{
         }
     }
 
-    public function query($query) {
+    public function query(string $query): mysqli_result|bool {
         $result = false;
         $errorMessage = null;
         $thrown = null;
@@ -1131,7 +1131,7 @@ class Database{
 
         return $result;
     }
-    public function get_data_by_table($table, $arr, $con = 'no'){
+    public function get_data_by_table(string $table, array $arr, string $con = 'no'): ?array {
         $sql = "SELECT * FROM ".$table. " WHERE ";
         $t = '';
         $i=0;
@@ -1159,7 +1159,7 @@ class Database{
         $fetch = mysqli_fetch_assoc($this->query($sql));
         return $fetch;
     }
-    public function get_data_by_table_all($table, $con = 'no'){
+    public function get_data_by_table_all(string $table, string $con = 'no'): array {
         $sql = "SELECT * FROM ".$table;
         if ($con != 'no'){
             $sql .= " ".$con;
@@ -1174,7 +1174,7 @@ class Database{
         }
         return $data;
     }
-    public function insert($table, $arr){
+    public function insert(string $table, array $arr): int {
         $sql = "INSERT INTO ".$table. " ";
         $t1 = '';
         $t2 = '';
@@ -1222,7 +1222,7 @@ class Database{
             return 0;
         }
     }
-    public function update($table, $arr, $con = 'no'){
+    public function update(string $table, array $arr, string $con = 'no'): bool {
         $sql = "UPDATE ".$table. " SET ";
         $t = '';
         $i=0;
@@ -1264,7 +1264,7 @@ class Database{
         return $result;
     }
 
-    public function delete($table, $con = 'no'){
+    public function delete(string $table, string $con = 'no'): bool {
         $sql = "DELETE FROM ".$table;
         if ($con != 'no'){
             $sql .= " WHERE ".$con;
@@ -1692,7 +1692,7 @@ class Database{
         }
         return $data;
     }
-    public function get_oqtuvchi_total_hours($teacher_id){
+    public function get_oqtuvchi_total_hours(int $teacher_id): array {
         $sql = "SELECT 
             t.id,
             t.soat,
@@ -1742,7 +1742,7 @@ class Database{
         }
         return $data;
     }
-    public function get_talaba_soni($semestr_id){
+    public function get_talaba_soni(int $semestr_id): ?array {
         $sql = "SELECT COALESCE(SUM(g.soni),0) AS talabalar_soni
         FROM guruhlar g
         WHERE g.yonalish_id = (
@@ -1752,7 +1752,7 @@ class Database{
         $data = mysqli_fetch_assoc($result);
         return $data;
     }
-    public function get_taqsimot_by_teacher($oquvreja_id, $type){
+    public function get_taqsimot_by_teacher(int $oquvreja_id, string $type): array {
         $sql = "SELECT t.id, t.soat as soat_soni, t.type, o.fio, o.lavozim, t.oquv_reja_id
         FROM `taqsimotlar` t 
         JOIN oqituvchilar o ON o.id = t.teacher_id
@@ -2611,7 +2611,19 @@ class Database{
                 qf.qoshimcha_dars_id,
                 qf.subtype_code,
                 qf.formula_meta,
-                qdt.name AS fan_nomi,  
+                CASE
+                    WHEN qdt.id = 1 THEN
+                        CASE
+                            WHEN TRIM(COALESCE(qf.fan_name, '')) <> '' THEN CONCAT(qf.fan_name, ' (Kurs ishi)')
+                            ELSE qdt.name
+                        END
+                    WHEN qdt.id = 2 THEN
+                        CASE
+                            WHEN TRIM(COALESCE(qf.fan_name, '')) <> '' THEN CONCAT(qf.fan_name, ' (Kurs loyihasi)')
+                            ELSE qdt.name
+                        END
+                    ELSE qdt.name
+                END AS fan_nomi,
                 y.name AS talim_yonalishi,
                 y.code AS yonalish_code,
                 k.name AS kafedra_nomi,

@@ -208,7 +208,8 @@ if ($magistrDoktorantOnly) {
                                 $oraliq = round($talaba * 0.2);
                             }
                         }
-                        $yakuniy = $talaba > 0 ? round($talaba * 0.3) : 0;
+                        // Auditoriya soatlari kiritilmagan bo'lsa yakuniy nazorat hisoblanmaydi.
+                        $yakuniy = ($talaba > 0 && $auditoriyaSoat > 0) ? round($talaba * 0.3) : 0;
                         // Izoh: Kurs ishi/kurs loyihasi faqat qo'shimcha o'quv rejadan kiritilganda ko'rsatiladi.
                         $kursIshi = 0;
                         $kursLoyiha = 0;
