@@ -48,10 +48,22 @@ class LoginRequest extends FormRequest
             ->where('username', (string) $this->input('username'))
             ->first();
 
-        $password = (string) ($user?->password ?? '');
-        $isValid = $password !== ''
-            && (hash_equals($password, md5((string) $this->input('password')))
-                || Hash::check((string) $this->input('password'), $password));
+        $plainPassword = (string) $this->input('password');
+        $storedHash = (string) ($user?->password ?? '');
+        $isLegacyMd5 = preg_match('/^[a-f0-9]{32}$/i', $storedHash) === 1;
+
+        $isValid = false;
+        if ($storedHash !== '' && $plainPassword !== '') {
+            if ($isLegacyMd5) {
+                $isValid = hash_equals(strtolower($storedHash), md5($plainPassword));
+            } else {
+                try {
+                    $isValid = Hash::check($plainPassword, $storedHash);
+                } catch (\RuntimeException $e) {
+                    $isValid = false;
+                }
+            }
+        }
 
         if (! $user || ! $isValid) {
             RateLimiter::hit($this->throttleKey());
@@ -67,6 +79,14 @@ class LoginRequest extends FormRequest
             throw ValidationException::withMessages([
                 'username' => "Foydalanuvchi vaqtincha faolsizlantirilgan.",
             ]);
+        }
+
+        // Legacy MD5 hash bilan kirilgan foydalanuvchini birinchi muvaffaqiyatli login paytida
+        // xavfsiz hashga ko'chiramiz.
+        if ($isLegacyMd5) {
+            $user->forceFill([
+                'password' => Hash::make($plainPassword),
+            ])->save();
         }
 
         Auth::login($user, $this->boolean('remember'));
