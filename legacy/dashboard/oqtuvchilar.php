@@ -14,6 +14,47 @@
     $ilmiy_unvonlar = $db->get_data_by_table_all('ilmiy_unvonlar');
     $ilmiy_darajalar = $db->get_data_by_table_all('ilmiy_darajalar');
 
+    $normalizeAcademicName = static function (string $value): string {
+        $value = trim($value);
+        $value = str_replace(['’', '‘', 'ʼ', 'ʻ', '`'], "'", $value);
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    };
+
+    $formatIlmiyUnvonLabel = static function (string $name) use ($normalizeAcademicName): string {
+        $normalized = $normalizeAcademicName($name);
+        if ($normalized === 'assistent') {
+            return 'Unvonsiz';
+        }
+        return $name;
+    };
+
+    $formatIlmiyDarajaLabel = static function (string $name) use ($normalizeAcademicName): string {
+        $normalized = $normalizeAcademicName($name);
+        if ($normalized === 'magistr') {
+            return 'Ilmiy darajasiz';
+        }
+        return $name;
+    };
+
+    // Izoh: "Akademik" unvoni ro'yxatda bo'lmasa, avtomatik qo'shamiz.
+    $hasAkademikUnvon = false;
+    foreach ($ilmiy_unvonlar as $u) {
+        if ($normalizeAcademicName((string)($u['name'] ?? '')) === 'akademik') {
+            $hasAkademikUnvon = true;
+            break;
+        }
+    }
+    if (!$hasAkademikUnvon) {
+        $insertAkademikId = (int)$db->insert('ilmiy_unvonlar', ['name' => 'Akademik']);
+        if ($insertAkademikId > 0) {
+            $ilmiy_unvonlar[] = [
+                'id' => $insertAkademikId,
+                'name' => 'Akademik'
+            ];
+        }
+    }
+
     $normalizeIshturName = static function (string $value): string {
         $value = trim($value);
         $value = str_replace(['’', '‘', 'ʼ', 'ʻ', '`'], "'", $value);
@@ -131,6 +172,56 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+    <style>
+        .teacher-stats-wrap {
+            margin-bottom: 18px;
+        }
+        .teacher-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .teacher-stat-card {
+            border: 1px solid #e6e8ef;
+            border-radius: 12px;
+            background: #fff;
+            padding: 14px;
+        }
+        .teacher-stat-card h3 {
+            margin: 0 0 10px;
+            font-size: 22px;
+            font-weight: 700;
+        }
+        .teacher-stat-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .teacher-stat-table th,
+        .teacher-stat-table td {
+            border-bottom: 1px solid #eef1f6;
+            padding: 9px 4px;
+            font-size: 16px;
+        }
+        .teacher-stat-table th {
+            text-align: left;
+            font-weight: 700;
+        }
+        .teacher-stat-table td.numeric,
+        .teacher-stat-table th.numeric {
+            text-align: right;
+            white-space: nowrap;
+        }
+        .teacher-stat-empty {
+            margin-top: 8px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        @media (max-width: 1100px) {
+            .teacher-stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
 
@@ -188,6 +279,9 @@
                             <i class="fas fa-redo me-2"></i>Tozalash
                         </button>
                     </div>
+                </div>
+                <div class="teacher-stats-wrap" id="oqituvchilarStats">
+                    <!-- AJAX orqali statistika -->
                 </div>
                 <div class="table-container">
                     <div class="table-header">
@@ -303,7 +397,7 @@
                             <option value="">Tanlang</option>
                             <?php foreach ($ilmiy_unvonlar as $u): ?>
                                 <option value="<?= $u['id'] ?>">
-                                    <?= htmlspecialchars($u['name']) ?>
+                                    <?= htmlspecialchars($formatIlmiyUnvonLabel((string)($u['name'] ?? ''))) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -315,7 +409,7 @@
                             <option value="">Tanlang</option>
                             <?php foreach ($ilmiy_darajalar as $d): ?>
                                 <option value="<?= $d['id'] ?>">
-                                    <?= htmlspecialchars($d['name']) ?>
+                                    <?= htmlspecialchars($formatIlmiyDarajaLabel((string)($d['name'] ?? ''))) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -386,6 +480,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             initModal();
             loadOqituvchilar();
+            loadOqituvchilarStats();
             initSearch();
         });
         $('#fakultetSelect').on('change', function() {
@@ -397,43 +492,31 @@
             const kafedraFilter = $('#kafedraFilter');
             kafedraFilter.empty().append('<option value="">Barcha kafedralar</option>');
 
-            const filteredKafedralar = allKafedralar.filter(k => k.fakultet_id == fakultetId);
+            const filteredKafedralar = fakultetId
+                ? allKafedralar.filter(k => String(k.fakultet_id) === String(fakultetId))
+                : allKafedralar;
             filteredKafedralar.forEach(k => {
                 kafedraFilter.append(
                     `<option value="${k.id}">${k.name}</option>`
                 );
             });
         });
-        function applyFilters() {
+        function collectCurrentFilters() {
+            const formData = new FormData();
             const fakultetId = $('#fakultetFilter').val();
-            const kafedraId  = $('#kafedraFilter').val();
+            const kafedraId = $('#kafedraFilter').val();
+            if (fakultetId) {
+                formData.append('fakultet_id', fakultetId);
+            }
+            if (kafedraId) {
+                formData.append('kafedra_id', kafedraId);
+            }
+            return formData;
+        }
 
-            $('#oqituvchilarTable tr').each(function () {
-                const row = $(this);
-
-                const rowFakultet = row.find('td:eq(2)').text().trim();
-                const rowKafedra  = row.find('td:eq(3)').text().trim();
-
-                let show = true;
-
-                if (fakultetId) {
-                    const selectedFakultetText =
-                        $('#fakultetFilter option:selected').text().trim();
-                    if (rowFakultet !== selectedFakultetText) {
-                        show = false;
-                    }
-                }
-
-                if (kafedraId) {
-                    const selectedKafedraText =
-                        $('#kafedraFilter option:selected').text().trim();
-                    if (rowKafedra !== selectedKafedraText) {
-                        show = false;
-                    }
-                }
-
-                row.toggle(show);
-            });
+        function applyFilters() {
+            loadOqituvchilar();
+            loadOqituvchilarStats();
         }
 	        function resetFilters() {
 	            if (scopeLocked) {
@@ -443,16 +526,35 @@
 	                $('#fakultetFilter').val(null).trigger('change');
 	                $('#kafedraFilter').val(null).trigger('change');
 	            }
-	            $('#oqituvchilarTable tr').show();
+	            loadOqituvchilar();
+	            loadOqituvchilarStats();
 	        }
         function loadOqituvchilar() {
-            fetch('get/oqituvchilar_table.php')
+            fetch('get/oqituvchilar_table.php', {
+                method: 'POST',
+                body: collectCurrentFilters()
+            })
                 .then(res => res.text())
                 .then(html => {
                     const table = document.getElementById('oqituvchilarTable');
                     table.innerHTML = html;
                     document.getElementById('totalOqituvchilar').textContent =
                         table.children.length + ' ta';
+                });
+        }
+
+        function loadOqituvchilarStats() {
+            fetch('get/oqituvchilar_stats.php', {
+                method: 'POST',
+                body: collectCurrentFilters()
+            })
+                .then(res => res.text())
+                .then(html => {
+                    document.getElementById('oqituvchilarStats').innerHTML = html;
+                })
+                .catch(() => {
+                    document.getElementById('oqituvchilarStats').innerHTML =
+                        '<div class="teacher-stat-empty">Statistikani yuklashda xatolik yuz berdi.</div>';
                 });
         }
 
@@ -540,6 +642,7 @@
                         });
                         if (data.success) {
                             loadOqituvchilar();
+                            loadOqituvchilarStats();
                         }
                     })
                     .catch(() => {
@@ -609,6 +712,7 @@
                     $('[name="ilmiy_daraja_id"]').val('');
                     document.getElementById('oqituvchiModal').classList.remove('show');
                     loadOqituvchilar();
+                    loadOqituvchilarStats();
                 } else {
                     Toast.fire({ icon: 'error', title: r.message });
                 }
