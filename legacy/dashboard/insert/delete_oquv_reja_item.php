@@ -105,6 +105,7 @@ try {
         $ok = $ok && $db->query("DELETE FROM chet_tili_oquv_guruhlar WHERE fan_id = $fanId");
         $ok = $ok && $db->query("DELETE FROM chet_tili_talablar WHERE fan_id = $fanId");
         $ok = $ok && $db->query("DELETE FROM chet_tili_guruhlar WHERE fan_id = $fanId");
+        $ok = $ok && $db->query("DELETE FROM chet_tili_biriktirilgan_guruhlar WHERE fan_id = $fanId");
     }
 
     if ($ok) {

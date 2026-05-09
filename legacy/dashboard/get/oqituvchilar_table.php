@@ -35,6 +35,27 @@
         }
         return $name;
     };
+
+    $normalizeAcademicName = static function (string $value): string {
+        $value = trim($value);
+        $value = str_replace(['вЂ™', 'вЂ', 'Кј', 'К»', '`'], "'", $value);
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    };
+
+    $formatIlmiyUnvonLabel = static function (string $name) use ($normalizeAcademicName): string {
+        if ($normalizeAcademicName($name) === 'assistent') {
+            return 'Unvonsiz';
+        }
+        return $name;
+    };
+
+    $formatIlmiyDarajaLabel = static function (string $name) use ($normalizeAcademicName): string {
+        if ($normalizeAcademicName($name) === 'magistr') {
+            return 'Ilmiy darajasiz';
+        }
+        return $name;
+    };
 ?>
 <?php foreach ($oqituvchilar as $oqituvchi): ?>
     <tr>
@@ -45,8 +66,8 @@
         <td><?php echo htmlspecialchars($oqituvchi['lavozim']); ?></td>
         <td><?php echo htmlspecialchars($oqituvchi['stavka']); ?></td>
         <td><?php echo htmlspecialchars($formatIshturLabel((string)($oqituvchi['ishtur_name'] ?? ''))); ?></td>
-        <td><?php echo htmlspecialchars($oqituvchi['ilmiy_unvon_name']); ?></td>
-        <td><?php echo htmlspecialchars($oqituvchi['ilmiy_daraja_name']); ?></td>
+        <td><?php echo htmlspecialchars($formatIlmiyUnvonLabel((string)($oqituvchi['ilmiy_unvon_name'] ?? ''))); ?></td>
+        <td><?php echo htmlspecialchars($formatIlmiyDarajaLabel((string)($oqituvchi['ilmiy_daraja_name'] ?? ''))); ?></td>
         <td>
             <button
                 class="btn btn-sm btn-warning editOqituvchiBtn"

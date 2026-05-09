@@ -161,6 +161,12 @@ $roleLabel = function_exists('legacy_user_role_label') ? legacy_user_role_label(
                                 </a>
                             </li>
                             <li>
+                                <a href="chet-tili-guruh-birlashtirish.php">
+                                    <i class="fas fa-object-group"></i>
+                                    <span>Chet tili guruhlarini birlashtirish</span>
+                                </a>
+                            </li>
+                            <li>
                                 <a href="qoshimcha-oquv-reja-yaratish.php">
                                     <i class="fas fa-calendar-plus"></i>
                                     <span>Qo‘shimcha reja yaratish</span>

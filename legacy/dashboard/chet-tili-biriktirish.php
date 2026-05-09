@@ -2,6 +2,14 @@
 // Izoh: Chet tili fanlarini yo'nalish + semestr bo'yicha biriktirish sahifasi.
 include_once 'config.php';
 $db = new Database();
+$forcedTabId = '';
+if (isset($forceChetTiliTab) && is_string($forceChetTiliTab)) {
+    $candidateTab = trim($forceChetTiliTab);
+    $allowedTabs = ['chet-tab-yaratish', 'chet-tab-biriktirish', 'chet-tab-guruh-birlashtirish'];
+    if (in_array($candidateTab, $allowedTabs, true)) {
+        $forcedTabId = $candidateTab;
+    }
+}
 
 $fanOptionsBySemestr = [];
 // Izoh: Chet tili fanlari (tanlov_fan = 3) semestr_id bo'yicha ajratib olinadi.
@@ -59,6 +67,18 @@ $semestrlar = $db->get_semestrlar();
 $fakultetlar = $db->get_data_by_table_all('fakultetlar');
 $yonalishlar = $db->get_data_by_table_all('yonalishlar');
 $kafedralar = $db->get_data_by_table_all('kafedralar');
+$fakultetlarMap = [];
+foreach ($fakultetlar as $fakultetRow) {
+    $fakultetId = (int)($fakultetRow['id'] ?? 0);
+    if ($fakultetId <= 0 || isset($fakultetlarMap[$fakultetId])) {
+        continue;
+    }
+
+    $fakultetlarMap[$fakultetId] = [
+        'id' => $fakultetId,
+        'name' => (string)($fakultetRow['name'] ?? ''),
+    ];
+}
 $kafedralarSimple = array_map(static function ($row): array {
     return [
         'id' => (int)($row['id'] ?? 0),
@@ -71,6 +91,47 @@ if ($kafedralarJson === false) {
     $kafedralarJson = '[]';
 }
 $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+$normalizeLanguageName = static function (string $value): string {
+    $normalized = trim($value);
+    if ($normalized === '') {
+        return '';
+    }
+
+    if (function_exists('mb_strtolower')) {
+        $normalized = (string)@mb_strtolower($normalized, 'UTF-8');
+    } else {
+        $normalized = strtolower($normalized);
+    }
+
+    $normalized = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $normalized) ?? $normalized;
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    $normalized = trim($normalized);
+    $normalized = preg_replace('/\b(chet|xorijiy|foreign)\b/u', ' ', $normalized) ?? $normalized;
+    $normalized = preg_replace('/\btili?\b/u', ' ', $normalized) ?? $normalized;
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    $normalized = trim($normalized);
+
+    if ($normalized === '') {
+        return 'xorijiy_til';
+    }
+
+    return $normalized;
+};
+$academicYearLabel = static function (string $value): string {
+    $trimmed = trim($value);
+    if ($trimmed === '') {
+        return '';
+    }
+
+    if (preg_match('/(\d{4})/', $trimmed, $matches)) {
+        $startYear = (int)$matches[1];
+        if ($startYear > 0) {
+            return $startYear . '-' . ($startYear + 1);
+        }
+    }
+
+    return $trimmed;
+};
 $makeShortCode = static function (string $name): string {
     $words = preg_split('/\s+/', trim($name)) ?: [];
     $short = '';
@@ -239,6 +300,425 @@ if ($guruhResult) {
         $row['yonalishlar'] = $yonalishList;
         $guruhRows[] = $row;
     }
+}
+
+// Izoh: Til guruhlarini qo'lda biriktirish uchun direction -> guruhlar xaritasi.
+$mergeSelectedMap = [];
+$mergeSelectedLanguageMap = [];
+$mergeSelectedGroupMap = [];
+$mergeSelectedRes = $db->query("
+        SELECT
+            bg.semestr_id,
+            s.semestr AS semestr_num,
+            bg.guruh_id,
+            bg.fan_id,
+            f.fan_name
+        FROM chet_tili_biriktirilgan_guruhlar bg
+        JOIN semestrlar s ON s.id = bg.semestr_id
+        JOIN fanlar f ON f.id = bg.fan_id
+    ");
+if ($mergeSelectedRes) {
+    while ($row = mysqli_fetch_assoc($mergeSelectedRes)) {
+        $semestrId = (int)($row['semestr_id'] ?? 0);
+        $semestrNum = (int)($row['semestr_num'] ?? 0);
+        $guruhId = (int)($row['guruh_id'] ?? 0);
+        $fanId = (int)($row['fan_id'] ?? 0);
+        if ($semestrId <= 0 || $guruhId <= 0 || $fanId <= 0) {
+            continue;
+        }
+        $mergeSelectedMap[$semestrId . '|' . $guruhId . '|' . $fanId] = true;
+        if ($semestrNum > 0) {
+            $mergeSelectedGroupMap[$semestrNum . '|' . $guruhId] = true;
+        }
+
+        $fanNameKey = $normalizeLanguageName((string)($row['fan_name'] ?? ''));
+        if ($semestrNum > 0 && $fanNameKey !== '') {
+            $mergeSelectedLanguageMap[$semestrNum . '|' . $guruhId . '|' . $fanNameKey] = true;
+        }
+    }
+}
+
+$mergeCards = [];
+$mergeSelectedCount = 0;
+$mergeSelectedStudents = 0;
+$mergeSelectedUniqueKeys = [];
+$mergeVisibleLimit = 30;
+$mergeFilterFakultetMap = [];
+$mergeFilterYonalishMap = [];
+$mergeFilterSemestrMap = [];
+$mergeSourceRes = $db->query("
+        SELECT
+            t.semestr_id,
+            s.semestr AS semestr_num,
+            y.id AS yonalish_id,
+            y.name AS yonalish_name,
+            y.kirish_yili,
+            y.fakultet_id,
+            y.talim_shakli_id,
+            tsh.name AS talim_shakli_name,
+            g.id AS guruh_id,
+            g.guruh_nomer,
+            f.id AS fan_id,
+            f.fan_code,
+            f.fan_name,
+            k.name AS kafedra_name,
+            SUM(t.talabalar_soni) AS talabalar_soni
+        FROM chet_tili_talablar t
+        JOIN semestrlar s ON s.id = t.semestr_id
+        JOIN guruhlar g ON g.id = t.guruh_id
+        JOIN yonalishlar y ON y.id = g.yonalish_id
+        LEFT JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
+        JOIN fanlar f ON f.id = t.fan_id
+        LEFT JOIN kafedralar k ON k.id = f.kafedra_id
+        WHERE f.tanlov_fan = 3
+        GROUP BY
+            t.semestr_id,
+            s.semestr,
+            y.id,
+            y.name,
+            y.kirish_yili,
+            y.fakultet_id,
+            y.talim_shakli_id,
+            tsh.name,
+            g.id,
+            g.guruh_nomer,
+            f.id,
+            f.fan_code,
+            f.fan_name,
+            k.name
+        ORDER BY s.semestr, y.name, y.kirish_yili, g.guruh_nomer, f.fan_code, f.fan_name
+    ");
+if ($mergeSourceRes) {
+    while ($row = mysqli_fetch_assoc($mergeSourceRes)) {
+        $semestrId = (int)($row['semestr_id'] ?? 0);
+        $yonalishId = (int)($row['yonalish_id'] ?? 0);
+        $guruhId = (int)($row['guruh_id'] ?? 0);
+        $fanId = (int)($row['fan_id'] ?? 0);
+        if ($semestrId <= 0 || $yonalishId <= 0 || $guruhId <= 0 || $fanId <= 0) {
+            continue;
+        }
+
+        $cardKey = $semestrId . '|' . $yonalishId;
+        if (!isset($mergeCards[$cardKey])) {
+            $yonalishLabel = trim((string)($row['yonalish_name'] ?? ''));
+            $kirishYili = trim((string)($row['kirish_yili'] ?? ''));
+            $semestrNum = (int)($row['semestr_num'] ?? 0);
+            $fakultetId = (int)($row['fakultet_id'] ?? 0);
+            $fakultetName = trim((string)($fakultetlarMap[$fakultetId]['name'] ?? ''));
+            $talimShakliId = (int)($row['talim_shakli_id'] ?? 0);
+            $talimShakliName = trim((string)($row['talim_shakli_name'] ?? ''));
+            $kurs = (int)floor(($semestrNum + 1) / 2);
+            if ($fakultetName === '') {
+                $fakultetName = 'Fakultet belgilanmagan';
+            }
+            $mergeCards[$cardKey] = [
+                'semestr_id' => $semestrId,
+                'semestr_num' => $semestrNum,
+                'kurs' => $kurs,
+                'yonalish_id' => $yonalishId,
+                'yonalish_label' => $yonalishLabel,
+                'kirish_yili' => $kirishYili,
+                'fakultet_id' => $fakultetId,
+                'fakultet_name' => $fakultetName,
+                'talim_shakli_id' => $talimShakliId,
+                'talim_shakli_name' => $talimShakliName,
+                'rows' => [],
+                'selected_count' => 0,
+                'selected_students' => 0,
+                'total_students' => 0,
+            ];
+
+            if (!isset($mergeFilterFakultetMap[$fakultetId])) {
+                $mergeFilterFakultetMap[$fakultetId] = [
+                    'id' => $fakultetId,
+                    'name' => $fakultetName,
+                ];
+            }
+            if (!isset($mergeFilterYonalishMap[$yonalishId])) {
+                $mergeFilterYonalishMap[$yonalishId] = [
+                    'id' => $yonalishId,
+                    'name' => $yonalishLabel,
+                    'kirish_yili' => $kirishYili,
+                    'fakultet_id' => $fakultetId,
+                    'fakultet_name' => $fakultetName,
+                ];
+            }
+            if (!isset($mergeFilterSemestrMap[$semestrId])) {
+                $mergeFilterSemestrMap[$semestrId] = [
+                    'id' => $semestrId,
+                    'semestr_num' => $semestrNum,
+                    'yonalish_id' => $yonalishId,
+                    'yonalish_name' => $yonalishLabel,
+                    'kirish_yili' => $kirishYili,
+                    'fakultet_id' => $fakultetId,
+                    'fakultet_name' => $fakultetName,
+                ];
+            }
+        }
+
+        $rowKey = $semestrId . '|' . $guruhId . '|' . $fanId;
+        $talabalarSoni = (int)($row['talabalar_soni'] ?? 0);
+        $semestrNum = (int)($row['semestr_num'] ?? 0);
+        $fanNameKey = $normalizeLanguageName((string)($row['fan_name'] ?? ''));
+        $languageRowKey = $semestrNum . '|' . $guruhId . '|' . $fanNameKey;
+        $mergeRowKey = $languageRowKey;
+        $groupSelectionKey = $semestrNum . '|' . $guruhId;
+
+        if (isset($mergeSelectedGroupMap[$groupSelectionKey])) {
+            // Izoh: Avval biriktirilgan guruhlar qayta checkbox ro'yxatida ko'rinmaydi.
+            continue;
+        }
+
+        $selected = isset($mergeSelectedMap[$rowKey]) || isset($mergeSelectedLanguageMap[$languageRowKey]);
+        if ($selected && isset($mergeSelectedUniqueKeys[$mergeRowKey])) {
+            $selected = false;
+        } elseif ($selected) {
+            $mergeSelectedUniqueKeys[$mergeRowKey] = true;
+        }
+
+        // Izoh: Oldin birlashtirilgan guruhlar yana tanlovda ko'rinmasin.
+        if ($selected) {
+            continue;
+        }
+
+        $mergeCards[$cardKey]['total_students'] += $talabalarSoni;
+        $mergeCards[$cardKey]['rows'][] = [
+            'semestr_id' => $semestrId,
+            'yonalish_id' => $yonalishId,
+            'guruh_id' => $guruhId,
+            'fan_id' => $fanId,
+            'fan_code' => trim((string)($row['fan_code'] ?? '')),
+            'fan_name' => trim((string)($row['fan_name'] ?? '')),
+            'language_key' => $fanNameKey,
+            'kafedra_name' => trim((string)($row['kafedra_name'] ?? '')),
+            'guruh_nomer' => trim((string)($row['guruh_nomer'] ?? '')),
+            'talabalar_soni' => $talabalarSoni,
+            'selected' => false,
+            'merge_row_key' => $mergeRowKey,
+        ];
+    }
+}
+
+$mergeCards = array_values($mergeCards);
+usort($mergeCards, static function (array $a, array $b): int {
+    $aSem = (int)($a['semestr_num'] ?? 0);
+    $bSem = (int)($b['semestr_num'] ?? 0);
+    if ($aSem !== $bSem) {
+        return $aSem <=> $bSem;
+    }
+    return strcmp(
+        (string)($a['yonalish_label'] ?? ''),
+        (string)($b['yonalish_label'] ?? '')
+    );
+});
+
+$mergeAcademicYearOptionsMap = [];
+$mergeTalimShakliOptionsMap = [];
+$mergeKursOptionsMap = [];
+$mergeSemestrNumOptionsMap = [];
+foreach ($mergeCards as $card) {
+    $kirishYili = trim((string)($card['kirish_yili'] ?? ''));
+    if ($kirishYili !== '' && !isset($mergeAcademicYearOptionsMap[$kirishYili])) {
+        $mergeAcademicYearOptionsMap[$kirishYili] = [
+            'value' => $kirishYili,
+            'label' => $academicYearLabel($kirishYili),
+        ];
+    }
+
+    $talimShakliId = (int)($card['talim_shakli_id'] ?? 0);
+    $talimShakliName = trim((string)($card['talim_shakli_name'] ?? ''));
+    if ($talimShakliId > 0 && !isset($mergeTalimShakliOptionsMap[$talimShakliId])) {
+        $mergeTalimShakliOptionsMap[$talimShakliId] = [
+            'id' => $talimShakliId,
+            'name' => $talimShakliName !== '' ? $talimShakliName : 'Ta\'lim shakli belgilanmagan',
+        ];
+    }
+
+    $kurs = (int)($card['kurs'] ?? 0);
+    if ($kurs > 0 && !isset($mergeKursOptionsMap[$kurs])) {
+        $mergeKursOptionsMap[$kurs] = [
+            'value' => $kurs,
+            'label' => $kurs . '-kurs',
+        ];
+    }
+
+    $semestrNum = (int)($card['semestr_num'] ?? 0);
+    if ($semestrNum > 0 && !isset($mergeSemestrNumOptionsMap[$semestrNum])) {
+        $mergeSemestrNumOptionsMap[$semestrNum] = [
+            'value' => $semestrNum,
+            'label' => $semestrNum . '-semestr',
+        ];
+    }
+}
+
+$mergeAcademicYearOptions = array_values($mergeAcademicYearOptionsMap);
+usort($mergeAcademicYearOptions, static function (array $a, array $b): int {
+    return strcmp((string)($a['value'] ?? ''), (string)($b['value'] ?? ''));
+});
+$mergeTalimShakliOptions = array_values($mergeTalimShakliOptionsMap);
+usort($mergeTalimShakliOptions, static function (array $a, array $b): int {
+    return strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? ''));
+});
+$mergeKursOptions = array_values($mergeKursOptionsMap);
+usort($mergeKursOptions, static function (array $a, array $b): int {
+    return ((int)($a['value'] ?? 0)) <=> ((int)($b['value'] ?? 0));
+});
+$mergeSemestrNumOptions = array_values($mergeSemestrNumOptionsMap);
+usort($mergeSemestrNumOptions, static function (array $a, array $b): int {
+    return ((int)($a['value'] ?? 0)) <=> ((int)($b['value'] ?? 0));
+});
+
+$mergeFilterFakultetOptions = array_values($mergeFilterFakultetMap);
+usort($mergeFilterFakultetOptions, static function (array $a, array $b): int {
+    return strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? ''));
+});
+$mergeFilterYonalishOptions = array_values($mergeFilterYonalishMap);
+usort($mergeFilterYonalishOptions, static function (array $a, array $b): int {
+    $aName = (string)($a['name'] ?? '');
+    $bName = (string)($b['name'] ?? '');
+    $cmp = strcmp($aName, $bName);
+    if ($cmp !== 0) {
+        return $cmp;
+    }
+    return strcmp((string)($a['kirish_yili'] ?? ''), (string)($b['kirish_yili'] ?? ''));
+});
+$mergeFilterSemestrOptions = array_values($mergeFilterSemestrMap);
+usort($mergeFilterSemestrOptions, static function (array $a, array $b): int {
+    $aSem = (int)($a['semestr_num'] ?? 0);
+    $bSem = (int)($b['semestr_num'] ?? 0);
+    if ($aSem !== $bSem) {
+        return $aSem <=> $bSem;
+    }
+    $aName = (string)($a['yonalish_name'] ?? '');
+    $bName = (string)($b['yonalish_name'] ?? '');
+    $cmp = strcmp($aName, $bName);
+    if ($cmp !== 0) {
+        return $cmp;
+    }
+    return strcmp((string)($a['kirish_yili'] ?? ''), (string)($b['kirish_yili'] ?? ''));
+});
+
+// Izoh: Saqlangan qo'lda biriktirilgan guruhlar ro'yxati.
+$mergeSummaryRows = [];
+$mergeSummaryRes = $db->query("
+        SELECT
+            bg.semestr_id,
+            s.semestr AS semestr_num,
+            bg.fan_id,
+            f.fan_code,
+            f.fan_name,
+            bg.guruh_id,
+            bg.talabalar_soni,
+            y.name AS yonalish_name,
+            g.guruh_nomer
+        FROM chet_tili_biriktirilgan_guruhlar bg
+        JOIN semestrlar s ON s.id = bg.semestr_id
+        JOIN fanlar f ON f.id = bg.fan_id
+        JOIN guruhlar g ON g.id = bg.guruh_id
+        JOIN yonalishlar y ON y.id = bg.yonalish_id
+        ORDER BY s.semestr, f.fan_name, f.fan_code, y.name, g.guruh_nomer
+    ");
+if ($mergeSummaryRes) {
+    $summaryMap = [];
+    while ($row = mysqli_fetch_assoc($mergeSummaryRes)) {
+        $semestrNum = (int)($row['semestr_num'] ?? 0);
+        $fanName = trim((string)($row['fan_name'] ?? ''));
+        $languageKey = $normalizeLanguageName($fanName);
+        if ($semestrNum <= 0 || $languageKey === '') {
+            continue;
+        }
+
+        $summaryKey = $semestrNum . '|' . $languageKey;
+        if (!isset($summaryMap[$summaryKey])) {
+            $summaryMap[$summaryKey] = [
+                'semestr_id' => (int)($row['semestr_id'] ?? 0),
+                'semestr_num' => $semestrNum,
+                'fan_id' => (int)($row['fan_id'] ?? 0),
+                'fan_code' => trim((string)($row['fan_code'] ?? '')),
+                'fan_name' => $fanName,
+                'fan_ids' => [],
+                'fan_variants' => [],
+                'guruh_ids' => [],
+                'guruhlar' => [],
+                'talabalar_soni' => 0,
+            ];
+        }
+
+        $fanId = (int)($row['fan_id'] ?? 0);
+        if ($fanId > 0) {
+            $summaryMap[$summaryKey]['fan_ids'][$fanId] = true;
+        }
+
+        $variantText = trim((string)($row['fan_code'] ?? ''));
+        $variantName = trim((string)($row['fan_name'] ?? ''));
+        if ($variantName !== '') {
+            $variantText = $variantText !== '' ? ($variantText . ' - ' . $variantName) : $variantName;
+        }
+        if ($variantText !== '') {
+            $summaryMap[$summaryKey]['fan_variants'][$variantText] = true;
+        }
+
+        $guruhId = (int)($row['guruh_id'] ?? 0);
+        if ($guruhId > 0) {
+            $summaryMap[$summaryKey]['guruh_ids'][$guruhId] = true;
+        }
+
+        $guruhText = trim((string)($row['yonalish_name'] ?? ''));
+        $guruhNomer = trim((string)($row['guruh_nomer'] ?? ''));
+        if ($guruhText !== '' || $guruhNomer !== '') {
+            $fullText = $guruhText;
+            if ($guruhNomer !== '') {
+                $fullText = $fullText !== '' ? ($fullText . ' / ' . $guruhNomer) : $guruhNomer;
+            }
+            if ($fullText !== '') {
+                $summaryMap[$summaryKey]['guruhlar'][$fullText] = true;
+            }
+        }
+
+        $summaryMap[$summaryKey]['talabalar_soni'] += (int)($row['talabalar_soni'] ?? 0);
+    }
+
+    foreach ($summaryMap as $item) {
+        $guruhIds = array_map('intval', array_keys($item['guruh_ids']));
+        sort($guruhIds);
+        $sourceGroupCount = count($guruhIds);
+
+        $fanIds = array_map('intval', array_keys($item['fan_ids']));
+        sort($fanIds);
+
+        $fanVariants = array_keys($item['fan_variants']);
+        sort($fanVariants, SORT_NATURAL | SORT_FLAG_CASE);
+
+        $guruhlar = array_keys($item['guruhlar']);
+        sort($guruhlar, SORT_NATURAL | SORT_FLAG_CASE);
+
+        $guruhCount = 0;
+        if ($item['talabalar_soni'] > 0) {
+            $guruhCount = (int)ceil($item['talabalar_soni'] / 12);
+        } elseif (!empty($guruhIds)) {
+            $guruhCount = count($guruhIds);
+        }
+        if ($guruhCount <= 0) {
+            $guruhCount = 1;
+        }
+
+        $item['fan_ids'] = implode(',', $fanIds);
+        $item['fan_variants'] = implode(' | ', $fanVariants);
+        $item['guruh_ids'] = implode(',', $guruhIds);
+        $item['guruhlar'] = implode(' | ', $guruhlar);
+        $item['guruhlar_soni'] = $guruhCount;
+        $item['source_guruhlar_soni'] = $sourceGroupCount;
+        $mergeSummaryRows[] = $item;
+    }
+
+    usort($mergeSummaryRows, static function (array $a, array $b): int {
+        $aSem = (int)($a['semestr_num'] ?? 0);
+        $bSem = (int)($b['semestr_num'] ?? 0);
+        if ($aSem !== $bSem) {
+            return $aSem <=> $bSem;
+        }
+        return strcmp((string)($a['fan_name'] ?? ''), (string)($b['fan_name'] ?? ''));
+    });
 }
 
 // Izoh: 2-tab uchun bazaviy chet tili fanlari (kafedra_id = 0) va variantlari.
@@ -716,12 +1196,40 @@ foreach ($guruhRows as $rowIndex => $row) {
             gap: 12px;
         }
 
+        .merge-top-filters-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
         .top-filter-actions {
             display: flex;
             justify-content: flex-end;
             gap: 8px;
             margin-top: 12px;
             flex-wrap: wrap;
+        }
+
+        .merge-filter-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .merge-filter-note {
+            color: #334155;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .merge-filter-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         .guruh-list-empty {
@@ -804,14 +1312,85 @@ foreach ($guruhRows as $rowIndex => $row) {
             padding-right: 6px;
         }
 
+        .merge-direction-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .merge-direction-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #fff;
+            padding: 16px;
+        }
+
+        .merge-direction-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .merge-direction-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .merge-direction-meta {
+            margin-top: 4px;
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .merge-card-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .merge-selection-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #ecfdf5;
+            color: #166534;
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        .merge-row-selected {
+            background: #f0fdf4;
+        }
+
+        .merge-row-checked {
+            accent-color: #16a34a;
+        }
+
+        .merge-card-hidden {
+            display: none !important;
+        }
+
         @media (max-width: 1100px) {
             .top-filters-grid {
+                grid-template-columns: repeat(2, minmax(220px, 1fr));
+            }
+
+            .merge-top-filters-grid {
                 grid-template-columns: repeat(2, minmax(220px, 1fr));
             }
         }
 
         @media (max-width: 700px) {
             .top-filters-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .merge-top-filters-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -829,11 +1408,19 @@ foreach ($guruhRows as $rowIndex => $row) {
             <div class="content-container">
                 <!-- Izoh: Chet tili fanlari uchun 2 ta tab -->
                 <div class="tab-header">
-                    <button type="button" class="tab-btn active" data-tab="chet-tab-yaratish">Chet tili fanini yaratish</button>
-                    <button type="button" class="tab-btn" data-tab="chet-tab-biriktirish">Chet tilini biriktirish</button>
+                    <?php if ($forcedTabId === ''): ?>
+                        <button type="button" class="tab-btn active" data-tab="chet-tab-yaratish">Chet tili fanini yaratish</button>
+                        <button type="button" class="tab-btn" data-tab="chet-tab-biriktirish">Chet tilini biriktirish</button>
+                    <?php elseif ($forcedTabId === 'chet-tab-yaratish'): ?>
+                        <button type="button" class="tab-btn active" data-tab="chet-tab-yaratish">Chet tili fanini yaratish</button>
+                    <?php elseif ($forcedTabId === 'chet-tab-biriktirish'): ?>
+                        <button type="button" class="tab-btn active" data-tab="chet-tab-biriktirish">Chet tilini biriktirish</button>
+                    <?php else: ?>
+                        <button type="button" class="tab-btn active" data-tab="chet-tab-guruh-birlashtirish">Chet tili guruhlarini birlashtirish</button>
+                    <?php endif; ?>
                 </div>
 
-                <div id="chet-tab-yaratish" class="tab-content active">
+                <div id="chet-tab-yaratish" class="tab-content <?php echo ($forcedTabId === '' || $forcedTabId === 'chet-tab-yaratish') ? 'active' : ''; ?>">
                     <form id="chetTiliYaratishForm" class="card">
                         <h3 class="section-title">Umumiy ma'lumot</h3>
                         <div class="top-filters-grid">
@@ -975,7 +1562,7 @@ foreach ($guruhRows as $rowIndex => $row) {
                     </form>
                 </div>
 
-                <div id="chet-tab-biriktirish" class="tab-content">
+                <div id="chet-tab-biriktirish" class="tab-content <?php echo $forcedTabId === 'chet-tab-biriktirish' ? 'active' : ''; ?>">
                     <form id="chetBiriktirishForm" class="card">
                         <h3 class="section-title">Chet tilini guruhlar kesimida biriktirish</h3>
                         <div class="top-filters-grid">
@@ -1120,6 +1707,308 @@ foreach ($guruhRows as $rowIndex => $row) {
                     </div>
 
                 </div>
+
+                <?php if ($forcedTabId === 'chet-tab-guruh-birlashtirish'): ?>
+                <div id="chet-tab-guruh-birlashtirish" class="tab-content active">
+                    <form id="chetGuruhBirlashtirishForm" class="card">
+                        <h3 class="section-title">Chet tili guruhlarini birlashtirish</h3>
+                        <div class="detail-meta" style="margin-bottom: 12px;">
+                            Yo'nalishlar ichidagi til guruhlarini checkbox orqali tanlang. Har bir belgilangan guruh yuklamada 1 ta kichik guruh hisoblanadi.
+                        </div>
+                        <div class="card" style="padding: 14px; margin-bottom: 12px; background: #f8fafc;">
+                            <h4 class="section-title" style="margin-bottom: 8px;">Umumiy ma'lumot</h4>
+                            <div class="detail-meta" style="margin-bottom: 12px;">
+                                Til guruhlarini birlashtirish uchun kerakli filtrlardan foydalaning.
+                            </div>
+                            <div class="merge-top-filters-grid">
+                                <div class="form-group">
+                                    <label>O'quv yili</label>
+                                    <select class="form-control" id="mergeAcademicYearFilter">
+                                        <option value="">Barcha o'quv yillari</option>
+                                        <?php foreach ($mergeAcademicYearOptions as $item): ?>
+                                            <option value="<?php echo $h((string)($item['value'] ?? '')); ?>">
+                                                <?php echo $h((string)($item['label'] ?? '')); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Yo'nalish(lar)</label>
+                                    <select class="form-control" id="mergeYonalishFilter" multiple="multiple" data-placeholder="Yo'nalish(lar)ni tanlang">
+                                        <?php foreach ($mergeFilterYonalishOptions as $item): ?>
+                                            <?php
+                                                $label = trim((string)($item['name'] ?? ''));
+                                                $kirishYili = trim((string)($item['kirish_yili'] ?? ''));
+                                                if ($kirishYili !== '') {
+                                                    $label .= ' - ' . $kirishYili;
+                                                }
+                                            ?>
+                                            <option value="<?php echo (int)($item['id'] ?? 0); ?>">
+                                                <?php echo $h($label); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Ta'lim shakli</label>
+                                    <select class="form-control" id="mergeTalimShakliFilter">
+                                        <option value="">Barcha ta'lim shakllari</option>
+                                        <?php foreach ($mergeTalimShakliOptions as $item): ?>
+                                            <option value="<?php echo (int)($item['id'] ?? 0); ?>">
+                                                <?php echo $h((string)($item['name'] ?? '')); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Kurs</label>
+                                    <select class="form-control" id="mergeKursFilter">
+                                        <option value="">Barcha kurslar</option>
+                                        <?php foreach ($mergeKursOptions as $item): ?>
+                                            <option value="<?php echo (int)($item['value'] ?? 0); ?>">
+                                                <?php echo (int)($item['value'] ?? 0); ?>-kurs
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Semestr</label>
+                                    <select class="form-control" id="mergeSemestrNumFilter">
+                                        <option value="">Barcha semestrlar</option>
+                                        <?php foreach ($mergeSemestrNumOptions as $item): ?>
+                                            <option value="<?php echo (int)($item['value'] ?? 0); ?>">
+                                                <?php echo (int)($item['value'] ?? 0); ?>-semestr
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="merge-filter-actions">
+                                <div class="merge-filter-note" id="mergeFilterNote">
+                                    <?php echo count($mergeCards); ?> ta yo'nalish mos keldi
+                                </div>
+                                <div class="merge-filter-buttons">
+                                    <button type="button" class="btn btn-primary" id="applyMergeFiltersBtn">
+                                        <i class="fas fa-filter"></i> Filtrlash
+                                    </button>
+                                    <button type="button" class="btn btn-light" id="resetMergeFiltersBtn">
+                                        <i class="fas fa-eraser"></i> Tozalash
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="matrix-help" style="margin-top: 10px;">
+                                Default holatda birinchi <?php echo (int)$mergeVisibleLimit; ?> ta yo'nalish ko'rsatiladi. Qolganlari filtr orqali topiladi.
+                            </div>
+                        </div>
+
+                        <div class="top-filter-actions" style="justify-content: flex-start; margin-top: 0; margin-bottom: 12px;">
+                            <div class="merge-selection-badge">
+                                <i class="fas fa-check-square"></i>
+                                <span>Tanlangan guruhlar: <strong id="mergeSelectedCountBadge"><?php echo (int)$mergeSelectedCount; ?></strong> ta</span>
+                            </div>
+                            <div class="merge-selection-badge">
+                                <i class="fas fa-users"></i>
+                                <span>Talabalar yig'indisi: <strong id="mergeSelectedStudentsBadge"><?php echo (int)$mergeSelectedStudents; ?></strong> ta</span>
+                            </div>
+                        </div>
+
+                        <div id="mergeFilterEmpty" class="guruh-list-empty" style="display: none; margin-bottom: 12px;">
+                            Filtr bo'yicha til guruhlari topilmadi.
+                        </div>
+
+                        <div id="chetMergeDirectionList" class="merge-direction-list">
+                            <?php if (count($mergeCards) === 0): ?>
+                                <div class="guruh-list-empty">Tanlangan yo'nalishlarda chet tili guruhlari topilmadi.</div>
+                            <?php else: ?>
+                                <?php foreach ($mergeCards as $cardIndex => $card): ?>
+                                    <section
+                                        class="merge-direction-card <?php echo $cardIndex >= $mergeVisibleLimit ? 'merge-card-hidden' : ''; ?>"
+                                        data-fakultet-id="<?php echo (int)($card['fakultet_id'] ?? 0); ?>"
+                                        data-semestr-id="<?php echo (int)($card['semestr_id'] ?? 0); ?>"
+                                        data-semestr-num="<?php echo (int)($card['semestr_num'] ?? 0); ?>"
+                                        data-yonalish-id="<?php echo (int)($card['yonalish_id'] ?? 0); ?>"
+                                        data-kirish-yili="<?php echo $h((string)($card['kirish_yili'] ?? '')); ?>"
+                                        data-talim-shakli-id="<?php echo (int)($card['talim_shakli_id'] ?? 0); ?>"
+                                        data-kurs="<?php echo (int)($card['kurs'] ?? 0); ?>"
+                                        data-merge-index="<?php echo (int)$cardIndex; ?>">
+                                        <div class="merge-direction-header">
+                                            <div>
+                                                <div class="merge-direction-title">
+                                                    <?php echo $h((string)($card['yonalish_label'] ?? '') . (!empty($card['kirish_yili']) ? ' - ' . (string)$card['kirish_yili'] : '')); ?>
+                                                </div>
+                                                <div class="merge-direction-meta">
+                                                    <?php echo (int)($card['semestr_num'] ?? 0); ?>-semestr
+                                                    &middot; <?php echo (int)($card['kurs'] ?? 0); ?>-kurs
+                                                    <?php if (!empty($card['talim_shakli_name'])): ?>
+                                                        &middot; <?php echo $h((string)$card['talim_shakli_name']); ?>
+                                                    <?php endif; ?>
+                                                    &middot; <?php echo count($card['rows'] ?? []); ?> ta guruh
+                                                    &middot; <?php echo (int)($card['total_students'] ?? 0); ?> ta talaba
+                                                </div>
+                                                <div class="detail-meta" style="margin-bottom: 0;">
+                                                    <?php echo $h((string)($card['fakultet_name'] ?? 'Fakultet belgilanmagan')); ?>
+                                                </div>
+                                            </div>
+                                            <div class="merge-card-actions">
+                                                <label class="merge-selection-badge">
+                                                    <input
+                                                        type="checkbox"
+                                                        class="merge-card-select-all"
+                                                        <?php echo !empty($card['rows']) && (int)($card['selected_count'] ?? 0) === count($card['rows']) ? 'checked' : ''; ?>>
+                                                    Barchasi
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="table-responsive">
+                                            <table class="data-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th></th>
+                                                        <th>Til fani</th>
+                                                        <th>Guruh</th>
+                                                        <th>Talaba soni</th>
+                                                        <th>Holat</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach (($card['rows'] ?? []) as $row): ?>
+                                                        <tr class="<?php echo !empty($row['selected']) ? 'merge-row-selected' : ''; ?>">
+                                                            <td>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    class="merge-group-checkbox merge-row-checked"
+                                                                    data-semestr-id="<?php echo (int)($row['semestr_id'] ?? 0); ?>"
+                                                                    data-semestr-num="<?php echo (int)($card['semestr_num'] ?? 0); ?>"
+                                                                    data-yonalish-id="<?php echo (int)($row['yonalish_id'] ?? 0); ?>"
+                                                                    data-guruh-id="<?php echo (int)($row['guruh_id'] ?? 0); ?>"
+                                                                    data-fan-id="<?php echo (int)($row['fan_id'] ?? 0); ?>"
+                                                                    data-fan-code="<?php echo $h(strtolower(trim((string)($row['fan_code'] ?? '')))); ?>"
+                                                                    data-language-key="<?php echo $h((string)($row['language_key'] ?? '')); ?>"
+                                                                    data-merge-key="<?php echo $h((string)($row['merge_row_key'] ?? '')); ?>"
+                                                                    data-talabalar-soni="<?php echo (int)($row['talabalar_soni'] ?? 0); ?>"
+                                                                    <?php echo !empty($row['selected']) ? 'checked' : ''; ?>>
+                                                            </td>
+                                                            <td>
+                                                                <?php echo $h(trim((string)($row['fan_code'] ?? '')) . ' - ' . trim((string)($row['fan_name'] ?? ''))); ?>
+                                                                <?php if (!empty($row['kafedra_name'])): ?>
+                                                                    <div class="detail-meta"><?php echo $h((string)$row['kafedra_name']); ?></div>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td><?php echo $h((string)($row['guruh_nomer'] ?? '-')); ?></td>
+                                                            <td><?php echo (int)($row['talabalar_soni'] ?? 0); ?></td>
+                                                            <td>
+                                                                <?php if (!empty($row['selected'])): ?>
+                                                                    <span class="maxsus-badge">Biriktirilgan</span>
+                                                                <?php else: ?>
+                                                                    <span class="detail-meta">Tanlanmagan</span>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </section>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="form-actions mt-3">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Guruhlarni biriktirish
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="table-container mt-4">
+                        <div class="table-header">
+                            <div class="table-title">
+                                <h3>Biriktirilgan til guruhlari</h3>
+                                <span class="badge"><?php echo count($mergeSummaryRows); ?> ta</span>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fan kodi</th>
+                                        <th>Fan nomi</th>
+                                        <th>Semestr</th>
+                                        <th>Guruhlar soni</th>
+                                        <th>Talabalar soni</th>
+                                        <th>Biriktirilgan guruhlar</th>
+                                        <th>Amallar</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (count($mergeSummaryRows) === 0): ?>
+                                        <tr>
+                                            <td colspan="7">Biriktirilgan til guruhlari topilmadi</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($mergeSummaryRows as $row): ?>
+                                            <tr>
+                                                <td><?php echo $h((string)($row['fan_code'] ?? '')); ?></td>
+                                                <td>
+                                                    <?php echo $h((string)($row['fan_name'] ?? '')); ?>
+                                                    <?php $fanVariants = trim((string)($row['fan_variants'] ?? '')); ?>
+                                                    <?php if ($fanVariants !== ''): ?>
+                                                        <div class="detail-meta">
+                                                            Variantlar: <?php echo $h($fanVariants); ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td><?php echo (int)($row['semestr_num'] ?? 0); ?></td>
+                                                <td>
+                                                    <strong><?php echo (int)($row['guruhlar_soni'] ?? 0); ?></strong>
+                                                    <div class="detail-meta">Manba guruh: <?php echo (int)($row['source_guruhlar_soni'] ?? 0); ?></div>
+                                                </td>
+                                                <td><?php echo (int)($row['talabalar_soni'] ?? 0); ?></td>
+                                                <td>
+                                                    <?php $mergeDetail = trim((string)($row['guruhlar'] ?? '')); ?>
+                                                    <?php if ($mergeDetail !== ''): ?>
+                                                        <details class="detail-toggle">
+                                                            <summary>Ko'rish</summary>
+                                                            <div class="detail-scroll">
+                                                                <div class="detail-meta"><?php echo $h($mergeDetail); ?></div>
+                                                            </div>
+                                                        </details>
+                                                    <?php else: ?>
+                                                        <span class="detail-meta">-</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <div class="btn-row">
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-sm btn-outline editMergedGroupBtn"
+                                                            data-semestr-num="<?php echo (int)($row['semestr_num'] ?? 0); ?>"
+                                                            data-language-key="<?php echo $h($normalizeLanguageName((string)($row['fan_name'] ?? ''))); ?>"
+                                                            data-fan-ids="<?php echo $h((string)($row['fan_ids'] ?? '')); ?>"
+                                                            data-guruh-ids="<?php echo $h((string)($row['guruh_ids'] ?? '')); ?>">
+                                                            <i class="fas fa-edit"></i> Tahrirlash
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-sm btn-danger deleteMergedGroupBtn"
+                                                            data-semestr-id="<?php echo (int)($row['semestr_id'] ?? 0); ?>"
+                                                            data-fan-ids="<?php echo $h((string)($row['fan_ids'] ?? '')); ?>"
+                                                            data-fan-id="<?php echo (int)($row['fan_id'] ?? 0); ?>">
+                                                            <i class="fas fa-trash"></i> O'chirish
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </main>
     </div>
@@ -1150,6 +2039,10 @@ foreach ($guruhRows as $rowIndex => $row) {
         const semestrOptionsByNum = <?php echo json_encode($semestrOptionsByNum, JSON_UNESCAPED_UNICODE); ?>;
         const groupsBySemestr = <?php echo json_encode($groupsBySemestr, JSON_UNESCAPED_UNICODE); ?>;
         const talabValues = <?php echo json_encode($talabValues, JSON_UNESCAPED_UNICODE); ?>;
+        const mergeFilterFakultetOptions = <?php echo json_encode($mergeFilterFakultetOptions, $jsonFlags); ?>;
+        const mergeFilterYonalishOptions = <?php echo json_encode($mergeFilterYonalishOptions, $jsonFlags); ?>;
+        const mergeFilterSemestrOptions = <?php echo json_encode($mergeFilterSemestrOptions, $jsonFlags); ?>;
+        const mergeVisibleLimit = 30;
 
         let chetFanIndex = 0;
         let semestrRowIndex = 0;
@@ -1807,10 +2700,195 @@ foreach ($guruhRows as $rowIndex => $row) {
             };
         }
 
+        function updateMergeSelectionSummary() {
+            let selectedCount = 0;
+            let selectedStudents = 0;
+
+            $('.merge-group-checkbox').each(function() {
+                if (!this.checked) {
+                    return;
+                }
+                selectedCount++;
+                selectedStudents += parseInt($(this).data('talabalar-soni') || 0, 10) || 0;
+            });
+
+            $('#mergeSelectedCountBadge').text(selectedCount);
+            $('#mergeSelectedStudentsBadge').text(selectedStudents);
+        }
+
+        function syncMergeCardState(card) {
+            if (!card || !card.length) {
+                return;
+            }
+
+            const checkboxes = card.find('.merge-group-checkbox');
+            const checkedCount = checkboxes.filter(':checked').length;
+            const totalCount = checkboxes.length;
+            const cardToggle = card.find('.merge-card-select-all').first();
+            if (cardToggle.length) {
+                cardToggle.prop('checked', totalCount > 0 && checkedCount === totalCount);
+            }
+        }
+
+        function applyMergeUniqueness(preferredCheckbox = null) {
+            const selectedByKey = {};
+            let resolvedCount = 0;
+
+            $('.merge-group-checkbox:checked').each(function() {
+                const checkbox = $(this);
+                const mergeKey = String(checkbox.data('merge-key') || '').trim();
+                if (!mergeKey) {
+                    return;
+                }
+
+                if (!selectedByKey[mergeKey]) {
+                    selectedByKey[mergeKey] = this;
+                    return;
+                }
+
+                const previous = $(selectedByKey[mergeKey]);
+                if (preferredCheckbox && this === preferredCheckbox) {
+                    previous.prop('checked', false);
+                    previous.closest('tr').removeClass('merge-row-selected');
+                    selectedByKey[mergeKey] = this;
+                    resolvedCount++;
+                    return;
+                }
+
+                checkbox.prop('checked', false);
+                checkbox.closest('tr').removeClass('merge-row-selected');
+                resolvedCount++;
+            });
+
+            return resolvedCount;
+        }
+
+        function collectMergePayload() {
+            const scopeItems = [];
+            let selectedCount = 0;
+            let selectedStudents = 0;
+            const selectedMergeKeys = {};
+
+            $('.merge-group-checkbox:checked').each(function() {
+                const checkbox = $(this);
+                const mergeKey = String(checkbox.data('merge-key') || '').trim();
+                const item = {
+                    semestr_id: parseInt(checkbox.data('semestr-id') || 0, 10) || 0,
+                    yonalish_id: parseInt(checkbox.data('yonalish-id') || 0, 10) || 0,
+                    guruh_id: parseInt(checkbox.data('guruh-id') || 0, 10) || 0,
+                    fan_id: parseInt(checkbox.data('fan-id') || 0, 10) || 0,
+                    talabalar_soni: parseInt(checkbox.data('talabalar-soni') || 0, 10) || 0,
+                    selected: 1,
+                    merge_row_key: mergeKey,
+                };
+
+                if (item.semestr_id <= 0 || item.yonalish_id <= 0 || item.guruh_id <= 0 || item.fan_id <= 0) {
+                    return;
+                }
+
+                if (mergeKey !== '') {
+                    if (selectedMergeKeys[mergeKey]) {
+                        return;
+                    }
+                    selectedMergeKeys[mergeKey] = true;
+                }
+
+                scopeItems.push(item);
+                selectedCount++;
+                selectedStudents += item.talabalar_soni;
+            });
+
+            if (!scopeItems.length) {
+                return {
+                    ok: false,
+                    message: "Tanlangan guruh topilmadi",
+                };
+            }
+
+            return {
+                ok: true,
+                scopeItems,
+                selectedCount,
+                selectedStudents,
+            };
+        }
+
+        function getSelectedMultiValues($select) {
+            if (!$select || !$select.length) {
+                return [];
+            }
+
+            const rawValue = $select.val();
+            const values = Array.isArray(rawValue)
+                ? rawValue
+                : (rawValue ? [rawValue] : []);
+
+            return values
+                .map((value) => String(value || '').trim())
+                .filter((value) => value !== '');
+        }
+
+        function rebuildMergeYonalishFilter() {
+            return;
+        }
+
+        function rebuildMergeSemestrFilter() {
+            return;
+        }
+
+        function applyMergeFilters(initial = false) {
+            const selectedAcademicYear = getSelectedIdWithFallback($('#mergeAcademicYearFilter'), ["Barcha o'quv yillari"]);
+            const selectedYonalishIds = getSelectedMultiValues($('#mergeYonalishFilter'));
+            const selectedTalimShakli = getSelectedIdWithFallback($('#mergeTalimShakliFilter'), ['Barcha ta\'lim shakllari']);
+            const selectedKurs = getSelectedIdWithFallback($('#mergeKursFilter'), ['Barcha kurslar']);
+            const selectedSemestr = getSelectedIdWithFallback($('#mergeSemestrNumFilter'), ['Barcha semestrlar']);
+            const hasAnyFilter =
+                selectedAcademicYear !== '' ||
+                selectedYonalishIds.length > 0 ||
+                selectedTalimShakli !== '' ||
+                selectedKurs !== '' ||
+                selectedSemestr !== '';
+
+            let visibleCount = 0;
+            let totalCount = 0;
+            $('.merge-direction-card').each(function(index) {
+                totalCount++;
+                const card = $(this);
+                const cardAcademicYear = String(card.attr('data-kirish-yili') || '');
+                const cardYonalish = String(card.attr('data-yonalish-id') || '');
+                const cardTalimShakli = String(card.attr('data-talim-shakli-id') || '');
+                const cardKurs = String(card.attr('data-kurs') || '');
+                const cardSemestr = String(card.attr('data-semestr-num') || '');
+
+                const matches =
+                    (!selectedAcademicYear || cardAcademicYear === selectedAcademicYear) &&
+                    (selectedYonalishIds.length === 0 || selectedYonalishIds.includes(cardYonalish)) &&
+                    (!selectedTalimShakli || cardTalimShakli === selectedTalimShakli) &&
+                    (!selectedKurs || cardKurs === selectedKurs) &&
+                    (!selectedSemestr || cardSemestr === selectedSemestr);
+
+                const shouldShow = matches && (hasAnyFilter || index < mergeVisibleLimit);
+                card.toggleClass('merge-card-hidden', !shouldShow);
+                if (shouldShow) {
+                    visibleCount++;
+                }
+            });
+
+            const filteredCount = hasAnyFilter ? visibleCount : totalCount;
+            $('#mergeFilterNote').text(`${filteredCount} ta yo'nalish mos keldi`);
+            $('#mergeFilterEmpty').toggle(totalCount > 0 && visibleCount === 0);
+
+            if (initial) {
+                return;
+            }
+        }
+
         // Izoh: Yaratish tabida eski refresh chaqiruvini buzmaslik uchun no-op.
         function refreshChetTiliOptions() {
             return Promise.resolve();
         }
+
+        const forcedChetTab = <?php echo json_encode($forcedTabId, JSON_UNESCAPED_UNICODE); ?>;
 
         $(document).ready(function() {
             // Izoh: Tablarni boshqarish va holatini saqlash.
@@ -1822,10 +2900,17 @@ foreach ($guruhRows as $rowIndex => $row) {
                 $('#' + tabId).addClass('active');
             }
 
-            const savedTab = localStorage.getItem('chetTiliActiveTab') || 'chet-tab-yaratish';
+            const rawSavedTab = forcedChetTab || localStorage.getItem('chetTiliActiveTab') || 'chet-tab-yaratish';
+            const savedTab = ($(`.tab-btn[data-tab="${rawSavedTab}"]`).length > 0) ? rawSavedTab : 'chet-tab-yaratish';
             setActiveTab(savedTab);
+            if (forcedChetTab) {
+                localStorage.setItem('chetTiliActiveTab', forcedChetTab);
+            }
 
             $('.tab-btn').on('click', function() {
+                if (forcedChetTab) {
+                    return;
+                }
                 const target = $(this).data('tab');
                 localStorage.setItem('chetTiliActiveTab', target);
                 setActiveTab(target);
@@ -1866,6 +2951,34 @@ foreach ($guruhRows as $rowIndex => $row) {
                 width: '100%',
             });
             $('#biriktirishBaseFanSelect').prop('disabled', true);
+
+            $('#mergeAcademicYearFilter').select2({
+                placeholder: "Barcha o'quv yillari",
+                allowClear: true,
+                width: '100%',
+            });
+            $('#mergeYonalishFilter').select2({
+                placeholder: "Yo'nalish(lar)ni tanlang",
+                closeOnSelect: false,
+                width: '100%',
+            });
+            $('#mergeTalimShakliFilter').select2({
+                placeholder: "Barcha ta'lim shakllari",
+                allowClear: true,
+                width: '100%',
+            });
+            $('#mergeKursFilter').select2({
+                placeholder: "Barcha kurslar",
+                allowClear: true,
+                width: '100%',
+            });
+            $('#mergeSemestrNumFilter').select2({
+                placeholder: "Barcha semestrlar",
+                allowClear: true,
+                width: '100%',
+            });
+
+            applyMergeFilters(true);
 
             addSemestrRow();
             refreshBaseFanSelect();
@@ -1908,6 +3021,70 @@ foreach ($guruhRows as $rowIndex => $row) {
                 const currentYonalish = getSelectedIdWithFallback($('#chetYonalishFilter'), ["Yo'nalishni tanlang"]);
                 rebuildChetYonalishFilter(currentYonalish);
                 rebuildChetSemestrFilter(getSelectedIdWithFallback($('#chetSemestrSelect'), ['Semestrni tanlang']));
+            });
+
+            $('#mergeYonalishFilter').on('change', function() {
+                applyMergeFilters(false);
+            });
+
+            $('#mergeAcademicYearFilter, #mergeTalimShakliFilter, #mergeKursFilter, #mergeSemestrNumFilter').on('change', function() {
+                applyMergeFilters(false);
+            });
+
+            $('#applyMergeFiltersBtn').on('click', function() {
+                applyMergeFilters(false);
+            });
+
+            $('#resetMergeFiltersBtn').on('click', function() {
+                $('#mergeAcademicYearFilter').val('').trigger('change');
+                $('#mergeYonalishFilter').val([]).trigger('change');
+                $('#mergeTalimShakliFilter').val('').trigger('change');
+                $('#mergeKursFilter').val('').trigger('change');
+                $('#mergeSemestrNumFilter').val('').trigger('change');
+                applyMergeFilters(true);
+            });
+
+            $('.merge-direction-card').each(function() {
+                const card = $(this);
+                card.find('.merge-group-checkbox').each(function() {
+                    $(this).closest('tr').toggleClass('merge-row-selected', this.checked);
+                });
+                syncMergeCardState(card);
+            });
+            applyMergeUniqueness();
+            $('.merge-direction-card').each(function() {
+                syncMergeCardState($(this));
+            });
+            updateMergeSelectionSummary();
+
+            $(document).on('change', '.merge-group-checkbox', function() {
+                const checkbox = $(this);
+                const fixedCount = applyMergeUniqueness(this);
+                checkbox.closest('tr').toggleClass('merge-row-selected', checkbox.is(':checked'));
+                $('.merge-direction-card').each(function() {
+                    syncMergeCardState($(this));
+                });
+                updateMergeSelectionSummary();
+                if (fixedCount > 0) {
+                    Toast.fire({
+                        icon: 'info',
+                        title: "Bir xil guruh/til kombinatsiyasidan faqat bittasi tanlanadi"
+                    });
+                }
+            });
+
+            $(document).on('change', '.merge-card-select-all', function() {
+                const card = $(this).closest('.merge-direction-card');
+                const checked = $(this).is(':checked');
+                card.find('.merge-group-checkbox').each(function() {
+                    $(this).prop('checked', checked);
+                    $(this).closest('tr').toggleClass('merge-row-selected', checked);
+                });
+                applyMergeUniqueness();
+                $('.merge-direction-card').each(function() {
+                    syncMergeCardState($(this));
+                });
+                updateMergeSelectionSummary();
             });
         });
 
@@ -2005,6 +3182,89 @@ foreach ($guruhRows as $rowIndex => $row) {
                         icon: 'error',
                         title: "Server bilan bog'lanib bo'lmadi"
                     });
+                });
+        });
+
+        $('#chetGuruhBirlashtirishForm').on('submit', function(e) {
+            e.preventDefault();
+            const form = $(this);
+            const submitBtn = form.find('button[type="submit"]').first();
+            const submitBtnHtml = submitBtn.length ? submitBtn.html() : '';
+
+            const payload = collectMergePayload();
+            if (!payload.ok) {
+                Toast.fire({
+                    icon: 'error',
+                    title: payload.message || "Biriktirishda xatolik"
+                });
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('scope_items_json', JSON.stringify(payload.scopeItems));
+            if (submitBtn.length) {
+                submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saqlanmoqda...');
+            }
+
+            const controller = typeof AbortController === 'function' ? new AbortController() : null;
+            const timeoutMs = 45000;
+            let requestTimer = null;
+            if (controller) {
+                requestTimer = setTimeout(() => controller.abort(), timeoutMs);
+            }
+
+            fetch('insert/save_chet_tili_guruh_biriktirish.php', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller ? controller.signal : undefined,
+                })
+                .then(async (res) => {
+                    const raw = await res.text();
+                    let data = null;
+                    try {
+                        data = raw ? JSON.parse(raw) : {};
+                    } catch (e) {
+                        throw new Error(`HTTP ${res.status}: ${raw.slice(0, 220) || 'JSON parse xatoligi'}`);
+                    }
+                    if (!res.ok) {
+                        const message = data && data.message ? data.message : `HTTP ${res.status}`;
+                        const hint = data && data.error_hint ? ` (${data.error_hint})` : '';
+                        throw new Error(message + hint);
+                    }
+                    return data;
+                })
+                .then(data => {
+                    if (data.success) {
+                        localStorage.setItem('chetTiliActiveTab', 'chet-tab-guruh-birlashtirish');
+                        Toast.fire({
+                            icon: 'success',
+                            title: data.message || "Biriktirish saqlandi"
+                        });
+                        setTimeout(() => window.location.reload(), 400);
+                    } else {
+                        Toast.fire({
+                            icon: 'error',
+                            title: data.message || 'Xatolik yuz berdi'
+                        });
+                    }
+                })
+                .catch((err) => {
+                    if (window.console && typeof window.console.error === 'function') {
+                        window.console.error('save_chet_tili_guruh_biriktirish fetch error:', err);
+                    }
+                    const isAbort = err && (err.name === 'AbortError' || String(err.message || '').includes('abort'));
+                    Toast.fire({
+                        icon: 'error',
+                        title: isAbort ? "So'rov vaqti tugadi. Qayta urinib ko'ring" : (err && err.message ? err.message : "Server bilan bog'lanib bo'lmadi")
+                    });
+                })
+                .finally(() => {
+                    if (requestTimer) {
+                        clearTimeout(requestTimer);
+                    }
+                    if (submitBtn.length) {
+                        submitBtn.prop('disabled', false).html(submitBtnHtml);
+                    }
                 });
         });
 
@@ -2299,6 +3559,131 @@ foreach ($guruhRows as $rowIndex => $row) {
                             Toast.fire({
                                 icon: 'error',
                                 title: data.message || 'Xatolik yuz berdi'
+                            });
+                        }
+                    })
+                    .catch(() => {
+                        Toast.fire({
+                            icon: 'error',
+                            title: "Server bilan bog'lanib bo'lmadi"
+                        });
+                    });
+            });
+        });
+
+        // Izoh: 3-tabdagi biriktirilgan til guruhini tahrirlash uchun checkboxlarni avtomatik belgilash.
+        $(document).on('click', '.editMergedGroupBtn', function() {
+            const semestrNum = String($(this).data('semestr-num') || '').trim();
+            const languageKey = String($(this).data('language-key') || '').trim();
+            const rawFanIds = String($(this).data('fan-ids') || '');
+            const rawGroupIds = String($(this).data('guruh-ids') || '');
+            const groupIds = rawGroupIds
+                .split(',')
+                .map((item) => parseInt(item.trim(), 10))
+                .filter((item) => !Number.isNaN(item) && item > 0);
+            const fanIds = rawFanIds
+                .split(',')
+                .map((item) => parseInt(item.trim(), 10))
+                .filter((item) => !Number.isNaN(item) && item > 0);
+
+            if (!semestrNum || !groupIds.length) {
+                Toast.fire({
+                    icon: 'error',
+                    title: "Tahrirlash uchun ma'lumot topilmadi"
+                });
+                return;
+            }
+
+            localStorage.setItem('chetTiliActiveTab', 'chet-tab-guruh-birlashtirish');
+            $('.tab-btn').removeClass('active');
+            $('.tab-btn[data-tab="chet-tab-guruh-birlashtirish"]').addClass('active');
+            $('.tab-content').removeClass('active');
+            $('#chet-tab-guruh-birlashtirish').addClass('active');
+
+            $('#mergeSemestrNumFilter').val(semestrNum).trigger('change');
+            applyMergeFilters(false);
+
+            const groupSet = new Set(groupIds);
+            const fanSet = new Set(fanIds);
+            $('.merge-group-checkbox').each(function() {
+                const checkbox = $(this);
+                const groupId = parseInt(checkbox.data('guruh-id') || 0, 10) || 0;
+                const fanId = parseInt(checkbox.data('fan-id') || 0, 10) || 0;
+                const checkboxSemestrNum = String(checkbox.data('semestr-num') || '').trim();
+                const checkboxLanguageKey = String(checkbox.data('language-key') || '').trim();
+                const languageOk = languageKey !== '' ? (checkboxLanguageKey === languageKey) : (fanSet.size === 0 || fanSet.has(fanId));
+                const shouldCheck = groupSet.has(groupId) && checkboxSemestrNum === semestrNum && languageOk;
+                checkbox.prop('checked', shouldCheck);
+                checkbox.closest('tr').toggleClass('merge-row-selected', shouldCheck);
+            });
+
+            $('.merge-direction-card').each(function() {
+                syncMergeCardState($(this));
+            });
+            updateMergeSelectionSummary();
+
+            const target = $('#chetGuruhBirlashtirishForm');
+            if (target.length) {
+                $('html, body').animate({
+                    scrollTop: target.offset().top - 70
+                }, 200);
+            }
+
+            Toast.fire({
+                icon: 'success',
+                title: "Tahrirlash uchun guruhlar belgilandi"
+            });
+        });
+
+        // Izoh: 3-tabdagi biriktirilgan til guruhini o'chirish.
+        $(document).on('click', '.deleteMergedGroupBtn', function() {
+            const semestrId = parseInt($(this).data('semestr-id') || 0, 10) || 0;
+            const fanId = parseInt($(this).data('fan-id') || 0, 10) || 0;
+            const rawFanIds = String($(this).data('fan-ids') || '');
+            const fanIds = rawFanIds
+                .split(',')
+                .map((item) => parseInt(item.trim(), 10))
+                .filter((item) => !Number.isNaN(item) && item > 0);
+            if (semestrId <= 0 || (fanIds.length === 0 && fanId <= 0)) {
+                return;
+            }
+
+            Swal.fire({
+                title: "O'chirishni tasdiqlaysizmi?",
+                text: "Tanlangan biriktirilgan til guruhi o'chiriladi",
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonText: "Ha, o'chirish",
+                cancelButtonText: "Bekor qilish"
+            }).then((result) => {
+                if (!result.isConfirmed) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('semestr_id', String(semestrId));
+                formData.append('fan_id', String(fanId));
+                if (fanIds.length > 0) {
+                    formData.append('fan_ids', fanIds.join(','));
+                }
+
+                fetch('insert/delete_chet_tili_guruh_biriktirish.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            localStorage.setItem('chetTiliActiveTab', 'chet-tab-guruh-birlashtirish');
+                            Toast.fire({
+                                icon: 'success',
+                                title: data.message || "O'chirildi"
+                            });
+                            setTimeout(() => window.location.reload(), 300);
+                        } else {
+                            Toast.fire({
+                                icon: 'error',
+                                title: data.message || "O'chirishda xatolik yuz berdi"
                             });
                         }
                     })

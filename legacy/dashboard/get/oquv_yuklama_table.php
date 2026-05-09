@@ -10,22 +10,37 @@ if (isset($_POST['show_all']) && (int)$_POST['show_all'] === 1) {
     $filters['limit'] = $rowLimit;
 }
 if (isset($_POST['kafedra_id']) && !empty($_POST['kafedra_id'])) {
-    $filters['kafedra_id'] = (int)$_POST['kafedra_id'];
+    $kafedraIdRaw = trim((string)$_POST['kafedra_id']);
+    if ($kafedraIdRaw !== 'all') {
+        $filters['kafedra_id'] = (int)$kafedraIdRaw;
+    }
 }
 if (isset($_POST['semestr']) && !empty($_POST['semestr'])) {
     $filters['semestr'] = (int)$_POST['semestr'];
 }
 if (isset($_POST['oquv_yil_start']) && !empty($_POST['oquv_yil_start'])) {
-    $filters['oquv_yil_start'] = (int)$_POST['oquv_yil_start'];
+    $oquvYilStartRaw = trim((string)$_POST['oquv_yil_start']);
+    if ($oquvYilStartRaw !== 'all') {
+        $filters['oquv_yil_start'] = (int)$oquvYilStartRaw;
+    }
 }
 if (isset($_POST['semestr_turi']) && !empty($_POST['semestr_turi'])) {
-    $filters['semestr_turi'] = trim($_POST['semestr_turi']);
+    $semestrTuri = trim((string)$_POST['semestr_turi']);
+    if ($semestrTuri !== 'all') {
+        $filters['semestr_turi'] = $semestrTuri;
+    }
 }
 if (isset($_POST['yonalish_id']) && !empty($_POST['yonalish_id'])) {
-    $filters['yonalish_id'] = (int)$_POST['yonalish_id'];
+    $yonalishIdRaw = trim((string)$_POST['yonalish_id']);
+    if ($yonalishIdRaw !== 'all') {
+        $filters['yonalish_id'] = (int)$yonalishIdRaw;
+    }
 }
 if (isset($_POST['kurs']) && !empty($_POST['kurs'])) {
-    $filters['kurs'] = (int)$_POST['kurs'];
+    $kursRaw = trim((string)$_POST['kurs']);
+    if ($kursRaw !== 'all') {
+        $filters['kurs'] = (int)$kursRaw;
+    }
 }
 legacy_apply_kafedra_scope($filters);
 

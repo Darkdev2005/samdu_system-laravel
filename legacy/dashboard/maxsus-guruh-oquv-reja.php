@@ -22,7 +22,7 @@ $h = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBS
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
-    <title>Maxsus guruh uchun o‘quv reja</title>
+    <title>Maxsus guruh uchun o'quv reja</title>
     <link rel="stylesheet" href="../assets/css/dashboard_style.css">
     <link href="/assets/vendor/select2/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -44,11 +44,11 @@ $h = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBS
     <?php include 'includes/sidebar.php'; ?>
     <main class="main-content">
         <header class="top-navbar">
-            <h1><i class="fas fa-users-cog me-2"></i>Maxsus guruh uchun o‘quv reja</h1>
+            <h1><i class="fas fa-users-cog me-2"></i>Maxsus guruh uchun o'quv reja</h1>
         </header>
         <div class="content-container">
             <form id="maxsusRejaForm" class="card">
-                <h3 class="section-title">Umumiy ma’lumot</h3>
+                <h3 class="section-title">Umumiy ma'lumot</h3>
                 <div class="grid-4">
                     <div class="form-group">
                         <label>Fakultet</label>
@@ -60,13 +60,13 @@ $h = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBS
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Fakultetning yo‘nalishi</label>
+                        <label>Fakultetning yo'nalishi</label>
                         <select class="form-control" id="yonalishId" name="yonalish_id" required>
                             <option value="">Tanlang</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Yo‘nalishning guruhi</label>
+                        <label>Yo'nalishning guruhi</label>
                         <select class="form-control" id="guruhId" name="guruh_id" required>
                             <option value="">Tanlang</option>
                         </select>
@@ -111,14 +111,15 @@ $h = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBS
                             <th>Fan kodi</th>
                             <th>Fan nomi</th>
                             <th>Kafedra</th>
-                            <th>Yo‘nalish</th>
+                            <th>Yo'nalish</th>
                             <th>Guruh</th>
                             <th>Semestr</th>
                             <th>Dars soatlari</th>
+                            <th>Harakat</th>
                         </tr>
                         </thead>
                         <tbody id="listBody">
-                        <tr><td colspan="7">Yuklanmoqda...</td></tr>
+                        <tr><td colspan="8">Yuklanmoqda...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -140,6 +141,21 @@ const darsTurlari = <?php echo json_encode($darsSoatTurlari, $jsonFlags) ?: '[]'
 const isKafedraMudiri = <?= $isKafedraMudiri ? 'true' : 'false' ?>;
 const lockedKafedraId = <?= (int)$currentKafedraId ?>;
 let cardIndex = 0;
+let createdRowsById = {};
+
+const SwalApi = window.Swal || {
+    fire: () => Promise.resolve({ isConfirmed: false }),
+    showValidationMessage: () => {},
+    mixin: () => ({ fire: () => {} })
+};
+
+const Toast = SwalApi.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 2200,
+    timerProgressBar: true
+});
 
 function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
@@ -255,7 +271,7 @@ function addCard() {
             </div>
             ${buildDarsRows(idx)}
             <div class="card-actions">
-                <button type="button" class="btn btn-danger btn-sm remove-card-btn"><i class="fas fa-times"></i> O‘chirish</button>
+                <button type="button" class="btn btn-danger btn-sm remove-card-btn"><i class="fas fa-times"></i> O'chirish</button>
             </div>
         </div>
     `;
@@ -286,15 +302,26 @@ function loadCreatedList() {
 
     $.getJSON('api/get_maxsus_oquv_reja_created_list.php', params, function (res) {
         if (!res || !res.success) {
-            $('#listBody').html('<tr><td colspan="7">Ro‘yxatni yuklab bo‘lmadi</td></tr>');
+            createdRowsById = {};
+            $('#listBody').html('<tr><td colspan="8">Ro\'yxatni yuklab bo\'lmadi</td></tr>');
             return;
         }
+
         const rows = Array.isArray(res.rows) ? res.rows : [];
+        createdRowsById = {};
+        rows.forEach(r => {
+            const id = Number(r.maxsus_reja_id || 0);
+            if (id > 0) {
+                createdRowsById[String(id)] = r;
+            }
+        });
+
         $('#listCount').text(rows.length + ' ta');
         if (!rows.length) {
-            $('#listBody').html('<tr><td colspan="7">Ma’lumot yo‘q</td></tr>');
+            $('#listBody').html('<tr><td colspan="8">Ma\'lumot yo\'q</td></tr>');
             return;
         }
+
         const darsMap = new Map((res.dars_turlari || []).map(d => [String(d.id), d.name || ('Tur #' + d.id)]));
         const html = rows.map(r => {
             const dars = r.dars || {};
@@ -303,6 +330,7 @@ function loadCreatedList() {
                 if (v <= 0) return '';
                 return `<div>${esc(darsMap.get(String(k)) || ('Tur #' + k))}: ${v}</div>`;
             }).join('');
+
             return `
                 <tr>
                     <td>${esc(r.fan_code || '')}</td>
@@ -312,14 +340,184 @@ function loadCreatedList() {
                     <td>${esc(r.guruh_nomer || '')}</td>
                     <td>${esc(r.semestr || '')}</td>
                     <td>${darsHtml || '-'}</td>
+                    <td>
+                        <div class="table-actions">
+                            <button type="button" class="btn btn-outline btn-sm editCreatedMaxsusBtn" data-maxsus-reja-id="${Number(r.maxsus_reja_id || 0)}">
+                                <i class="fas fa-pen"></i> Tahrirlash
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm deleteCreatedMaxsusBtn" data-maxsus-reja-id="${Number(r.maxsus_reja_id || 0)}">
+                                <i class="fas fa-trash-alt"></i> O'chirish
+                            </button>
+                        </div>
+                    </td>
                 </tr>
             `;
         }).join('');
+
         $('#listBody').html(html);
     }).fail(function () {
-        $('#listBody').html('<tr><td colspan="7">Ro‘yxatni yuklab bo‘lmadi</td></tr>');
+        createdRowsById = {};
+        $('#listBody').html('<tr><td colspan="8">Ro\'yxatni yuklab bo\'lmadi</td></tr>');
     });
 }
+
+function buildEditKafedraOptionsHtml(selectedId) {
+    let html = '<option value="">Tanlang</option>';
+    kafedralar.forEach(k => {
+        const id = Number(k.id || 0);
+        if (id <= 0) return;
+        const selected = String(id) === String(selectedId || '') ? ' selected' : '';
+        html += `<option value="${id}"${selected}>${esc(k.name || '')}</option>`;
+    });
+    return html;
+}
+
+function buildEditMaxsusModalHtml(row) {
+    const dars = row.dars || {};
+    let darsRows = '';
+    darsTurlari.forEach(tur => {
+        const tid = String(tur.id || '');
+        if (!tid) return;
+        const soat = Number(dars[tid] || 0);
+        darsRows += `
+            <div style="display:flex;gap:8px;align-items:center;margin:6px 0;">
+                <label style="flex:1;text-align:left;">${esc(tur.name || '')}</label>
+                <input type="number" min="0" step="1" inputmode="numeric" class="swal2-input edit-dars-input" data-dars-tur-id="${tid}" value="${soat}" style="width:120px;margin:0;">
+            </div>
+        `;
+    });
+
+    return `
+        <input type="text" id="editMaxsusFanCode" class="swal2-input" placeholder="Fan kodi" value="${esc(row.fan_code || '')}">
+        <input type="text" id="editMaxsusFanName" class="swal2-input" placeholder="Fan nomi" value="${esc(row.fan_name || '')}">
+        <div style="text-align:left;margin:8px 0 4px 0;font-size:13px;color:#64748b;">Kafedra</div>
+        <select id="editMaxsusKafedraId" class="swal2-input" ${isKafedraMudiri ? 'disabled' : ''}>
+            ${buildEditKafedraOptionsHtml(row.kafedra_id || '')}
+        </select>
+        <div style="text-align:left;margin:10px 0 4px 0;font-size:13px;color:#64748b;">Dars soatlari</div>
+        <div style="max-height:220px;overflow:auto;padding-right:4px;">${darsRows}</div>
+        <textarea id="editMaxsusIzoh" class="swal2-textarea" placeholder="Izoh">${esc(row.izoh || '')}</textarea>
+    `;
+}
+
+$(document).on('click', '.editCreatedMaxsusBtn', function () {
+    const rejaId = String($(this).data('maxsus-reja-id') || '');
+    const row = createdRowsById[rejaId];
+    if (!row) return;
+
+    SwalApi.fire({
+        title: "Maxsus reja tahrirlash",
+        width: 860,
+        html: buildEditMaxsusModalHtml(row),
+        showCancelButton: true,
+        confirmButtonText: "Saqlash",
+        cancelButtonText: "Bekor qilish",
+        preConfirm: () => {
+            const fanCode = String($('#editMaxsusFanCode').val() || '').trim();
+            const fanName = String($('#editMaxsusFanName').val() || '').trim();
+            const izoh = String($('#editMaxsusIzoh').val() || '').trim();
+            const kafedraId = isKafedraMudiri
+                ? Number(lockedKafedraId || 0)
+                : Number($('#editMaxsusKafedraId').val() || 0);
+
+            if (fanCode === '' || fanName === '') {
+                SwalApi.showValidationMessage("Fan kodi va fan nomi to'ldirilishi shart");
+                return false;
+            }
+            if (kafedraId <= 0) {
+                SwalApi.showValidationMessage("Kafedrani tanlang");
+                return false;
+            }
+
+            const dars = {};
+            let hasPositive = false;
+            $('.edit-dars-input').each(function () {
+                const turId = String($(this).data('dars-tur-id') || '');
+                let soat = Number($(this).val() || 0);
+                if (!Number.isFinite(soat) || soat < 0) soat = 0;
+                dars[turId] = soat;
+                if (soat > 0) hasPositive = true;
+            });
+
+            if (!hasPositive) {
+                SwalApi.showValidationMessage("Kamida bitta dars soati 0 dan katta bo'lishi kerak");
+                return false;
+            }
+
+            return {
+                maxsus_reja_id: Number(row.maxsus_reja_id || 0),
+                fan_code: fanCode,
+                fan_name: fanName,
+                kafedra_id: kafedraId,
+                izoh: izoh,
+                dars: dars
+            };
+        }
+    }).then((result) => {
+        if (!result.isConfirmed || !result.value) return;
+        const payload = result.value;
+        const formData = new FormData();
+        formData.append('maxsus_reja_id', String(payload.maxsus_reja_id));
+        formData.append('fan_code', payload.fan_code);
+        formData.append('fan_name', payload.fan_name);
+        formData.append('kafedra_id', String(payload.kafedra_id));
+        formData.append('izoh', payload.izoh);
+        formData.append('dars_json', JSON.stringify(payload.dars));
+
+        fetch('insert/update_maxsus_oquv_reja_item.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.success) {
+                Toast.fire({ icon: 'success', title: data.message || "Yangilandi" });
+                loadCreatedList();
+            } else {
+                Toast.fire({ icon: 'error', title: (data && data.message) || "Yangilashda xatolik" });
+            }
+        })
+        .catch(() => {
+            Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+        });
+    });
+});
+
+$(document).on('click', '.deleteCreatedMaxsusBtn', function () {
+    const rejaId = String($(this).data('maxsus-reja-id') || '');
+    const row = createdRowsById[rejaId];
+    if (!row) return;
+
+    SwalApi.fire({
+        title: "Maxsus reja fanini o'chirasizmi?",
+        text: `${row.fan_code || ''} - ${row.fan_name || ''}`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Ha, o'chirilsin",
+        cancelButtonText: "Bekor qilish"
+    }).then((result) => {
+        if (!result.isConfirmed) return;
+        const formData = new FormData();
+        formData.append('maxsus_reja_id', rejaId);
+
+        fetch('insert/delete_maxsus_oquv_reja_item.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.success) {
+                Toast.fire({ icon: 'success', title: data.message || "O'chirildi" });
+                loadCreatedList();
+            } else {
+                Toast.fire({ icon: 'error', title: (data && data.message) || "O'chirishda xatolik" });
+            }
+        })
+        .catch(() => {
+            Toast.fire({ icon: 'error', title: "Server bilan bog'lanib bo'lmadi" });
+        });
+    });
+});
 
 $(document).ready(function () {
     if ($.fn && typeof $.fn.select2 === 'function') {
@@ -376,8 +574,8 @@ $(document).ready(function () {
         if (!yonalishId || !guruhId || !semestrId) {
             Swal.fire({
                 icon: 'warning',
-                title: 'Filter to‘liq emas',
-                text: 'Yo‘nalish, guruh va semestrni tanlang.'
+                title: "Filter to'liq emas",
+                text: "Yo'nalish, guruh va semestrni tanlang."
             });
             return;
         }
@@ -409,7 +607,7 @@ $(document).ready(function () {
                     Swal.fire({ icon: 'success', title: 'Saqlandi', text: res.message || '' });
                     loadCreatedList();
                 } else {
-                    Swal.fire({ icon: 'error', title: 'Xatolik', text: (res && res.message) ? res.message : 'Saqlab bo‘lmadi' });
+                    Swal.fire({ icon: 'error', title: 'Xatolik', text: (res && res.message) ? res.message : "Saqlab bo'lmadi" });
                 }
             },
             error: function () {

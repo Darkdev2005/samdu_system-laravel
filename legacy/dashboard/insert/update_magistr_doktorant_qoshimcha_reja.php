@@ -32,7 +32,14 @@ if (!$person) {
     return;
 }
 
-$allowedIds = ((string)($person['turi'] ?? '') === 'doktorant') ? [12, 13, 14] : [9, 10, 11];
+$personType = strtolower(trim((string)($person['turi'] ?? '')));
+if (strpos($personType, 'doktor') !== false) {
+    $personType = 'doktorant';
+} else {
+    $personType = 'magistr';
+}
+
+$allowedIds = ($personType === 'doktorant') ? [12, 13, 14] : [9, 10, 11];
 if (!in_array($qoshimchaDarsId, $allowedIds, true)) {
     echo json_encode(['success' => false, 'message' => "Tanlangan dars turi magistr/doktorant turiga mos emas"]);
     return;

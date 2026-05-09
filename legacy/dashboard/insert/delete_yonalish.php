@@ -18,6 +18,7 @@ $checks = [
     'oquv_haftaliklar' => "SELECT COUNT(*) AS cnt FROM oquv_haftaliklar WHERE yonalish_id = $id",
     'umumtalim_fan_biriktirish' => "SELECT COUNT(*) AS cnt FROM umumtalim_fan_biriktirish WHERE yonalish_id = $id",
     'chet_tili_guruhlar' => "SELECT COUNT(*) AS cnt FROM chet_tili_guruhlar WHERE yonalish_id = $id",
+    'chet_tili_biriktirilgan_guruhlar' => "SELECT COUNT(*) AS cnt FROM chet_tili_biriktirilgan_guruhlar WHERE yonalish_id = $id",
 ];
 
 $used = [];

@@ -89,14 +89,8 @@ foreach ($fanCodes as $index => $codeRaw) {
         echo json_encode(['success' => false, 'message' => "{$name}: kamida bitta dars soati kiritilishi kerak"]);
         return;
     }
-    $mod = fmod((float)$total, 30.0);
-    if ($mod < 0) {
-        $mod += 30.0;
-    }
-    if ($mod > 0.0001 && abs($mod - 30.0) > 0.0001) {
-        echo json_encode(['success' => false, 'message' => "{$name}: jami soat ({$total}) 30 ga qoldiqsiz bo'linishi shart"]);
-        return;
-    }
+    // Maxsus guruh rejasida jami soatni 30 ga bo'linishiga bog'lamaymiz.
+    // Foydalanuvchi istalgan soat qiymatini kiritib saqlashi mumkin.
 
     $rows[] = [
         'code' => $code,

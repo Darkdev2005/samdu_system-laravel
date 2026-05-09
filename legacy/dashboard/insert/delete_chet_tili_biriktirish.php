@@ -87,6 +87,10 @@
             DELETE FROM chet_tili_talablar
             WHERE semestr_id IN ($semestrSql) AND fan_id IN ($fanSql)
         ");
+        $db->query("
+            DELETE FROM chet_tili_biriktirilgan_guruhlar
+            WHERE semestr_id IN ($semestrSql) AND fan_id IN ($fanSql)
+        ");
 
         // Izoh: Til bo'yicha hosil qilingan o'quv guruhlarini ham tozalaymiz.
         $semestrNums = [];

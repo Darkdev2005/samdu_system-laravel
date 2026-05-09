@@ -60,9 +60,9 @@
 	                        <div class="form-group">
 	                            <label><i class="fas fa-building me-2"></i>Kafedra</label>
 	                            <select class="form-control" id="kafedraFilter"<?= $isKafedraMudiri ? ' disabled' : '' ?>>
-	                                <option value=""><?= $isKafedraMudiri ? 'Kafedra tanlangan' : 'Barcha kafedralar' ?></option>
+	                                <option value="<?= $isKafedraMudiri ? (int)$currentKafedraId : 'all' ?>" selected><?= $isKafedraMudiri ? 'Kafedra tanlangan' : 'Barchasi (barcha kafedralar)' ?></option>
 	                                <?php foreach ($kafedralar as $k): ?>
-	                                    <option value="<?= $k['id'] ?>"<?= $currentKafedraId === (int)$k['id'] ? ' selected' : '' ?>><?= htmlspecialchars($k['name']) ?></option>
+	                                    <option value="<?= $k['id'] ?>"<?= (!$isKafedraMudiri && $currentKafedraId === (int)$k['id']) ? ' selected' : '' ?>><?= htmlspecialchars($k['name']) ?></option>
 	                                <?php endforeach; ?>
 	                            </select>
 	                        </div>
@@ -70,7 +70,7 @@
                         <div class="form-group">
                             <label><i class="fas fa-compass me-2"></i>Yo'nalish</label>
                             <select class="form-control" id="yonalishFilter">
-                                <option value="">Barcha yo'nalishlar</option>
+                                <option value="all" selected>Barchasi (barcha yo'nalishlar)</option>
                                 <?php foreach ($yonalishlar as $y): ?>
                                     <option value="<?= $y['id'] ?>" data-kirish-yili="<?= (int)$y['kirish_yili'] ?>">
                                         <?= htmlspecialchars($y['name'] . ' - ' . $y['kirish_yili']) ?>
@@ -82,14 +82,14 @@
                         <div class="form-group">
                             <label><i class="fas fa-calendar me-2"></i>O'quv yili</label>
                             <select class="form-control" id="semestrFilter">
-                                <option value="">Barcha o'quv yillari</option>
+                                <option value="all" selected>Barchasi (barcha o'quv yillari)</option>
                             </select>
                         </div>
 
                         <div class="form-group">
                             <label><i class="fas fa-layer-group me-2"></i>Kurs</label>
                             <select class="form-control" id="kursFilter">
-                                <option value="">Barcha kurslar</option>
+                                <option value="all" selected>Barchasi (barcha kurslar)</option>
                                 <?php foreach ($kursOptions as $kurs): ?>
                                     <option value="<?= (int)$kurs ?>"><?= (int)$kurs ?>-kurs</option>
                                 <?php endforeach; ?>
@@ -99,7 +99,7 @@
                         <div class="form-group">
                             <label><i class="fas fa-calendar-check me-2"></i>Semestr turi</label>
                             <select class="form-control" id="semestrTypeFilter">
-                                <option value="">Barcha semestr turlari</option>
+                                <option value="all" selected>Barchasi (kuzgi + bahorgi)</option>
                                 <option value="fall">Kuzgi (1,3,5,7,9)</option>
                                 <option value="spring">Bahorgi (2,4,6,8,10)</option>
                             </select>
@@ -184,7 +184,7 @@
                 // Izoh: Keyingi o'quv yilini ham oldindan rejalash uchun ko'rsatamiz (masalan, 2026-2027).
                 const maxAcademicStart = currentAcademicStart + 1;
 
-                let options = '<option value="">Tanlang</option>';
+                let options = '<option value="all">Barchasi (barcha o\'quv yillari)</option>';
                 const buildYearOptions = (startYearFrom, startYearTo) => {
                     for (let y = startYearFrom; y <= startYearTo; y++) {
                         options += `<option value="${y}">${y}-${y + 1} o'quv yili</option>`;
@@ -202,20 +202,16 @@
                 const hasPrev = prevSelected && $(`#semestrFilter option[value="${prevSelected}"]`).length;
                 if (hasPrev) {
                     $('#semestrFilter').val(prevSelected).trigger('change');
-                } else if (kirishYili) {
-                    $('#semestrFilter').val(String(currentAcademicStart)).trigger('change');
                 } else {
-                    $('#semestrFilter').val(null).trigger('change');
-                }
-
-                // Izoh: Yo'nalish tanlansa, semestr turi tanlanmagan bo'lsa joriy turini qo'yamiz.
-                if (kirishYili && !semestrType) {
-                    $('#semestrTypeFilter').val(isFall ? 'fall' : 'spring').trigger('change');
+                    // Izoh: Default holatda avtomatik o'quv yili/semester turi qo'ymaymiz.
+                    // Aks holda yangi biriktirilgan satrlar foydalanuvchiga "yo'qolgan" bo'lib ko'rinadi.
+                    $('#semestrFilter').val('all').trigger('change');
                 }
             }
 
             $('#yonalishFilter, #semestrTypeFilter').on('change', updateSemestrOptions);
             updateSemestrOptions();
+            $('#semestrTypeFilter').val('all').trigger('change');
 
 	            if (scopeLocked) {
 	                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
@@ -335,12 +331,12 @@
 	            if (scopeLocked) {
 	                $('#kafedraFilter').val(String(lockedKafedraId)).trigger('change');
 	            } else {
-	                $('#kafedraFilter').val(null).trigger('change');
+	                $('#kafedraFilter').val('all').trigger('change');
 	            }
-	            $('#semestrFilter').val(null).trigger('change');
-	            $('#kursFilter').val(null).trigger('change');
-	            $('#yonalishFilter').val(null).trigger('change');
-	            $('#semestrTypeFilter').val(null).trigger('change');
+	            $('#semestrFilter').val('all').trigger('change');
+	            $('#kursFilter').val('all').trigger('change');
+	            $('#yonalishFilter').val('all').trigger('change');
+	            $('#semestrTypeFilter').val('all').trigger('change');
 
 	            loadTableData(scopeLocked ? String(lockedKafedraId) : '');
             

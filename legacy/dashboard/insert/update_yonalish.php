@@ -129,6 +129,7 @@ if ($maxSemestr > 0) {
               AND NOT EXISTS (SELECT 1 FROM qoshimcha_fanlar qf WHERE qf.semestr_id = s.id)
               AND NOT EXISTS (SELECT 1 FROM umumtalim_fan_biriktirish ub WHERE ub.semestr_id = s.id)
               AND NOT EXISTS (SELECT 1 FROM chet_tili_guruhlar ct WHERE ct.semestr_id = s.id)
+              AND NOT EXISTS (SELECT 1 FROM chet_tili_biriktirilgan_guruhlar bg WHERE bg.semestr_id = s.id)
         ");
         while ($deletableRes && $dRow = mysqli_fetch_assoc($deletableRes)) {
             $deletableIds[] = (int)$dRow['id'];

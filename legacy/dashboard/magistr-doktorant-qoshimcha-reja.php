@@ -5,6 +5,10 @@ $semestrlar = $db->get_semestrlar();
 $fakultetlar = $db->get_data_by_table_all('fakultetlar', 'ORDER BY name');
 $yonalishlar = $db->get_data_by_table_all('yonalishlar');
 $darsTurlari = $db->get_data_by_table_all('qoshimcha_dars_turlar', 'WHERE id IN (9, 10, 11, 12, 13, 14) ORDER BY id');
+$darsTypeLabels = [];
+foreach ($darsTurlari as $turRow) {
+    $darsTypeLabels[(int)($turRow['id'] ?? 0)] = (string)($turRow['name'] ?? '');
+}
 $h = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
 $makeShortCode = static function (string $name): string {
@@ -83,8 +87,29 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
             color: #64748b;
             font-size: 13px;
         }
+        .triplet-rows {
+            display: grid;
+            gap: 10px;
+        }
+        .triplet-row {
+            display: grid;
+            grid-template-columns: minmax(220px, 1fr) minmax(180px, 240px);
+            gap: 12px;
+            align-items: center;
+        }
+        .triplet-label {
+            font-weight: 600;
+            color: #334155;
+        }
+        .triplet-empty {
+            color: #64748b;
+            font-size: 13px;
+        }
         @media (max-width: 900px) {
             .top-filters-grid {
+                grid-template-columns: 1fr;
+            }
+            .triplet-row {
                 grid-template-columns: 1fr;
             }
         }
@@ -169,9 +194,9 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                                     <option value="">Magistr/Doktorantni tanlang</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label>Dars turi</label>
-                                <select class="form-control" name="qoshimcha_dars_id" id="darsTuriSelect" required>
+                            <div class="form-group" style="display:none;">
+                                <label>Dars turi (texnik)</label>
+                                <select class="form-control" id="darsTuriSelect">
                                     <option value="">Dars turini tanlang</option>
                                     <?php foreach ($darsTurlari as $tur): ?>
                                         <?php $turId = (int)$tur['id']; ?>
@@ -179,9 +204,9 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label>Dars soati</label>
-                                <input type="number" class="form-control" name="dars_soati" min="1" step="1" placeholder="Masalan: 25" required>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label>Dars turlari va soatlari</label>
+                                <div id="tripletInputs" class="triplet-empty">Avval magistr/doktorantni tanlang.</div>
                             </div>
                             <div class="form-group">
                                 <label>Izoh</label>
@@ -244,6 +269,11 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
     <script>if (window.jQuery && !window.jQuery.fn.select2) { document.write('<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"><\/script>'); }</script>
     <script src="../assets/js/app.js"></script>
     <script>
+        const tripletByType = { magistr: [9, 10, 11], doktorant: [12, 13, 14] };
+        const defaultTripletHours = {
+            magistr: { 9: 50, 10: 30, 11: 20 }
+        };
+        const darsTypeLabels = <?= json_encode($darsTypeLabels, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
         const allYonalishOptions = [];
         const allSemestrOptions = [];
         let qoshimchaRowsById = {};
@@ -263,6 +293,10 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
         function getFilterUrl(base) {
             return base;
         }
+        function normalizePersonType(value) {
+            const raw = String(value || '').trim().toLowerCase();
+            return raw.includes('doktor') ? 'doktorant' : 'magistr';
+        }
         function buildPersonOptionsHtml(selectedId) {
             const selected = String(selectedId || '');
             let html = '<option value="">Magistr/Doktorantni tanlang</option>';
@@ -270,13 +304,13 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                 const value = String($(this).attr('value') || '');
                 if (value === '') return;
                 const selectedAttr = value === selected ? ' selected' : '';
-                html += `<option value="${escapeHtml(value)}" data-turi="${escapeHtml(String($(this).data('turi') || ''))}"${selectedAttr}>${escapeHtml($(this).text())}</option>`;
+                html += `<option value="${escapeHtml(value)}" data-turi="${escapeHtml(normalizePersonType($(this).data('turi')))}"${selectedAttr}>${escapeHtml($(this).text())}</option>`;
             });
             return html;
         }
         function buildDarsTuriOptionsHtml(selectedId, personTuri = '') {
             const selected = String(selectedId || '');
-            const turi = String(personTuri || '');
+            const turi = normalizePersonType(personTuri);
             let html = '<option value="">Dars turini tanlang</option>';
             $('#darsTuriSelect option').each(function() {
                 const value = String($(this).attr('value') || '');
@@ -336,11 +370,12 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                     const rows = data && data.success && Array.isArray(data.rows) ? data.rows : [];
                     select.empty().append('<option value="">Magistr/Doktorantni tanlang</option>');
                     rows.forEach(row => {
-                        const turi = row.turi === 'doktorant' ? 'Doktorant' : 'Magistr';
+                        const rowTuri = normalizePersonType(row.turi);
+                        const turi = rowTuri === 'doktorant' ? 'Doktorant' : 'Magistr';
                         select.append(
                             $('<option>')
                                 .val(row.id)
-                                .attr('data-turi', row.turi || '')
+                                .attr('data-turi', rowTuri)
                                 .text(`${turi}: ${row.kod || ''} - ${row.ism_familiya || ''} (${getKirishYiliLabel(row)}, ${getKursLabel(row)})`)
                         );
                     });
@@ -350,7 +385,7 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                 .catch(() => select.empty().append('<option value="">Ro\'yxat yuklanmadi</option>').trigger('change.select2'));
         }
         function filterDarsTuriByPerson() {
-            const personTuri = String($('#personSelect option:selected').data('turi') || '');
+            const personTuri = normalizePersonType($('#personSelect option:selected').data('turi'));
             const darsSelect = $('#darsTuriSelect');
             darsSelect.find('option').each(function() {
                 const optionTuri = String($(this).data('turi') || '');
@@ -361,6 +396,40 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
             if (selectedTuri !== '' && personTuri !== '' && selectedTuri !== personTuri) {
                 darsSelect.val('').trigger('change.select2');
             }
+            renderTripletInputs();
+        }
+        function renderTripletInputs(prefill = {}) {
+            const personTuri = normalizePersonType($('#personSelect option:selected').data('turi'));
+            const darsIds = tripletByType[personTuri] || [];
+            const container = $('#tripletInputs');
+
+            if (!darsIds.length) {
+                container.html('<div class="triplet-empty">Avval magistr/doktorantni tanlang.</div>');
+                return;
+            }
+
+            const rowsHtml = darsIds.map((darsId) => {
+                const label = String(darsTypeLabels[String(darsId)] || `Dars turi #${darsId}`);
+                const defaultValue = defaultTripletHours[personTuri]?.[darsId] ?? '';
+                const value = prefill[String(darsId)] ?? prefill[darsId] ?? defaultValue;
+                return `
+                    <div class="triplet-row">
+                        <div class="triplet-label">${escapeHtml(label)}</div>
+                        <input
+                            type="number"
+                            class="form-control triplet-soat-input"
+                            data-dars-id="${darsId}"
+                            min="1"
+                            step="1"
+                            placeholder="Soat kiriting"
+                            value="${escapeHtml(value)}"
+                            required
+                        >
+                    </div>
+                `;
+            }).join('');
+
+            container.html(`<div class="triplet-rows">${rowsHtml}</div>`);
         }
         function renderTable(rows) {
             $('#qoshimchaCount').text(`${rows.length} ta`);
@@ -440,15 +509,42 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
         });
         $('#magDokQoshimchaForm').on('submit', function(e) {
             e.preventDefault();
-            const formData = new FormData(this);
+            const personId = String($('#personSelect').val() || '');
+            const personTuri = normalizePersonType($('#personSelect option:selected').data('turi'));
+            const izoh = String($('#magDokQoshimchaForm input[name="izoh"]').val() || '').trim();
+            const darsIds = tripletByType[personTuri] || [];
+
+            if (!personId || !darsIds.length) {
+                Toast.fire({ icon: 'error', title: "Avval magistr/doktorantni tanlang" });
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('person_id', personId);
+            formData.append('bulk_mode', 'triplet_all');
+            formData.append('izoh', izoh);
+
+            let hasInvalid = false;
+            darsIds.forEach((darsId) => {
+                const value = String($(`.triplet-soat-input[data-dars-id="${darsId}"]`).val() || '').trim();
+                if (value === '' || Number(value) <= 0) {
+                    hasInvalid = true;
+                    return;
+                }
+                formData.append(`triplet_hours[${darsId}]`, value);
+            });
+
+            if (hasInvalid) {
+                Toast.fire({ icon: 'error', title: "Uchala dars turi uchun ham soat kiriting" });
+                return;
+            }
+
             fetch('insert/add_magistr_doktorant_qoshimcha_reja.php', { method: 'POST', body: formData })
                 .then(res => res.json())
                 .then(data => {
                     if (data && data.success) {
                         Toast.fire({ icon: 'success', title: data.message || 'Saqlandi' });
-                        this.reset();
-                        $('#personSelect').val('').trigger('change.select2');
-                        $('#darsTuriSelect').val('').trigger('change.select2');
+                        renderTripletInputs();
                         loadList();
                     } else {
                         Toast.fire({ icon: 'error', title: (data && data.message) || 'Saqlashda xatolik' });
@@ -495,7 +591,7 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                 cancelButtonText: "Bekor qilish",
                 didOpen: () => {
                     $('#editPersonSelect').on('change', function() {
-                        const personTuri = String($('#editPersonSelect option:selected').data('turi') || '');
+                        const personTuri = normalizePersonType($('#editPersonSelect option:selected').data('turi'));
                         const selectedDarsId = String($('#editDarsTuriSelect').val() || '');
                         $('#editDarsTuriSelect').html(buildDarsTuriOptionsHtml(selectedDarsId, personTuri));
                     });
