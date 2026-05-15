@@ -9,6 +9,22 @@ $kafedralar = $isKafedraMudiri && $currentKafedraId > 0
     ? $db->get_data_by_table_all('kafedralar', 'WHERE id = ' . $currentKafedraId)
     : $db->get_data_by_table_all('kafedralar');
 $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $currentKafedraId] : []);
+$yonalishlar = $db->get_data_by_table_all('yonalishlar');
+$kirishYillar = [];
+foreach ($yonalishlar as $yonalish) {
+    $yil = (int)($yonalish['kirish_yili'] ?? 0);
+    if ($yil > 0) {
+        $kirishYillar[$yil] = true;
+    }
+}
+$monthNow = (int)date('n');
+$yearNow = (int)date('Y');
+$isFallSemester = ($monthNow >= 9 || $monthNow === 1);
+$currentAcademicStart = $isFallSemester ? $yearNow : ($yearNow - 1);
+$maxAcademicStart = $currentAcademicStart + 1;
+$defaultOquvYilStart = $currentAcademicStart;
+$yearStart = !empty($kirishYillar) ? min(array_keys($kirishYillar)) : ($currentAcademicStart - 5);
+$yearEnd = max($maxAcademicStart, $currentAcademicStart);
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -51,6 +67,16 @@ $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $current
                             </select>
                         </div>
                         
+                        <div class="form-group">
+                            <label><i class="fas fa-calendar-alt me-2"></i>O'quv yili</label>
+                            <select class="form-control" id="oquvYilFilter">
+                                <option value="">Barcha o'quv yillari</option>
+                                <?php for ($y = $yearStart; $y <= $yearEnd; $y++): ?>
+                                    <option value="<?= (int)$y ?>"<?= ((int)$y === (int)$defaultOquvYilStart) ? ' selected' : '' ?>><?= (int)$y ?>-<?= (int)$y + 1 ?> o'quv yili</option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+
                         <div class="form-group">
                             <label><i class="fas fa-calendar me-2"></i>Semestr</label>
                             <select class="form-control" id="semestrFilter">
@@ -239,7 +265,7 @@ $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $current
         let teacherRowCounter = 0;
 
         $(document).ready(function() {
-            $('#kafedraFilter, #semestrFilter, #oqituvchiSelect').select2({
+            $('#kafedraFilter, #oquvYilFilter, #semestrFilter, #oqituvchiSelect').select2({
                 placeholder: "Tanlang",
                 allowClear: true,
                 width: '100%'
@@ -282,8 +308,11 @@ $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $current
             });
         });
 
-        function loadTableData(kafedraId = '', semestrId = '') {
+        function loadTableData(kafedraId = '', semestrId = '', oquvYilStart = '') {
             const container = $('#yuklamaTableContainer');
+            const resolvedOquvYilStart = (oquvYilStart === '' || oquvYilStart === null || typeof oquvYilStart === 'undefined')
+                ? ($('#oquvYilFilter').val() || '')
+                : oquvYilStart;
             container.html(`
                 <div class="alert alert-info" style="margin-top: 16px;">
                     <i class="fas fa-spinner fa-spin me-2"></i>
@@ -297,6 +326,7 @@ $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $current
                 data: {
                     kafedra_id: kafedraId,
                     semestr: semestrId,
+                    oquv_yil_start: resolvedOquvYilStart,
                     show_all: showAllRows ? 1 : 0
                 },
                 success: function(response) {
@@ -507,8 +537,8 @@ $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $current
                                 style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px;">
                             <option value="">Tanlang</option>
                             <?php foreach ($oqtuvchilar as $oqtuvchi): ?>
-                                <option value="<?= $oqtuvchi['id'] ?>" ${teacherId == '<?= $oqtuvchi['id'] ?>' ? 'selected' : ''}>
-                                    <?= htmlspecialchars($oqtuvchi['fio'])?>
+                                <option value="<?= (int)$oqtuvchi['id'] ?>" ${teacherId == '<?= (int)$oqtuvchi['id'] ?>' ? 'selected' : ''}>
+                                    <?= str_replace('`', '&#96;', htmlspecialchars((string)$oqtuvchi['fio'], ENT_QUOTES, 'UTF-8')) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -810,13 +840,14 @@ $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $current
         function applyFilters() {
             const kafedraId = $('#kafedraFilter').val();
             const semestrId = $('#semestrFilter').val();
+            const oquvYilStart = $('#oquvYilFilter').val();
             
             const filterBtn = $('.filter-actions .btn-primary');
             const originalText = filterBtn.html();
             filterBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Filtrlash...');
             filterBtn.prop('disabled', true);
             
-            loadTableData(kafedraId, semestrId);
+            loadTableData(kafedraId, semestrId, oquvYilStart);
             
             setTimeout(() => {
                 filterBtn.html(originalText);
@@ -842,6 +873,7 @@ $oqtuvchilar = $db->get_oqtuvchilar($isKafedraMudiri ? ['kafedra_id' => $current
             } else {
                 $('#kafedraFilter').val(null).trigger('change');
             }
+            $('#oquvYilFilter').val(null).trigger('change');
             $('#semestrFilter').val(null).trigger('change');
 
             if (scopeLocked) {

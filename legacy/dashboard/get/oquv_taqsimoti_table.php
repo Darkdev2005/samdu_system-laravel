@@ -15,6 +15,9 @@ if (isset($_POST['kafedra_id']) && !empty($_POST['kafedra_id'])) {
 if (isset($_POST['semestr']) && !empty($_POST['semestr'])) {
     $filters['semestr'] = (int)$_POST['semestr'];
 }
+if (isset($_POST['oquv_yil_start']) && !empty($_POST['oquv_yil_start'])) {
+    $filters['oquv_yil_start'] = (int)$_POST['oquv_yil_start'];
+}
 legacy_apply_kafedra_scope($filters);
 
 $oquv_taqsimotlar = $db->get_oquv_taqsimotlar($filters);

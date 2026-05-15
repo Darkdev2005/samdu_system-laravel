@@ -5,6 +5,21 @@ header('Content-Type: application/json; charset=utf-8');
 
 $db = new Database();
 $semestrId = (int)($_POST['semestr_id'] ?? 0);
+$semestrIdsRaw = trim((string)($_POST['semestr_ids'] ?? ''));
+$semestrIds = [];
+if ($semestrIdsRaw !== '') {
+    foreach (explode(',', $semestrIdsRaw) as $part) {
+        $value = (int)trim($part);
+        if ($value > 0) {
+            $semestrIds[$value] = true;
+        }
+    }
+}
+if ($semestrId > 0) {
+    $semestrIds[$semestrId] = true;
+}
+$semestrIds = array_map('intval', array_keys($semestrIds));
+
 $fanId = (int)($_POST['fan_id'] ?? 0);
 $fanIdsRaw = trim((string)($_POST['fan_ids'] ?? ''));
 $fanIds = [];
@@ -21,7 +36,7 @@ if ($fanId > 0) {
 }
 $fanIds = array_map('intval', array_keys($fanIds));
 
-if ($semestrId <= 0 || empty($fanIds)) {
+if (empty($semestrIds) || empty($fanIds)) {
     echo json_encode([
         'success' => false,
         'message' => "Ma'lumotlar to'liq emas",
@@ -31,10 +46,11 @@ if ($semestrId <= 0 || empty($fanIds)) {
 
 try {
     $db->query("START TRANSACTION");
+    $semestrIdsSql = implode(',', $semestrIds);
     $fanIdsSql = implode(',', $fanIds);
     $ok = $db->query("
         DELETE FROM chet_tili_biriktirilgan_guruhlar
-        WHERE semestr_id = {$semestrId}
+        WHERE semestr_id IN ({$semestrIdsSql})
           AND fan_id IN ({$fanIdsSql})
     ");
 

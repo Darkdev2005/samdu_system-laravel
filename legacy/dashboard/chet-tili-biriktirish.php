@@ -117,6 +117,13 @@ $normalizeLanguageName = static function (string $value): string {
 
     return $normalized;
 };
+$calculateChetTiliSmallGroups = static function (int $talabalarSoni, int $fallbackGroupCount = 0): int {
+    if ($talabalarSoni > 0) {
+        return $talabalarSoni <= 23 ? 1 : ((int)ceil(($talabalarSoni - 23) / 12) + 1);
+    }
+
+    return max(1, $fallbackGroupCount);
+};
 $academicYearLabel = static function (string $value): string {
     $trimmed = trim($value);
     if ($trimmed === '') {
@@ -605,8 +612,10 @@ $mergeSummaryRes = $db->query("
             bg.semestr_id,
             s.semestr AS semestr_num,
             bg.fan_id,
+            f.kafedra_id,
             f.fan_code,
             f.fan_name,
+            k.name AS kafedra_name,
             bg.guruh_id,
             bg.talabalar_soni,
             y.name AS yonalish_name,
@@ -614,26 +623,32 @@ $mergeSummaryRes = $db->query("
         FROM chet_tili_biriktirilgan_guruhlar bg
         JOIN semestrlar s ON s.id = bg.semestr_id
         JOIN fanlar f ON f.id = bg.fan_id
+        LEFT JOIN kafedralar k ON k.id = f.kafedra_id
         JOIN guruhlar g ON g.id = bg.guruh_id
         JOIN yonalishlar y ON y.id = bg.yonalish_id
-        ORDER BY s.semestr, f.fan_name, f.fan_code, y.name, g.guruh_nomer
+        ORDER BY s.semestr, f.kafedra_id, f.fan_name, f.fan_code, y.name, g.guruh_nomer
     ");
 if ($mergeSummaryRes) {
     $summaryMap = [];
     while ($row = mysqli_fetch_assoc($mergeSummaryRes)) {
         $semestrNum = (int)($row['semestr_num'] ?? 0);
+        $fanId = (int)($row['fan_id'] ?? 0);
+        $kafedraId = (int)($row['kafedra_id'] ?? 0);
         $fanName = trim((string)($row['fan_name'] ?? ''));
         $languageKey = $normalizeLanguageName($fanName);
-        if ($semestrNum <= 0 || $languageKey === '') {
+        if ($semestrNum <= 0 || $fanId <= 0 || $languageKey === '') {
             continue;
         }
 
-        $summaryKey = $semestrNum . '|' . $languageKey;
+        $summaryKey = $semestrNum . '|' . $languageKey . '|' . $kafedraId;
         if (!isset($summaryMap[$summaryKey])) {
             $summaryMap[$summaryKey] = [
                 'semestr_id' => (int)($row['semestr_id'] ?? 0),
+                'semestr_ids' => [],
                 'semestr_num' => $semestrNum,
-                'fan_id' => (int)($row['fan_id'] ?? 0),
+                'fan_id' => $fanId,
+                'kafedra_id' => $kafedraId,
+                'kafedra_name' => trim((string)($row['kafedra_name'] ?? '')),
                 'fan_code' => trim((string)($row['fan_code'] ?? '')),
                 'fan_name' => $fanName,
                 'fan_ids' => [],
@@ -644,7 +659,11 @@ if ($mergeSummaryRes) {
             ];
         }
 
-        $fanId = (int)($row['fan_id'] ?? 0);
+        $semestrId = (int)($row['semestr_id'] ?? 0);
+        if ($semestrId > 0) {
+            $summaryMap[$summaryKey]['semestr_ids'][$semestrId] = true;
+        }
+
         if ($fanId > 0) {
             $summaryMap[$summaryKey]['fan_ids'][$fanId] = true;
         }
@@ -686,23 +705,19 @@ if ($mergeSummaryRes) {
         $fanIds = array_map('intval', array_keys($item['fan_ids']));
         sort($fanIds);
 
+        $semestrIds = array_map('intval', array_keys($item['semestr_ids']));
+        sort($semestrIds);
+
         $fanVariants = array_keys($item['fan_variants']);
         sort($fanVariants, SORT_NATURAL | SORT_FLAG_CASE);
 
         $guruhlar = array_keys($item['guruhlar']);
         sort($guruhlar, SORT_NATURAL | SORT_FLAG_CASE);
 
-        $guruhCount = 0;
-        if ($item['talabalar_soni'] > 0) {
-            $guruhCount = (int)ceil($item['talabalar_soni'] / 12);
-        } elseif (!empty($guruhIds)) {
-            $guruhCount = count($guruhIds);
-        }
-        if ($guruhCount <= 0) {
-            $guruhCount = 1;
-        }
+        $guruhCount = $calculateChetTiliSmallGroups((int)($item['talabalar_soni'] ?? 0), $sourceGroupCount);
 
         $item['fan_ids'] = implode(',', $fanIds);
+        $item['semestr_ids'] = implode(',', $semestrIds);
         $item['fan_variants'] = implode(' | ', $fanVariants);
         $item['guruh_ids'] = implode(',', $guruhIds);
         $item['guruhlar'] = implode(' | ', $guruhlar);
@@ -1713,7 +1728,7 @@ foreach ($guruhRows as $rowIndex => $row) {
                     <form id="chetGuruhBirlashtirishForm" class="card">
                         <h3 class="section-title">Chet tili guruhlarini birlashtirish</h3>
                         <div class="detail-meta" style="margin-bottom: 12px;">
-                            Yo'nalishlar ichidagi til guruhlarini checkbox orqali tanlang. Har bir belgilangan guruh yuklamada 1 ta kichik guruh hisoblanadi.
+                            Yo'nalishlar ichidagi til guruhlarini checkbox orqali tanlang. Kichik guruh soni talaba soni bo'yicha hisoblanadi: 1-23 talaba = 1 ta, keyingi har 12 talaba = +1 ta.
                         </div>
                         <div class="card" style="padding: 14px; margin-bottom: 12px; background: #f8fafc;">
                             <h4 class="section-title" style="margin-bottom: 8px;">Umumiy ma'lumot</h4>
@@ -1953,6 +1968,11 @@ foreach ($guruhRows as $rowIndex => $row) {
                                                 <td><?php echo $h((string)($row['fan_code'] ?? '')); ?></td>
                                                 <td>
                                                     <?php echo $h((string)($row['fan_name'] ?? '')); ?>
+                                                    <?php if (!empty($row['kafedra_name'])): ?>
+                                                        <div class="detail-meta">
+                                                            Kafedra: <?php echo $h((string)$row['kafedra_name']); ?>
+                                                        </div>
+                                                    <?php endif; ?>
                                                     <?php $fanVariants = trim((string)($row['fan_variants'] ?? '')); ?>
                                                     <?php if ($fanVariants !== ''): ?>
                                                         <div class="detail-meta">
@@ -1994,6 +2014,7 @@ foreach ($guruhRows as $rowIndex => $row) {
                                                             type="button"
                                                             class="btn btn-sm btn-danger deleteMergedGroupBtn"
                                                             data-semestr-id="<?php echo (int)($row['semestr_id'] ?? 0); ?>"
+                                                            data-semestr-ids="<?php echo $h((string)($row['semestr_ids'] ?? '')); ?>"
                                                             data-fan-ids="<?php echo $h((string)($row['fan_ids'] ?? '')); ?>"
                                                             data-fan-id="<?php echo (int)($row['fan_id'] ?? 0); ?>">
                                                             <i class="fas fa-trash"></i> O'chirish
@@ -3611,7 +3632,7 @@ foreach ($guruhRows as $rowIndex => $row) {
                 const fanId = parseInt(checkbox.data('fan-id') || 0, 10) || 0;
                 const checkboxSemestrNum = String(checkbox.data('semestr-num') || '').trim();
                 const checkboxLanguageKey = String(checkbox.data('language-key') || '').trim();
-                const languageOk = languageKey !== '' ? (checkboxLanguageKey === languageKey) : (fanSet.size === 0 || fanSet.has(fanId));
+                const languageOk = fanSet.size > 0 ? fanSet.has(fanId) : (languageKey === '' || checkboxLanguageKey === languageKey);
                 const shouldCheck = groupSet.has(groupId) && checkboxSemestrNum === semestrNum && languageOk;
                 checkbox.prop('checked', shouldCheck);
                 checkbox.closest('tr').toggleClass('merge-row-selected', shouldCheck);
@@ -3638,13 +3659,18 @@ foreach ($guruhRows as $rowIndex => $row) {
         // Izoh: 3-tabdagi biriktirilgan til guruhini o'chirish.
         $(document).on('click', '.deleteMergedGroupBtn', function() {
             const semestrId = parseInt($(this).data('semestr-id') || 0, 10) || 0;
+            const rawSemestrIds = String($(this).data('semestr-ids') || '');
             const fanId = parseInt($(this).data('fan-id') || 0, 10) || 0;
             const rawFanIds = String($(this).data('fan-ids') || '');
+            const semestrIds = rawSemestrIds
+                .split(',')
+                .map((item) => parseInt(item.trim(), 10))
+                .filter((item) => !Number.isNaN(item) && item > 0);
             const fanIds = rawFanIds
                 .split(',')
                 .map((item) => parseInt(item.trim(), 10))
                 .filter((item) => !Number.isNaN(item) && item > 0);
-            if (semestrId <= 0 || (fanIds.length === 0 && fanId <= 0)) {
+            if ((semestrIds.length === 0 && semestrId <= 0) || (fanIds.length === 0 && fanId <= 0)) {
                 return;
             }
 
@@ -3662,6 +3688,9 @@ foreach ($guruhRows as $rowIndex => $row) {
 
                 const formData = new FormData();
                 formData.append('semestr_id', String(semestrId));
+                if (semestrIds.length > 0) {
+                    formData.append('semestr_ids', semestrIds.join(','));
+                }
                 formData.append('fan_id', String(fanId));
                 if (fanIds.length > 0) {
                     formData.append('fan_ids', fanIds.join(','));

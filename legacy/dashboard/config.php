@@ -1975,6 +1975,11 @@ class Database{
             $pairStart = ($s % 2 === 0) ? $s - 1 : $s;
             $pairEnd = $pairStart + 1;
             $where[] = "s.semestr IN ({$pairStart}, {$pairEnd})";
+        } elseif (!empty($filters['oquv_yil_start'])) {
+            $startYear = (int)$filters['oquv_yil_start'];
+            $fallExpr = "GREATEST(1, LEAST(10, (({$startYear} - y.kirish_yili + 1) * 2) - 1))";
+            $springExpr = "GREATEST(1, LEAST(10, (({$startYear} - y.kirish_yili + 1) * 2)))";
+            $where[] = "s.semestr IN ({$fallExpr}, {$springExpr})";
         }
         if (!empty($filters['maxsus_oquv_reja_id'])) {
             $rid = (int)$filters['maxsus_oquv_reja_id'];
@@ -2055,51 +2060,73 @@ class Database{
         $filterKafedraBase = '';
         $filterKafedraMerged = '';
         $filterYonalish = '';
+        $filterYonalishBase = '';
         $filterSemestr = '';
+        $filterSemestrBase = '';
         $filterSemestrLecture = '';
         $filterCurrentSemestr = '';
         $filterCurrentLecture = '';
         $filterSemestrType = '';
+        $filterSemestrTypeBase = '';
         $filterSemestrTypeLecture = '';
         $filterOquvYil = '';
+        $filterOquvYilBase = '';
         $filterOquvYilLecture = '';
         $filterKurs = '';
+        $filterKursBase = '';
         $filterKursLecture = '';
+        $filterVariantDept = '';
         if (!empty($filters['kafedra_id'])) {
             $kid = (int)$filters['kafedra_id'];
+            $filterVariantDept = " AND fv.kafedra_id = {$kid}";
             $filterKafedraBase = " AND (
-                (tft.variant_fan_id IS NOT NULL AND vf.kafedra_id = {$kid})
+                (ctbg.variant_fan_id IS NOT NULL AND ctbg.kafedra_id = {$kid})
                 OR (
-                    tft.variant_fan_id IS NULL
+                    ctbg.variant_fan_id IS NULL
                     AND (
-                        fr.kafedra_id = {$kid}
+                        (tft.variant_fan_id IS NOT NULL AND vf.kafedra_id = {$kid})
+                        OR (
+                            tft.variant_fan_id IS NULL
+                            AND (
+                                fr.kafedra_id = {$kid}
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM ishchi_variant_dept ivd
+                                    WHERE ivd.base_fan_id = fr.fan_id
+                                      AND ivd.variant_kafedra_id = {$kid}
+                                )
+                            )
+                        )
                         OR EXISTS (
                             SELECT 1
-                            FROM ishchi_variant_dept ivd
-                            WHERE ivd.base_fan_id = fr.fan_id
-                              AND ivd.variant_kafedra_id = {$kid}
+                            FROM chet_tili_biriktirilgan_guruhlar bgk
+                            JOIN fanlar fbgk ON fbgk.id = bgk.fan_id
+                            JOIN semestrlar sbgk ON sbgk.id = bgk.semestr_id
+                            WHERE sbgk.id = fr.semestr_id
+                              AND fbgk.kafedra_id = {$kid}
+                              AND fbgk.fan_code = fr.fan_code
                         )
                     )
-                )
-                OR EXISTS (
-                    SELECT 1
-                    FROM chet_tili_biriktirilgan_guruhlar bgk
-                    JOIN fanlar fbgk ON fbgk.id = bgk.fan_id
-                    JOIN semestrlar sbgk ON sbgk.id = bgk.semestr_id
-                    WHERE sbgk.semestr = s.semestr
-                      AND fbgk.kafedra_id = {$kid}
-                      AND fbgk.fan_code = fr.fan_code
-                      AND LOWER(TRIM(REPLACE(fbgk.fan_name, ' tili', ''))) = LOWER(TRIM(REPLACE(fr.fan_name, ' tili', '')))
                 )
             )";
             $filterKafedraMerged = " AND k.id = {$kid}";
         }
         if (!empty($filters['yonalish_id'])) {
-            $filterYonalish = " AND y.id = " . (int)$filters['yonalish_id'];
+            $yid = (int)$filters['yonalish_id'];
+            $filterYonalish = " AND y.id = {$yid}";
+            $filterYonalishBase = " AND (
+                (ctbg.variant_fan_id IS NOT NULL AND FIND_IN_SET({$yid}, ctbg.yonalish_ids))
+                OR (ctbg.variant_fan_id IS NULL AND y.id = {$yid})
+            )";
         }
         if (!empty($filters['semestr'])) {
-            $filterSemestr = " AND s.semestr = " . (int)$filters['semestr'];
-            $filterSemestrLecture = " AND ul.semestr = " . (int)$filters['semestr'];
+            $sem = (int)$filters['semestr'];
+            $filterSemestr = " AND s.semestr = {$sem}";
+            $filterSemestrBase = " AND (
+                (ctbg.variant_fan_id IS NOT NULL AND ctbg.semestr_num = {$sem})
+                OR (ctbg.variant_fan_id IS NULL AND s.semestr = {$sem})
+            )";
+            $filterSemestrLecture = " AND ul.semestr = {$sem}";
         } elseif (!empty($filters['oquv_yil_start'])) {
             // Izoh: O'quv yili bo'yicha filter:
             // - semestr_turi berilsa mos (fall/spring) semestr;
@@ -2110,10 +2137,34 @@ class Database{
             $springExpr = "GREATEST(1, LEAST(10, (({$startYear} - y.kirish_yili + 1) * 2)))";
             if ($semType === 'fall') {
                 $filterOquvYil = " AND s.semestr = {$fallExpr}";
+                $filterOquvYilBase = " AND (
+                    (
+                        ctbg.variant_fan_id IS NOT NULL
+                        AND ctbg.semestr_num = GREATEST(1, LEAST(10, (({$startYear} - ctbg.kirish_yili + 1) * 2) - 1))
+                    )
+                    OR (ctbg.variant_fan_id IS NULL AND s.semestr = {$fallExpr})
+                )";
             } elseif ($semType === 'spring') {
                 $filterOquvYil = " AND s.semestr = {$springExpr}";
+                $filterOquvYilBase = " AND (
+                    (
+                        ctbg.variant_fan_id IS NOT NULL
+                        AND ctbg.semestr_num = GREATEST(1, LEAST(10, (({$startYear} - ctbg.kirish_yili + 1) * 2)))
+                    )
+                    OR (ctbg.variant_fan_id IS NULL AND s.semestr = {$springExpr})
+                )";
             } else {
                 $filterOquvYil = " AND s.semestr IN ({$fallExpr}, {$springExpr})";
+                $filterOquvYilBase = " AND (
+                    (
+                        ctbg.variant_fan_id IS NOT NULL
+                        AND ctbg.semestr_num IN (
+                            GREATEST(1, LEAST(10, (({$startYear} - ctbg.kirish_yili + 1) * 2) - 1)),
+                            GREATEST(1, LEAST(10, (({$startYear} - ctbg.kirish_yili + 1) * 2)))
+                        )
+                    )
+                    OR (ctbg.variant_fan_id IS NULL AND s.semestr IN ({$fallExpr}, {$springExpr}))
+                )";
             }
             // Izoh: Umumta'lim ma'ruza CTE ichida y mavjud, shu yerda filter ishlatiladi.
             $filterOquvYilLecture = '';
@@ -2121,9 +2172,17 @@ class Database{
             // Izoh: Semestr turi bo'yicha filter (Kuzgi/Bahorgi).
             if ($filters['semestr_turi'] === 'fall') {
                 $filterSemestrType = " AND MOD(s.semestr, 2) = 1";
+                $filterSemestrTypeBase = " AND (
+                    (ctbg.variant_fan_id IS NOT NULL AND MOD(ctbg.semestr_num, 2) = 1)
+                    OR (ctbg.variant_fan_id IS NULL AND MOD(s.semestr, 2) = 1)
+                )";
                 $filterSemestrTypeLecture = " AND MOD(ul.semestr, 2) = 1";
             } elseif ($filters['semestr_turi'] === 'spring') {
                 $filterSemestrType = " AND MOD(s.semestr, 2) = 0";
+                $filterSemestrTypeBase = " AND (
+                    (ctbg.variant_fan_id IS NOT NULL AND MOD(ctbg.semestr_num, 2) = 0)
+                    OR (ctbg.variant_fan_id IS NULL AND MOD(s.semestr, 2) = 0)
+                )";
                 $filterSemestrTypeLecture = " AND MOD(ul.semestr, 2) = 0";
             }
         } else {
@@ -2134,6 +2193,10 @@ class Database{
             $kurs = (int)$filters['kurs'];
             if ($kurs > 0) {
                 $filterKurs = " AND FLOOR((s.semestr + 1)/2) = {$kurs}";
+                $filterKursBase = " AND (
+                    (ctbg.variant_fan_id IS NOT NULL AND ctbg.kurs = {$kurs})
+                    OR (ctbg.variant_fan_id IS NULL AND FLOOR((s.semestr + 1)/2) = {$kurs})
+                )";
                 $filterKursLecture = " AND ul.kurs = {$kurs}";
             }
         }
@@ -2201,13 +2264,61 @@ class Database{
                 )
                 GROUP BY f.id
             ),
+            chet_tili_assignment_rows AS (
+                SELECT
+                    bg.semestr_id,
+                    bg.yonalish_id,
+                    bg.guruh_id,
+                    bg.fan_id,
+                    bg.talabalar_soni
+                FROM chet_tili_biriktirilgan_guruhlar bg
+
+                UNION ALL
+
+                SELECT DISTINCT
+                    t.semestr_id,
+                    t.yonalish_id,
+                    t.guruh_id,
+                    t.fan_id,
+                    t.talabalar_soni
+                FROM chet_tili_guruhlar ct
+                JOIN chet_tili_talablar t
+                    ON t.semestr_id = ct.semestr_id
+                   AND FIND_IN_SET(t.fan_id, REPLACE(COALESCE(ct.source_fan_ids, ''), ' ', ''))
+                JOIN fanlar ft ON ft.id = t.fan_id
+                JOIN semestrlar st ON st.id = t.semestr_id
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM chet_tili_biriktirilgan_guruhlar bgm
+                    WHERE bgm.semestr_id = t.semestr_id
+                      AND bgm.guruh_id = t.guruh_id
+                      AND bgm.fan_id = t.fan_id
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM chet_tili_biriktirilgan_guruhlar bgm2
+                    JOIN fanlar fm2 ON fm2.id = bgm2.fan_id
+                    JOIN semestrlar sm2 ON sm2.id = bgm2.semestr_id
+                    WHERE sm2.semestr = st.semestr
+                      AND fm2.fan_code = ft.fan_code
+                      AND COALESCE(fm2.kafedra_id, 0) = COALESCE(ft.kafedra_id, 0)
+                )
+            ),
             chet_tili_biriktirilgan_agg AS (
                 SELECT
+                    MIN(sct.id) AS semestr_id,
                     sct.semestr AS semestr_num,
-                    MIN(COALESCE(vbm.base_fan_id, bg.fan_id)) AS fan_id,
+                    FLOOR((sct.semestr + 1)/2) AS kurs,
+                    MIN(vbm.base_fan_id) AS base_fan_id,
+                    MIN(bg.fan_id) AS variant_fan_id,
                     fbg.fan_code,
-                    LOWER(TRIM(REPLACE(fbg.fan_name, ' tili', ''))) AS fan_name_key,
-                    GROUP_CONCAT(DISTINCT kbg.name ORDER BY kbg.name SEPARATOR ' | ') AS kafedra_nomi,
+                    LOWER(TRIM(MAX(fbg.fan_name))) AS fan_name_key,
+                    GROUP_CONCAT(DISTINCT bg.fan_id ORDER BY bg.fan_id SEPARATOR ',') AS variant_fan_ids,
+                    GROUP_CONCAT(DISTINCT y.id ORDER BY y.id SEPARATOR ',') AS yonalish_ids,
+                    MIN(y.kirish_yili) AS kirish_yili,
+                    MAX(fbg.kafedra_id) AS kafedra_id,
+                    MAX(fbg.fan_name) AS variant_fan_name,
+                    MAX(kbg.name) AS kafedra_nomi,
                     GROUP_CONCAT(DISTINCT y.code ORDER BY y.code SEPARATOR ', ') AS yonalish_code,
                     GROUP_CONCAT(
                         DISTINCT CONCAT(y.name, ' - ', y.kirish_yili)
@@ -2221,8 +2332,14 @@ class Database{
                     ) AS guruh_raqami,
                     GREATEST(COUNT(DISTINCT bg.guruh_id), 1) AS guruhlar_soni,
                     SUM(bg.talabalar_soni) AS talabalar_soni,
-                    GREATEST(CEIL(SUM(bg.talabalar_soni) / 12), 1) AS kichikguruhlar_soni_12
-                FROM chet_tili_biriktirilgan_guruhlar bg
+                    GREATEST(
+                        CASE
+                            WHEN COALESCE(SUM(bg.talabalar_soni), 0) <= 23 THEN 1
+                            ELSE CEIL((COALESCE(SUM(bg.talabalar_soni), 0) - 23) / 12) + 1
+                        END,
+                        1
+                    ) AS kichikguruhlar_soni_12
+                FROM chet_tili_assignment_rows bg
                 JOIN fanlar fbg ON fbg.id = bg.fan_id
                 JOIN semestrlar sct ON sct.id = bg.semestr_id
                 LEFT JOIN kafedralar kbg ON kbg.id = fbg.kafedra_id
@@ -2239,7 +2356,8 @@ class Database{
                 GROUP BY
                     sct.semestr,
                     fbg.fan_code,
-                    LOWER(TRIM(REPLACE(fbg.fan_name, ' tili', '')))
+                    LOWER(TRIM(fbg.fan_name)),
+                    COALESCE(fbg.kafedra_id, 0)
             ),
             ishchi_variant_info AS (
                 SELECT
@@ -2257,6 +2375,8 @@ class Database{
                 JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ior.id
                 JOIN fanlar fv ON fv.id = iv.fan_id
                 LEFT JOIN kafedralar kv ON kv.id = fv.kafedra_id
+                WHERE 1=1
+                $filterVariantDept
                 GROUP BY ior.base_fan_id
             ),
             ishchi_variant_dept AS (
@@ -2426,6 +2546,7 @@ class Database{
                 -- Izoh: Oddiy fanlar (umumta'lim biriktirilmaganlar).
                 SELECT
                     CASE
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN COALESCE(NULLIF(ctbg.variant_fan_name, ''), fr.fan_name)
                         WHEN tft.variant_fan_id IS NOT NULL THEN CONCAT(fr.fan_name, ' | ', COALESCE(vf.fan_name, 'Variant'))
                         ELSE COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name)
                     END AS fan_name,
@@ -2438,8 +2559,12 @@ class Database{
 
                     COALESCE(ctbg.guruh_raqami, ga.guruh_raqami) AS guruh_raqami,
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE ga.guruhlar_soni
                     END AS guruhlar_soni,
                     COALESCE(ctbg.talabalar_soni, tft.talabalar_soni, ga.talabalar_soni) AS talabalar_soni,
@@ -2449,13 +2574,21 @@ class Database{
                         ELSE y.patok_soni
                     END AS patok_soni,
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END AS kattaguruh_soni,
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kichikguruh_soni
                     END AS kichikguruh_soni,
 
@@ -2470,19 +2603,19 @@ class Database{
                     END AS amalda_maruz,
                     fr.amaliy_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kattaguruh_soni
                     END AS amalda_amaliy,
                     fr.laboratoriya_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kichikguruh_soni
                     END AS amalda_lab,
                     fr.seminar_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kattaguruh_soni
                     END AS amalda_seminar,
@@ -2493,19 +2626,19 @@ class Database{
                     END
                     + fr.amaliy_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kattaguruh_soni
                     END
                     + fr.laboratoriya_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kichikguruh_soni
                     END
                     + fr.seminar_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kattaguruh_soni
                     END
@@ -2528,10 +2661,12 @@ class Database{
                 LEFT JOIN chet_tili_biriktirilgan_agg ctbg
                     ON ctbg.semestr_num = s.semestr
                    AND (
-                        ctbg.fan_id = fr.fan_id
+                        ctbg.base_fan_id = fr.fan_id
+                        OR (ctbg.base_fan_id IS NULL AND FIND_IN_SET(fr.fan_id, ctbg.variant_fan_ids))
                         OR (
-                            ctbg.fan_code = fr.fan_code
-                            AND ctbg.fan_name_key = LOWER(TRIM(REPLACE(fr.fan_name, ' tili', '')))
+                            ctbg.base_fan_id IS NULL
+                            AND ctbg.fan_code = fr.fan_code
+                            AND COALESCE(ctbg.kafedra_id, 0) = COALESCE(fr.kafedra_id, 0)
                         )
                    )
                 LEFT JOIN fan_unassigned_guruh_agg ga ON ga.fan_id = fr.fan_id
@@ -2568,39 +2703,56 @@ class Database{
                     )
                 )
                 AND (
-                    ctbg.fan_id IS NOT NULL
+                    ctbg.variant_fan_id IS NOT NULL
                     OR NOT EXISTS (
                         SELECT 1
                         FROM chet_tili_biriktirilgan_guruhlar bgx
                         JOIN fanlar fbg ON fbg.id = bgx.fan_id
-                        JOIN semestrlar sbg ON sbg.id = bgx.semestr_id
-                        WHERE sbg.semestr = s.semestr
-                          AND fbg.fan_code = fr.fan_code
-                          AND LOWER(TRIM(REPLACE(fbg.fan_name, ' tili', ''))) = LOWER(TRIM(REPLACE(fr.fan_name, ' tili', '')))
+                        LEFT JOIN (
+                            SELECT
+                                iv.fan_id AS variant_fan_id,
+                                MIN(ir.base_fan_id) AS base_fan_id
+                            FROM ishchi_oquv_reja_variants iv
+                            JOIN ishchi_oquv_reja ir ON ir.id = iv.ishchi_reja_id
+                            GROUP BY iv.fan_id
+                        ) bgvm ON bgvm.variant_fan_id = bgx.fan_id
+                        WHERE bgx.semestr_id = fr.semestr_id
+                          AND (
+                              fbg.fan_code = fr.fan_code
+                              OR bgvm.base_fan_id = fr.fan_id
+                          )
                     )
                 )
                 AND (
-                    ctbg.fan_id IS NOT NULL
+                    ctbg.variant_fan_id IS NOT NULL
                     OR ga.fan_id IS NOT NULL
                 )
                 AND (
-                    ctbg.fan_id IS NULL
-                    OR fr.fan_id = (
+                    ctbg.variant_fan_id IS NULL
+                    OR ctbg.base_fan_id = fr.fan_id
+                    OR (
+                        ctbg.base_fan_id IS NULL
+                        AND fr.fan_id = (
                         SELECT MIN(fm.id)
                         FROM fanlar fm
                         JOIN semestrlar sm ON sm.id = fm.semestr_id
-                        WHERE sm.semestr = s.semestr
-                          AND fm.fan_code = fr.fan_code
-                          AND LOWER(TRIM(REPLACE(fm.fan_name, ' tili', ''))) = LOWER(TRIM(REPLACE(fr.fan_name, ' tili', '')))
+                        WHERE sm.semestr = ctbg.semestr_num
+                          AND fm.fan_code = ctbg.fan_code
+                          AND COALESCE(fm.kafedra_id, 0) = COALESCE(ctbg.kafedra_id, 0)
+                          AND (
+                              ctbg.fan_name_key = ''
+                              OR LOWER(TRIM(fm.fan_name)) = ctbg.fan_name_key
+                          )
+                        )
                     )
                 )
                 $filterKafedraBase
-                $filterSemestr
-                $filterYonalish
+                $filterSemestrBase
+                $filterYonalishBase
                 $filterCurrentSemestr
-                $filterSemestrType
-                $filterOquvYil
-                $filterKurs
+                $filterSemestrTypeBase
+                $filterOquvYilBase
+                $filterKursBase
 
                 UNION ALL
 
@@ -2927,31 +3079,39 @@ class Database{
         $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
         $whereBase = [];
         $whereMerged = [];
+        $filterOquvYilCte = '';
+        $filterVariantDept = '';
         if (!empty($filters['kafedra_id'])) {
             $kid = (int)$filters['kafedra_id'];
+            $filterVariantDept = " AND fv.kafedra_id = {$kid}";
             $whereBase[] = "(
-                (tft.variant_fan_id IS NOT NULL AND vf.kafedra_id = {$kid})
+                (ctbg.variant_fan_id IS NOT NULL AND ctbg.kafedra_id = {$kid})
                 OR (
-                    tft.variant_fan_id IS NULL
+                    ctbg.variant_fan_id IS NULL
                     AND (
-                        fr.kafedra_id = {$kid}
+                        (tft.variant_fan_id IS NOT NULL AND vf.kafedra_id = {$kid})
+                        OR (
+                            tft.variant_fan_id IS NULL
+                            AND (
+                                fr.kafedra_id = {$kid}
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM ishchi_variant_dept ivd
+                                    WHERE ivd.base_fan_id = fr.fan_id
+                                      AND ivd.variant_kafedra_id = {$kid}
+                                )
+                            )
+                        )
                         OR EXISTS (
                             SELECT 1
-                            FROM ishchi_variant_dept ivd
-                            WHERE ivd.base_fan_id = fr.fan_id
-                              AND ivd.variant_kafedra_id = {$kid}
+                            FROM chet_tili_biriktirilgan_guruhlar bgk
+                            JOIN fanlar fbgk ON fbgk.id = bgk.fan_id
+                            JOIN semestrlar sbgk ON sbgk.id = bgk.semestr_id
+                            WHERE sbgk.id = fr.semestr_id
+                              AND fbgk.kafedra_id = {$kid}
+                              AND fbgk.fan_code = fr.fan_code
                         )
                     )
-                )
-                OR EXISTS (
-                    SELECT 1
-                    FROM chet_tili_biriktirilgan_guruhlar bgk
-                    JOIN fanlar fbgk ON fbgk.id = bgk.fan_id
-                    JOIN semestrlar sbgk ON sbgk.id = bgk.semestr_id
-                    WHERE sbgk.semestr = s.semestr
-                      AND fbgk.kafedra_id = {$kid}
-                      AND fbgk.fan_code = fr.fan_code
-                      AND LOWER(TRIM(REPLACE(fbgk.fan_name, ' tili', ''))) = LOWER(TRIM(REPLACE(fr.fan_name, ' tili', '')))
                 )
             )";
             $whereMerged[] = "k.id = {$kid}";
@@ -2962,6 +3122,12 @@ class Database{
             $pairEnd = $pairStart + 1;
             $whereBase[] = "s.semestr IN ({$pairStart}, {$pairEnd})";
             $whereMerged[] = "ul.semestr IN ({$pairStart}, {$pairEnd})";
+        } elseif (!empty($filters['oquv_yil_start'])) {
+            $startYear = (int)$filters['oquv_yil_start'];
+            $fallExpr = "GREATEST(1, LEAST(10, (({$startYear} - y.kirish_yili + 1) * 2) - 1))";
+            $springExpr = "GREATEST(1, LEAST(10, (({$startYear} - y.kirish_yili + 1) * 2)))";
+            $whereBase[] = "s.semestr IN ({$fallExpr}, {$springExpr})";
+            $filterOquvYilCte = " AND s.semestr IN ({$fallExpr}, {$springExpr})";
         }
         if (!empty($filters['oquv_reja_id'])) {
             $rid = (int)$filters['oquv_reja_id'];
@@ -3047,13 +3213,58 @@ class Database{
                 )
                 GROUP BY f.id
             ),
+            chet_tili_assignment_rows AS (
+                SELECT
+                    bg.semestr_id,
+                    bg.yonalish_id,
+                    bg.guruh_id,
+                    bg.fan_id,
+                    bg.talabalar_soni
+                FROM chet_tili_biriktirilgan_guruhlar bg
+
+                UNION ALL
+
+                SELECT DISTINCT
+                    t.semestr_id,
+                    t.yonalish_id,
+                    t.guruh_id,
+                    t.fan_id,
+                    t.talabalar_soni
+                FROM chet_tili_guruhlar ct
+                JOIN chet_tili_talablar t
+                    ON t.semestr_id = ct.semestr_id
+                   AND FIND_IN_SET(t.fan_id, REPLACE(COALESCE(ct.source_fan_ids, ''), ' ', ''))
+                JOIN fanlar ft ON ft.id = t.fan_id
+                JOIN semestrlar st ON st.id = t.semestr_id
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM chet_tili_biriktirilgan_guruhlar bgm
+                    WHERE bgm.semestr_id = t.semestr_id
+                      AND bgm.guruh_id = t.guruh_id
+                      AND bgm.fan_id = t.fan_id
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM chet_tili_biriktirilgan_guruhlar bgm2
+                    JOIN fanlar fm2 ON fm2.id = bgm2.fan_id
+                    JOIN semestrlar sm2 ON sm2.id = bgm2.semestr_id
+                    WHERE sm2.semestr = st.semestr
+                      AND fm2.fan_code = ft.fan_code
+                      AND COALESCE(fm2.kafedra_id, 0) = COALESCE(ft.kafedra_id, 0)
+                )
+            ),
             chet_tili_biriktirilgan_agg AS (
                 SELECT
+                    MIN(sct.id) AS semestr_id,
                     sct.semestr AS semestr_num,
-                    MIN(COALESCE(vbm.base_fan_id, bg.fan_id)) AS fan_id,
+                    MIN(vbm.base_fan_id) AS base_fan_id,
+                    MIN(bg.fan_id) AS variant_fan_id,
                     fbg.fan_code,
-                    LOWER(TRIM(REPLACE(fbg.fan_name, ' tili', ''))) AS fan_name_key,
-                    GROUP_CONCAT(DISTINCT kbg.name ORDER BY kbg.name SEPARATOR ' | ') AS kafedra_nomi,
+                    LOWER(TRIM(MAX(fbg.fan_name))) AS fan_name_key,
+                    GROUP_CONCAT(DISTINCT bg.fan_id ORDER BY bg.fan_id SEPARATOR ',') AS variant_fan_ids,
+                    MAX(fbg.kafedra_id) AS kafedra_id,
+                    MAX(fbg.fan_name) AS variant_fan_name,
+                    MAX(kbg.name) AS kafedra_nomi,
                     GROUP_CONCAT(DISTINCT y.code ORDER BY y.code SEPARATOR ', ') AS yonalish_code,
                     GROUP_CONCAT(
                         DISTINCT CONCAT(y.name, ' - ', y.kirish_yili)
@@ -3067,8 +3278,14 @@ class Database{
                     ) AS guruh_raqami,
                     GREATEST(COUNT(DISTINCT bg.guruh_id), 1) AS guruhlar_soni,
                     SUM(bg.talabalar_soni) AS talabalar_soni,
-                    GREATEST(CEIL(SUM(bg.talabalar_soni) / 12), 1) AS kichikguruhlar_soni_12
-                FROM chet_tili_biriktirilgan_guruhlar bg
+                    GREATEST(
+                        CASE
+                            WHEN COALESCE(SUM(bg.talabalar_soni), 0) <= 23 THEN 1
+                            ELSE CEIL((COALESCE(SUM(bg.talabalar_soni), 0) - 23) / 12) + 1
+                        END,
+                        1
+                    ) AS kichikguruhlar_soni_12
+                FROM chet_tili_assignment_rows bg
                 JOIN fanlar fbg ON fbg.id = bg.fan_id
                 JOIN semestrlar sct ON sct.id = bg.semestr_id
                 LEFT JOIN kafedralar kbg ON kbg.id = fbg.kafedra_id
@@ -3085,7 +3302,8 @@ class Database{
                 GROUP BY
                     sct.semestr,
                     fbg.fan_code,
-                    LOWER(TRIM(REPLACE(fbg.fan_name, ' tili', '')))
+                    LOWER(TRIM(fbg.fan_name)),
+                    COALESCE(fbg.kafedra_id, 0)
             ),
             ishchi_variant_info AS (
                 SELECT
@@ -3103,6 +3321,8 @@ class Database{
                 JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ior.id
                 JOIN fanlar fv ON fv.id = iv.fan_id
                 LEFT JOIN kafedralar kv ON kv.id = fv.kafedra_id
+                WHERE 1=1
+                $filterVariantDept
                 GROUP BY ior.base_fan_id
             ),
             ishchi_variant_dept AS (
@@ -3242,6 +3462,8 @@ class Database{
                     ON uga.umumtalim_fan_id = ub.umumtalim_fan_id
                    AND uga.yonalish_id = ub.yonalish_id
                    AND uga.semestr = s.semestr
+                WHERE 1=1
+                $filterOquvYilCte
                 GROUP BY ub.umumtalim_fan_id, ub.fan_name_key, ub.kafedra_id, s.semestr
             ),
             umumtalim_kopaytirgich AS (
@@ -3260,6 +3482,8 @@ class Database{
                     ON uga.umumtalim_fan_id = ub.umumtalim_fan_id
                    AND uga.yonalish_id = ub.yonalish_id
                    AND uga.semestr = s.semestr
+                WHERE 1=1
+                $filterOquvYilCte
                 GROUP BY ub.umumtalim_fan_id, ub.fan_name_key, ub.kafedra_id, s.semestr
             )
             SELECT *
@@ -3271,6 +3495,7 @@ class Database{
                     fr.seminar_reja_id,
                     y.id AS yonalish_id,
                     CASE
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN COALESCE(NULLIF(ctbg.variant_fan_name, ''), fr.fan_name)
                         WHEN tft.variant_fan_id IS NOT NULL THEN CONCAT(fr.fan_name, ' | ', COALESCE(vf.fan_name, 'Variant'))
                         ELSE COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name)
                     END AS fan_nomi,
@@ -3282,8 +3507,12 @@ class Database{
                     FLOOR((s.semestr + 1) / 2) AS kurs,
                     COALESCE(ctbg.guruh_raqami, ga.guruh_raqami) AS guruh_raqami,
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE ga.guruhlar_soni
                     END AS guruhlar_soni,
                     COALESCE(ctbg.talabalar_soni, tft.talabalar_soni, ga.talabalar_soni) AS talabalar_soni,
@@ -3292,13 +3521,21 @@ class Database{
                         ELSE y.patok_soni
                     END AS patok_soni,
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END AS kattaguruh_soni,
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kichikguruh_soni
                     END AS kichikguruh_soni,
                     EXISTS (
@@ -3318,19 +3555,19 @@ class Database{
                     END AS amalda_maruz,
                     fr.amaliy_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kattaguruh_soni
                     END AS amalda_amaliy,
                     fr.laboratoriya_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kichikguruh_soni
                     END AS amalda_laboratoriya,
                     fr.seminar_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kattaguruh_soni
                     END AS amalda_seminar,
@@ -3341,19 +3578,19 @@ class Database{
                     END
                     + fr.amaliy_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kattaguruh_soni
                     END
                     + fr.laboratoriya_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kichikguruh_soni
                     END
                     + fr.seminar_soat *
                     CASE
-                        WHEN ctbg.fan_id IS NOT NULL THEN ctbg.guruhlar_soni
+                        WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
                         ELSE y.kattaguruh_soni
                     END
@@ -3372,10 +3609,12 @@ class Database{
                 LEFT JOIN chet_tili_biriktirilgan_agg ctbg
                     ON ctbg.semestr_num = s.semestr
                    AND (
-                        ctbg.fan_id = fr.fan_id
+                        ctbg.base_fan_id = fr.fan_id
+                        OR (ctbg.base_fan_id IS NULL AND FIND_IN_SET(fr.fan_id, ctbg.variant_fan_ids))
                         OR (
-                            ctbg.fan_code = fr.fan_code
-                            AND ctbg.fan_name_key = LOWER(TRIM(REPLACE(fr.fan_name, ' tili', '')))
+                            ctbg.base_fan_id IS NULL
+                            AND ctbg.fan_code = fr.fan_code
+                            AND COALESCE(ctbg.kafedra_id, 0) = COALESCE(fr.kafedra_id, 0)
                         )
                    )
                 JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
@@ -3413,30 +3652,47 @@ class Database{
                     )
                 )
                 AND (
-                    ctbg.fan_id IS NOT NULL
+                    ctbg.variant_fan_id IS NOT NULL
                     OR NOT EXISTS (
                         SELECT 1
                         FROM chet_tili_biriktirilgan_guruhlar bgx
                         JOIN fanlar fbg ON fbg.id = bgx.fan_id
-                        JOIN semestrlar sbg ON sbg.id = bgx.semestr_id
-                        WHERE sbg.semestr = s.semestr
-                          AND fbg.fan_code = fr.fan_code
-                          AND LOWER(TRIM(REPLACE(fbg.fan_name, ' tili', ''))) = LOWER(TRIM(REPLACE(fr.fan_name, ' tili', '')))
+                        LEFT JOIN (
+                            SELECT
+                                iv.fan_id AS variant_fan_id,
+                                MIN(ir.base_fan_id) AS base_fan_id
+                            FROM ishchi_oquv_reja_variants iv
+                            JOIN ishchi_oquv_reja ir ON ir.id = iv.ishchi_reja_id
+                            GROUP BY iv.fan_id
+                        ) bgvm ON bgvm.variant_fan_id = bgx.fan_id
+                        WHERE bgx.semestr_id = fr.semestr_id
+                          AND (
+                              fbg.fan_code = fr.fan_code
+                              OR bgvm.base_fan_id = fr.fan_id
+                          )
                     )
                 )
                 AND (
-                    ctbg.fan_id IS NOT NULL
+                    ctbg.variant_fan_id IS NOT NULL
                     OR ga.fan_id IS NOT NULL
                 )
                 AND (
-                    ctbg.fan_id IS NULL
-                    OR fr.fan_id = (
+                    ctbg.variant_fan_id IS NULL
+                    OR ctbg.base_fan_id = fr.fan_id
+                    OR (
+                        ctbg.base_fan_id IS NULL
+                        AND fr.fan_id = (
                         SELECT MIN(fm.id)
                         FROM fanlar fm
                         JOIN semestrlar sm ON sm.id = fm.semestr_id
-                        WHERE sm.semestr = s.semestr
-                          AND fm.fan_code = fr.fan_code
-                          AND LOWER(TRIM(REPLACE(fm.fan_name, ' tili', ''))) = LOWER(TRIM(REPLACE(fr.fan_name, ' tili', '')))
+                        WHERE sm.semestr = ctbg.semestr_num
+                          AND fm.fan_code = ctbg.fan_code
+                          AND COALESCE(fm.kafedra_id, 0) = COALESCE(ctbg.kafedra_id, 0)
+                          AND (
+                              ctbg.fan_name_key = ''
+                              OR LOWER(TRIM(fm.fan_name)) = ctbg.fan_name_key
+                          )
+                        )
                     )
                 )
                 $whereSQLBase
@@ -3514,6 +3770,11 @@ class Database{
         }
         if (!empty($filters['semestr'])) {
             $where[] = "s.semestr = " . (int)$filters['semestr'];
+        } elseif (!empty($filters['oquv_yil_start'])) {
+            $startYear = (int)$filters['oquv_yil_start'];
+            $fallExpr = "GREATEST(1, LEAST(10, (({$startYear} - y.kirish_yili + 1) * 2) - 1))";
+            $springExpr = "GREATEST(1, LEAST(10, (({$startYear} - y.kirish_yili + 1) * 2)))";
+            $where[] = "s.semestr IN ({$fallExpr}, {$springExpr})";
         }
         if (!empty($filters['qoshimcha_oquv_reja_id'])){
             $where[] = "q.id = " . (int)$filters['qoshimcha_oquv_reja_id'];
