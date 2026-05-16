@@ -402,6 +402,7 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
             const personTuri = normalizePersonType($('#personSelect option:selected').data('turi'));
             const darsIds = tripletByType[personTuri] || [];
             const container = $('#tripletInputs');
+            const isRequired = personTuri === 'magistr';
 
             if (!darsIds.length) {
                 container.html('<div class="triplet-empty">Avval magistr/doktorantni tanlang.</div>');
@@ -423,7 +424,7 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
                             step="1"
                             placeholder="Soat kiriting"
                             value="${escapeHtml(value)}"
-                            required
+                            ${isRequired ? 'required' : ''}
                         >
                     </div>
                 `;
@@ -525,17 +526,33 @@ usort($filterYonalishlar, static function (array $a, array $b): int {
             formData.append('izoh', izoh);
 
             let hasInvalid = false;
+            let hasAnyPositive = false;
             darsIds.forEach((darsId) => {
                 const value = String($(`.triplet-soat-input[data-dars-id="${darsId}"]`).val() || '').trim();
-                if (value === '' || Number(value) <= 0) {
+                if (value === '') {
+                    if (personTuri === 'magistr') {
+                        hasInvalid = true;
+                    }
+                    return;
+                }
+                if (Number(value) <= 0) {
                     hasInvalid = true;
                     return;
                 }
+                hasAnyPositive = true;
                 formData.append(`triplet_hours[${darsId}]`, value);
             });
 
             if (hasInvalid) {
-                Toast.fire({ icon: 'error', title: "Uchala dars turi uchun ham soat kiriting" });
+                const msg = personTuri === 'magistr'
+                    ? "Uchala dars turi uchun ham soat kiriting"
+                    : "Kiritilgan soatlar 0 dan katta bo'lishi kerak";
+                Toast.fire({ icon: 'error', title: msg });
+                return;
+            }
+
+            if (personTuri === 'doktorant' && !hasAnyPositive) {
+                Toast.fire({ icon: 'error', title: "Kamida bitta dars turi uchun soat kiriting" });
                 return;
             }
 

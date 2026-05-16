@@ -59,6 +59,9 @@ if ($bulkMode === 'triplet_all' || $bulkMode === 'magistr_all') {
             $rawHour = $tripletHours[(string)$darsId] ?? ($tripletHours[$darsId] ?? null);
         }
         if ($rawHour === null || $rawHour === '') {
+            if ($personType === 'doktorant') {
+                continue;
+            }
             if ($bulkMode === 'magistr_all' && $personType === 'magistr' && isset($defaultMagistrHours[$darsId])) {
                 $hoursByType[$darsId] = (float)$defaultMagistrHours[$darsId];
                 continue;
@@ -77,6 +80,14 @@ if ($bulkMode === 'triplet_all' || $bulkMode === 'magistr_all') {
             return;
         }
         $hoursByType[$darsId] = (float)$rawHour;
+    }
+
+    if ($personType === 'doktorant' && empty($hoursByType)) {
+        echo json_encode([
+            'success' => false,
+            'message' => "Kamida bitta dars turi uchun soat kiriting"
+        ], JSON_UNESCAPED_UNICODE);
+        return;
     }
 
     $inserted = 0;

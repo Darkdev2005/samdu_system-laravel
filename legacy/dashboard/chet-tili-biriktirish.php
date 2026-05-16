@@ -118,11 +118,20 @@ $normalizeLanguageName = static function (string $value): string {
     return $normalized;
 };
 $calculateChetTiliSmallGroups = static function (int $talabalarSoni, int $fallbackGroupCount = 0): int {
-    if ($talabalarSoni > 0) {
-        return $talabalarSoni <= 23 ? 1 : ((int)ceil(($talabalarSoni - 23) / 12) + 1);
+    if ($talabalarSoni <= 0) {
+        return max(1, $fallbackGroupCount);
     }
 
-    return max(1, $fallbackGroupCount);
+    // Izoh: Har bir manba guruh kesimida qoida:
+    // 13-22 => 1 ta, 23-35 => 2 ta, undan kattasi eski formula bo'yicha.
+    if ($talabalarSoni > 12 && $talabalarSoni < 23) {
+        return 1;
+    }
+    if ($talabalarSoni >= 23 && $talabalarSoni <= 35) {
+        return 2;
+    }
+
+    return $talabalarSoni <= 23 ? 1 : ((int)ceil(($talabalarSoni - 23) / 12) + 1);
 };
 $academicYearLabel = static function (string $value): string {
     $trimmed = trim($value);
@@ -312,7 +321,6 @@ if ($guruhResult) {
 // Izoh: Til guruhlarini qo'lda biriktirish uchun direction -> guruhlar xaritasi.
 $mergeSelectedMap = [];
 $mergeSelectedLanguageMap = [];
-$mergeSelectedGroupMap = [];
 $mergeSelectedRes = $db->query("
         SELECT
             bg.semestr_id,
@@ -334,9 +342,6 @@ if ($mergeSelectedRes) {
             continue;
         }
         $mergeSelectedMap[$semestrId . '|' . $guruhId . '|' . $fanId] = true;
-        if ($semestrNum > 0) {
-            $mergeSelectedGroupMap[$semestrNum . '|' . $guruhId] = true;
-        }
 
         $fanNameKey = $normalizeLanguageName((string)($row['fan_name'] ?? ''));
         if ($semestrNum > 0 && $fanNameKey !== '') {
@@ -348,7 +353,6 @@ if ($mergeSelectedRes) {
 $mergeCards = [];
 $mergeSelectedCount = 0;
 $mergeSelectedStudents = 0;
-$mergeSelectedUniqueKeys = [];
 $mergeVisibleLimit = 30;
 $mergeFilterFakultetMap = [];
 $mergeFilterYonalishMap = [];
@@ -469,24 +473,8 @@ if ($mergeSourceRes) {
         $fanNameKey = $normalizeLanguageName((string)($row['fan_name'] ?? ''));
         $languageRowKey = $semestrNum . '|' . $guruhId . '|' . $fanNameKey;
         $mergeRowKey = $languageRowKey;
-        $groupSelectionKey = $semestrNum . '|' . $guruhId;
 
-        if (isset($mergeSelectedGroupMap[$groupSelectionKey])) {
-            // Izoh: Avval biriktirilgan guruhlar qayta checkbox ro'yxatida ko'rinmaydi.
-            continue;
-        }
-
-        $selected = isset($mergeSelectedMap[$rowKey]) || isset($mergeSelectedLanguageMap[$languageRowKey]);
-        if ($selected && isset($mergeSelectedUniqueKeys[$mergeRowKey])) {
-            $selected = false;
-        } elseif ($selected) {
-            $mergeSelectedUniqueKeys[$mergeRowKey] = true;
-        }
-
-        // Izoh: Oldin birlashtirilgan guruhlar yana tanlovda ko'rinmasin.
-        if ($selected) {
-            continue;
-        }
+        $isLocked = isset($mergeSelectedMap[$rowKey]) || isset($mergeSelectedLanguageMap[$languageRowKey]);
 
         $mergeCards[$cardKey]['total_students'] += $talabalarSoni;
         $mergeCards[$cardKey]['rows'][] = [
@@ -501,6 +489,7 @@ if ($mergeSourceRes) {
             'guruh_nomer' => trim((string)($row['guruh_nomer'] ?? '')),
             'talabalar_soni' => $talabalarSoni,
             'selected' => false,
+            'is_locked' => $isLocked,
             'merge_row_key' => $mergeRowKey,
         ];
     }
@@ -647,6 +636,7 @@ if ($mergeSummaryRes) {
                 'semestr_ids' => [],
                 'semestr_num' => $semestrNum,
                 'fan_id' => $fanId,
+                'language_key' => $languageKey,
                 'kafedra_id' => $kafedraId,
                 'kafedra_name' => trim((string)($row['kafedra_name'] ?? '')),
                 'fan_code' => trim((string)($row['fan_code'] ?? '')),
@@ -654,6 +644,7 @@ if ($mergeSummaryRes) {
                 'fan_ids' => [],
                 'fan_variants' => [],
                 'guruh_ids' => [],
+                'group_student_map' => [],
                 'guruhlar' => [],
                 'talabalar_soni' => 0,
             ];
@@ -680,6 +671,10 @@ if ($mergeSummaryRes) {
         $guruhId = (int)($row['guruh_id'] ?? 0);
         if ($guruhId > 0) {
             $summaryMap[$summaryKey]['guruh_ids'][$guruhId] = true;
+            if (!isset($summaryMap[$summaryKey]['group_student_map'][$guruhId])) {
+                $summaryMap[$summaryKey]['group_student_map'][$guruhId] = 0;
+            }
+            $summaryMap[$summaryKey]['group_student_map'][$guruhId] += (int)($row['talabalar_soni'] ?? 0);
         }
 
         $guruhText = trim((string)($row['yonalish_name'] ?? ''));
@@ -714,7 +709,23 @@ if ($mergeSummaryRes) {
         $guruhlar = array_keys($item['guruhlar']);
         sort($guruhlar, SORT_NATURAL | SORT_FLAG_CASE);
 
-        $guruhCount = $calculateChetTiliSmallGroups((int)($item['talabalar_soni'] ?? 0), $sourceGroupCount);
+        $guruhCount = 0;
+        $smallBucketTalaba = 0;
+        foreach (($item['group_student_map'] ?? []) as $groupTalaba) {
+            $groupTalaba = (int)$groupTalaba;
+            if ($groupTalaba > 0 && $groupTalaba < 12) {
+                $smallBucketTalaba += $groupTalaba;
+                continue;
+            }
+            $guruhCount += $calculateChetTiliSmallGroups($groupTalaba, 1);
+        }
+        if ($smallBucketTalaba > 0) {
+            // Izoh: 12 dan kichik guruhlar bitta umumiy savatga yig'ilib hisoblanadi.
+            $guruhCount += $calculateChetTiliSmallGroups($smallBucketTalaba, 1);
+        }
+        if ($guruhCount <= 0) {
+            $guruhCount = max(1, $sourceGroupCount);
+        }
 
         $item['fan_ids'] = implode(',', $fanIds);
         $item['semestr_ids'] = implode(',', $semestrIds);
@@ -1425,11 +1436,11 @@ foreach ($guruhRows as $rowIndex => $row) {
                 <div class="tab-header">
                     <?php if ($forcedTabId === ''): ?>
                         <button type="button" class="tab-btn active" data-tab="chet-tab-yaratish">Chet tili fanini yaratish</button>
-                        <button type="button" class="tab-btn" data-tab="chet-tab-biriktirish">Chet tilini biriktirish</button>
+                        <button type="button" class="tab-btn" data-tab="chet-tab-biriktirish">Chet tilini bo'lish</button>
                     <?php elseif ($forcedTabId === 'chet-tab-yaratish'): ?>
                         <button type="button" class="tab-btn active" data-tab="chet-tab-yaratish">Chet tili fanini yaratish</button>
                     <?php elseif ($forcedTabId === 'chet-tab-biriktirish'): ?>
-                        <button type="button" class="tab-btn active" data-tab="chet-tab-biriktirish">Chet tilini biriktirish</button>
+                        <button type="button" class="tab-btn active" data-tab="chet-tab-biriktirish">Chet tilini bo'lish</button>
                     <?php else: ?>
                         <button type="button" class="tab-btn active" data-tab="chet-tab-guruh-birlashtirish">Chet tili guruhlarini birlashtirish</button>
                     <?php endif; ?>
@@ -1579,7 +1590,7 @@ foreach ($guruhRows as $rowIndex => $row) {
 
                 <div id="chet-tab-biriktirish" class="tab-content <?php echo $forcedTabId === 'chet-tab-biriktirish' ? 'active' : ''; ?>">
                     <form id="chetBiriktirishForm" class="card">
-                        <h3 class="section-title">Chet tilini guruhlar kesimida biriktirish</h3>
+                        <h3 class="section-title">Chet tilini guruhlar kesimida bo'lish</h3>
                         <div class="top-filters-grid">
                             <div class="form-group">
                                 <label>Fakultet filtri</label>
@@ -1728,7 +1739,7 @@ foreach ($guruhRows as $rowIndex => $row) {
                     <form id="chetGuruhBirlashtirishForm" class="card">
                         <h3 class="section-title">Chet tili guruhlarini birlashtirish</h3>
                         <div class="detail-meta" style="margin-bottom: 12px;">
-                            Yo'nalishlar ichidagi til guruhlarini checkbox orqali tanlang. Kichik guruh soni talaba soni bo'yicha hisoblanadi: 1-23 talaba = 1 ta, keyingi har 12 talaba = +1 ta.
+                            Yo'nalishlar ichidagi til guruhlarini checkbox orqali tanlang. 12 dan kichik guruhlar yig'ilib bitta savat sifatida hisoblanadi, 13-22 talaba = 1 ta, 23-35 talaba = 2 ta.
                         </div>
                         <div class="card" style="padding: 14px; margin-bottom: 12px; background: #f8fafc;">
                             <h4 class="section-title" style="margin-bottom: 8px;">Umumiy ma'lumot</h4>
@@ -1902,7 +1913,8 @@ foreach ($guruhRows as $rowIndex => $row) {
                                                                     data-language-key="<?php echo $h((string)($row['language_key'] ?? '')); ?>"
                                                                     data-merge-key="<?php echo $h((string)($row['merge_row_key'] ?? '')); ?>"
                                                                     data-talabalar-soni="<?php echo (int)($row['talabalar_soni'] ?? 0); ?>"
-                                                                    <?php echo !empty($row['selected']) ? 'checked' : ''; ?>>
+                                                                    <?php echo !empty($row['selected']) ? 'checked' : ''; ?>
+                                                                    <?php echo !empty($row['is_locked']) ? 'disabled' : ''; ?>>
                                                             </td>
                                                             <td>
                                                                 <?php echo $h(trim((string)($row['fan_code'] ?? '')) . ' - ' . trim((string)($row['fan_name'] ?? ''))); ?>
@@ -1913,7 +1925,7 @@ foreach ($guruhRows as $rowIndex => $row) {
                                                             <td><?php echo $h((string)($row['guruh_nomer'] ?? '-')); ?></td>
                                                             <td><?php echo (int)($row['talabalar_soni'] ?? 0); ?></td>
                                                             <td>
-                                                                <?php if (!empty($row['selected'])): ?>
+                                                                <?php if (!empty($row['is_locked'])): ?>
                                                                     <span class="maxsus-badge">Biriktirilgan</span>
                                                                 <?php else: ?>
                                                                     <span class="detail-meta">Tanlanmagan</span>
@@ -2726,7 +2738,7 @@ foreach ($guruhRows as $rowIndex => $row) {
             let selectedStudents = 0;
 
             $('.merge-group-checkbox').each(function() {
-                if (!this.checked) {
+                if (!this.checked || this.disabled) {
                     return;
                 }
                 selectedCount++;
@@ -2742,11 +2754,12 @@ foreach ($guruhRows as $rowIndex => $row) {
                 return;
             }
 
-            const checkboxes = card.find('.merge-group-checkbox');
+            const checkboxes = card.find('.merge-group-checkbox:not(:disabled)');
             const checkedCount = checkboxes.filter(':checked').length;
             const totalCount = checkboxes.length;
             const cardToggle = card.find('.merge-card-select-all').first();
             if (cardToggle.length) {
+                cardToggle.prop('disabled', totalCount === 0);
                 cardToggle.prop('checked', totalCount > 0 && checkedCount === totalCount);
             }
         }
@@ -2755,7 +2768,7 @@ foreach ($guruhRows as $rowIndex => $row) {
             const selectedByKey = {};
             let resolvedCount = 0;
 
-            $('.merge-group-checkbox:checked').each(function() {
+            $('.merge-group-checkbox:checked:not(:disabled)').each(function() {
                 const checkbox = $(this);
                 const mergeKey = String(checkbox.data('merge-key') || '').trim();
                 if (!mergeKey) {
@@ -2790,7 +2803,7 @@ foreach ($guruhRows as $rowIndex => $row) {
             let selectedStudents = 0;
             const selectedMergeKeys = {};
 
-            $('.merge-group-checkbox:checked').each(function() {
+            $('.merge-group-checkbox:checked:not(:disabled)').each(function() {
                 const checkbox = $(this);
                 const mergeKey = String(checkbox.data('merge-key') || '').trim();
                 const item = {
@@ -3097,7 +3110,7 @@ foreach ($guruhRows as $rowIndex => $row) {
             $(document).on('change', '.merge-card-select-all', function() {
                 const card = $(this).closest('.merge-direction-card');
                 const checked = $(this).is(':checked');
-                card.find('.merge-group-checkbox').each(function() {
+                card.find('.merge-group-checkbox:not(:disabled)').each(function() {
                     $(this).prop('checked', checked);
                     $(this).closest('tr').toggleClass('merge-row-selected', checked);
                 });

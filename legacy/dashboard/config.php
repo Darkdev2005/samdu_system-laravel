@@ -2526,7 +2526,17 @@ class Database{
                     s.semestr,
                     1 AS patok_soni,
                     COALESCE(SUM(uga.guruhlar_soni), SUM(y.kattaguruh_soni)) AS kattaguruh_soni,
-                    COALESCE(SUM(uga.guruhlar_soni), SUM(y.kichikguruh_soni)) AS kichikguruh_soni
+                    CASE
+                        WHEN COUNT(uga.guruhlar_soni) > 0 THEN
+                            GREATEST(
+                                CASE
+                                    WHEN COALESCE(SUM(uga.talabalar_soni), 0) <= 23 THEN 1
+                                    ELSE CEIL((COALESCE(SUM(uga.talabalar_soni), 0) - 23) / 12) + 1
+                                END,
+                                1
+                            )
+                        ELSE COALESCE(SUM(y.kichikguruh_soni), 0)
+                    END AS kichikguruh_soni
                 FROM umumtalim_birik ub
                 JOIN semestrlar s ON s.id = ub.semestr_id
                 JOIN yonalishlar y ON y.id = ub.yonalish_id
@@ -2604,19 +2614,31 @@ class Database{
                     fr.amaliy_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END AS amalda_amaliy,
                     fr.laboratoriya_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kichikguruh_soni
                     END AS amalda_lab,
                     fr.seminar_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END AS amalda_seminar,
                     fr.maruza_soat *
@@ -2627,19 +2649,31 @@ class Database{
                     + fr.amaliy_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END
                     + fr.laboratoriya_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kichikguruh_soni
                     END
                     + fr.seminar_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END
                     AS jami_soat,
@@ -3474,7 +3508,17 @@ class Database{
                     s.semestr,
                     1 AS patok_soni,
                     COALESCE(SUM(uga.guruhlar_soni), SUM(y.kattaguruh_soni)) AS kattaguruh_soni,
-                    COALESCE(SUM(uga.guruhlar_soni), SUM(y.kichikguruh_soni)) AS kichikguruh_soni
+                    CASE
+                        WHEN COUNT(uga.guruhlar_soni) > 0 THEN
+                            GREATEST(
+                                CASE
+                                    WHEN COALESCE(SUM(uga.talabalar_soni), 0) <= 23 THEN 1
+                                    ELSE CEIL((COALESCE(SUM(uga.talabalar_soni), 0) - 23) / 12) + 1
+                                END,
+                                1
+                            )
+                        ELSE COALESCE(SUM(y.kichikguruh_soni), 0)
+                    END AS kichikguruh_soni
                 FROM umumtalim_birik ub
                 JOIN semestrlar s ON s.id = ub.semestr_id
                 JOIN yonalishlar y ON y.id = ub.yonalish_id
@@ -3556,19 +3600,31 @@ class Database{
                     fr.amaliy_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END AS amalda_amaliy,
                     fr.laboratoriya_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kichikguruh_soni
                     END AS amalda_laboratoriya,
                     fr.seminar_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END AS amalda_seminar,
                     fr.maruza_soat *
@@ -3579,19 +3635,31 @@ class Database{
                     + fr.amaliy_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END
                     + fr.laboratoriya_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kichikguruh_soni
                     END
                     + fr.seminar_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
-                        WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 30)
+                        WHEN tft.variant_fan_id IS NOT NULL THEN
+                            CASE
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                            END
                         ELSE y.kattaguruh_soni
                     END
                     AS jami_soat

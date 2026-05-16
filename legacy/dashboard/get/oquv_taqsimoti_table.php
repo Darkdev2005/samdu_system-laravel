@@ -305,6 +305,30 @@ if (!empty($allYonalishIds)) {
                         $labJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $labRejaId, $rowType);
                         $seminarJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $seminarRejaId, $rowType);
 
+                        // Izoh: Yuklama sahifasidagi qoida bilan bir xil reyting nazorat hisob-kitobi.
+                        $rejaMaruza = (float)($row['reja_maruz'] ?? ($row['maruza_soat'] ?? 0));
+                        $rejaAmaliy = (float)($row['reja_amaliy'] ?? ($row['amaliy_soat'] ?? 0));
+                        $rejaLab = (float)($row['reja_laboratoriya'] ?? ($row['laboratoriya_soat'] ?? 0));
+                        $rejaSeminar = (float)($row['reja_seminar'] ?? ($row['seminar_soat'] ?? 0));
+                        $talabaSoni = (int)($row['talabalar_soni'] ?? 0);
+                        $auditoriyaSoat = $rejaMaruza + $rejaAmaliy + $rejaLab + $rejaSeminar;
+                        $shaklRaw = trim((string)($row['oquv_shakli'] ?? ''));
+                        $shakl = function_exists('mb_strtolower')
+                            ? (string)@mb_strtolower($shaklRaw, 'UTF-8')
+                            : strtolower($shaklRaw);
+                        $isMasofaviy = strpos($shakl, 'masof') !== false;
+                        $oraliqNazorat = 0;
+                        if (!$isMasofaviy && $talabaSoni > 0) {
+                            if ($auditoriyaSoat >= 60) {
+                                $oraliqNazorat = (int)round($talabaSoni * 0.4);
+                            } elseif ($auditoriyaSoat >= 30) {
+                                $oraliqNazorat = (int)round($talabaSoni * 0.2);
+                            }
+                        }
+                        $yakuniyNazorat = ($talabaSoni > 0 && $auditoriyaSoat > 0)
+                            ? (int)round($talabaSoni * 0.3)
+                            : 0;
+
                 ?>
                 <tr class="<?= $needsResync ? 'needs-resync' : '' ?>">
                     <td><?= $counter++ ?></td>
@@ -364,8 +388,8 @@ if (!empty($allYonalishIds)) {
                         
                     </td>
                     <!-- Reyting -->
-                    <td></td>
-                    <td></td>
+                    <td><?= $oraliqNazorat ?: '' ?></td>
+                    <td><?= $yakuniyNazorat ?: '' ?></td>
                     <!-- Kurs ishlari -->
                     <td></td>
                     <td></td>
