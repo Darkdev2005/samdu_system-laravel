@@ -151,6 +151,9 @@
             const scopeLocked = <?= $isKafedraMudiri ? 'true' : 'false' ?>;
             const lockedKafedraId = <?= (int)$currentKafedraId ?>;
 	        let showAllRows = false;
+            let isTableLoading = false;
+            let currentAjaxRequest = null;
+            let pendingFilterPayload = null;
 	        $(document).ready(function() {
             $('#kafedraFilter, #semestrFilter, #kursFilter, #semestrTypeFilter, #yonalishFilter').select2({
                 placeholder: "Tanlang",
@@ -223,7 +226,7 @@
 
                 // Jadvaldagi guruh/talaba sonlari o'zgarishini dinamik ko'rsatish uchun periodik yangilash.
                 setInterval(function () {
-                    applyFilters();
+                    applyFilters(true);
                 }, 30000);
             
             $(document).on('wheel', function(e) {
@@ -238,19 +241,27 @@
             });
         });
 
-        function loadTableData(kafedraId = '', oquvYilStart = '', yonalishId = '', semestrType = '', kurs = '') {
+        function loadTableData(kafedraId = '', oquvYilStart = '', yonalishId = '', semestrType = '', kurs = '', options = {}) {
+            const silent = !!options.silent;
+            if (isTableLoading) {
+                return;
+            }
+            isTableLoading = true;
+
             // Loading ko'rsatish
             const container = $('#yuklamaTableContainer');
-            container.html(`
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Yuklanmoqda...</span>
+            if (!silent) {
+                container.html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Yuklanmoqda...</span>
+                        </div>
+                        <p class="mt-2">Ma'lumotlar yuklanmoqda...</p>
                     </div>
-                    <p class="mt-2">Ma'lumotlar yuklanmoqda...</p>
-                </div>
-            `);
+                `);
+            }
             
-            $.ajax({
+            currentAjaxRequest = $.ajax({
                 url: 'get/oquv_yuklama_table.php',
                 type: 'POST',
                 data: {
@@ -269,6 +280,9 @@
                     updateZoom();
                 },
                 error: function(xhr, status, error) {
+                    if (status === 'abort') {
+                        return;
+                    }
                     container.html(`
                         <div class="alert alert-danger">
                             <i class="fas fa-exclamation-triangle me-2"></i>
@@ -276,6 +290,22 @@
                         </div>
                     `);
                     console.error('Xatolik:', error);
+                },
+                complete: function() {
+                    isTableLoading = false;
+                    currentAjaxRequest = null;
+                    if (pendingFilterPayload) {
+                        const next = pendingFilterPayload;
+                        pendingFilterPayload = null;
+                        loadTableData(
+                            next.kafedraId,
+                            next.oquvYilStart,
+                            next.yonalishId,
+                            next.semestrType,
+                            next.kurs,
+                            { silent: true }
+                        );
+                    }
                 }
             });
         }
@@ -298,39 +328,45 @@
             applyFilters();
         }
 
-        function applyFilters() {
-            const kafedraId = $('#kafedraFilter').val();
-            const oquvYilStart = $('#semestrFilter').val();
-            const yonalishId = $('#yonalishFilter').val();
-            const semestrType = $('#semestrTypeFilter').val();
-            const kurs = $('#kursFilter').val();
-            
-            // Loading ko'rsatish
-            const filterBtn = $('.filter-actions .btn-primary');
-            const originalText = filterBtn.html();
-            filterBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Filtrlash...');
-            filterBtn.prop('disabled', true);
-            
-            loadTableData(kafedraId, oquvYilStart, yonalishId, semestrType, kurs);
-            
-            setTimeout(() => {
-                filterBtn.html(originalText);
-                filterBtn.prop('disabled', false);
-                
-                // Muvaffaqiyatli xabar
-                const Toast = Swal.mixin({
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 2000
-                });
-                
-                Toast.fire({
-                    icon: 'success',
-                    title: 'Filterlar qo\'llandi'
-                });
-            }, 1000);
-        }
+	        function applyFilters(isAutoRefresh = false) {
+		            const kafedraId = $('#kafedraFilter').val();
+	            const oquvYilStart = $('#semestrFilter').val();
+	            const yonalishId = $('#yonalishFilter').val();
+	            const semestrType = $('#semestrTypeFilter').val();
+	            const kurs = $('#kursFilter').val();
+                if (isTableLoading) {
+                    pendingFilterPayload = { kafedraId, oquvYilStart, yonalishId, semestrType, kurs };
+                    return;
+                }
+	            
+	            // Loading ko'rsatish
+		            const filterBtn = $('.filter-actions .btn-primary');
+		            const originalText = filterBtn.html();
+                if (!isAutoRefresh) {
+	                filterBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Filtrlash...');
+                }
+	            
+	            loadTableData(kafedraId, oquvYilStart, yonalishId, semestrType, kurs, { silent: isAutoRefresh });
+	            
+                if (!isAutoRefresh) {
+	                setTimeout(() => {
+	                    filterBtn.html(originalText);
+	                
+	                    // Muvaffaqiyatli xabar
+	                    const Toast = Swal.mixin({
+	                        toast: true,
+	                        position: 'top-end',
+	                        showConfirmButton: false,
+	                        timer: 2000
+	                    });
+	                
+	                    Toast.fire({
+	                        icon: 'success',
+	                        title: 'Filterlar qo\'llandi'
+	                    });
+	                }, 1000);
+                }
+	        }
 
 	        function resetFilters() {
 	            if (scopeLocked) {

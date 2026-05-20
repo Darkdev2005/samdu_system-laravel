@@ -1587,6 +1587,8 @@ class Database{
             SUM(CASE WHEN dst.id = 3 THEN o.dars_soat ELSE 0 END) AS lab,
             SUM(CASE WHEN dst.id = 4 THEN o.dars_soat ELSE 0 END) AS seminar,
             SUM(CASE WHEN dst.id = 5 THEN o.dars_soat ELSE 0 END) AS mustaqilTalim,
+            SUM(CASE WHEN dst.id = 20 THEN o.dars_soat ELSE 0 END) AS oraliqNazorat,
+            SUM(CASE WHEN dst.id = 21 THEN o.dars_soat ELSE 0 END) AS yakuniyNazorat,
             SUM(CASE WHEN dst.name = 'Kurs ishi' THEN o.dars_soat ELSE 0 END) AS kursIshi,
             MAX(CASE WHEN dst.name = 'Kurs ishi' THEN 1 ELSE 0 END) AS kursIshiFlag,
             SUM(
@@ -1665,6 +1667,65 @@ class Database{
             $data[] = $row;
         }
         return $data;
+    }
+    public function ensure_exam_controls_table(): void {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS exam_controls (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                semestr_id INT NOT NULL,
+                fan_code VARCHAR(64) NOT NULL,
+                exam_type ENUM('T','I') NOT NULL DEFAULT 'T',
+                oraliq_nazorat DECIMAL(10,2) NOT NULL DEFAULT 0,
+                yakuniy_nazorat DECIMAL(10,2) NOT NULL DEFAULT 0,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_exam_controls (semestr_id, fan_code),
+                KEY idx_exam_controls_fan (fan_code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ";
+        $this->query($sql);
+    }
+    public function get_exam_controls_map(): array {
+        $this->ensure_exam_controls_table();
+        $result = $this->query("SELECT semestr_id, fan_code, exam_type, oraliq_nazorat, yakuniy_nazorat FROM exam_controls");
+        $map = [];
+        if ($result) {
+            while ($row = mysqli_fetch_assoc($result)) {
+                $key = (int)($row['semestr_id'] ?? 0) . '|' . trim((string)($row['fan_code'] ?? ''));
+                $map[$key] = [
+                    'exam_type' => (string)($row['exam_type'] ?? 'T'),
+                    'oraliq_nazorat' => (float)($row['oraliq_nazorat'] ?? 0),
+                    'yakuniy_nazorat' => (float)($row['yakuniy_nazorat'] ?? 0),
+                ];
+            }
+        }
+        return $map;
+    }
+    public function save_exam_control(int $semestrId, string $fanCode, string $examType, float $oraliq, float $yakuniy): bool {
+        $this->ensure_exam_controls_table();
+        $fanCode = trim($fanCode);
+        if ($semestrId <= 0 || $fanCode === '') {
+            return false;
+        }
+        $examType = strtoupper(trim($examType));
+        if (!in_array($examType, ['T', 'I'], true)) {
+            $examType = 'T';
+        }
+        if ($examType === 'T') {
+            $yakuniy = 0.0;
+        }
+        $oraliq = max(0.0, $oraliq);
+        $yakuniy = max(0.0, $yakuniy);
+        $safeFanCode = mysqli_real_escape_string($this->link, $fanCode);
+        $safeExamType = mysqli_real_escape_string($this->link, $examType);
+        $sql = "
+            INSERT INTO exam_controls (semestr_id, fan_code, exam_type, oraliq_nazorat, yakuniy_nazorat)
+            VALUES ({$semestrId}, '{$safeFanCode}', '{$safeExamType}', {$oraliq}, {$yakuniy})
+            ON DUPLICATE KEY UPDATE
+                exam_type = VALUES(exam_type),
+                oraliq_nazorat = VALUES(oraliq_nazorat),
+                yakuniy_nazorat = VALUES(yakuniy_nazorat)
+        ";
+        return (bool)$this->query($sql);
     }
     public function get_guruhlar($filters = []){
         $hasYonalishFakultet = false;

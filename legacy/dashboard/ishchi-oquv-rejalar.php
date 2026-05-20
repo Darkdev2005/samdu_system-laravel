@@ -125,6 +125,8 @@ $result = $db->query("
         SUM(CASE WHEN dst.id = 3 THEN o.dars_soat ELSE 0 END) AS lab,
         SUM(CASE WHEN dst.id = 4 THEN o.dars_soat ELSE 0 END) AS seminar,
         SUM(CASE WHEN dst.id = 5 THEN o.dars_soat ELSE 0 END) AS mustaqilTalim,
+        SUM(CASE WHEN dst.id = 20 THEN o.dars_soat ELSE 0 END) AS oraliqNazorat,
+        SUM(CASE WHEN dst.id = 21 THEN o.dars_soat ELSE 0 END) AS yakuniyNazorat,
         SUM(CASE WHEN dst.name = 'Kurs ishi' THEN o.dars_soat ELSE 0 END) AS kursIshi,
         MAX(CASE WHEN dst.name = 'Kurs ishi' THEN 1 ELSE 0 END) AS kursIshiFlag,
         SUM(
@@ -230,7 +232,9 @@ if ($variantResult) {
     }
 }
 
-function process_data_for_template(array $data, array $selectedVariants): array{
+$examControlMap = $db->get_exam_controls_map();
+
+function process_data_for_template(array $data, array $selectedVariants, array $examControlMap): array{
     $semesters = [];
     $academicYearMap = [];
 
@@ -272,6 +276,19 @@ function process_data_for_template(array $data, array $selectedVariants): array{
         $kursLoyihaFlag = (int)($row['kursLoyihaFlag'] ?? 0);
         $kursLoyihaExtraFlag = (int)($row['kursLoyihaExtraFlag'] ?? 0);
         $malaka    = (int)$row['malakaAmaliyot'];
+        $oraliqNazorat = (float)($row['oraliqNazorat'] ?? 0);
+        $yakuniyNazorat = (float)($row['yakuniyNazorat'] ?? 0);
+        $examType = $yakuniyNazorat > 0 ? 'I' : ($oraliqNazorat > 0 ? 'T' : '');
+        $examKey = $semestrId . '|' . $fanCode;
+        $manualExam = $examControlMap[$examKey] ?? null;
+        if (is_array($manualExam)) {
+            $examType = (string)($manualExam['exam_type'] ?? $examType);
+            $oraliqNazorat = (float)($manualExam['oraliq_nazorat'] ?? $oraliqNazorat);
+            $yakuniyNazorat = (float)($manualExam['yakuniy_nazorat'] ?? $yakuniyNazorat);
+            if ($examType === 'T') {
+                $yakuniyNazorat = 0.0;
+            }
+        }
 
         $audTotal = $lecture + $practical + $lab + $seminar;
         $totalSoat = $audTotal + $mustaqil + $kursIshi + $malaka;
@@ -327,7 +344,10 @@ function process_data_for_template(array $data, array $selectedVariants): array{
                     'isTanlovFan' => true,
                     'variants' => $variants,
                     'variants_locked' => $hasSelectedVariants,
-                    'examType' => 'I',
+                    'examType' => $examType,
+                    'semestr_id' => $semestrId,
+                    'oraliqNazorat' => $oraliqNazorat,
+                    'yakuniyNazorat' => $yakuniyNazorat,
                     'credit' => round($totalSoat / 30),
                     'totalHours' => $totalSoat,
                     'auditoriya' => [
@@ -353,7 +373,10 @@ function process_data_for_template(array $data, array $selectedVariants): array{
                 'code' => $fanCode,
                 'name' => $row['fan_name'],
                 'isTanlovFan' => false,
-                'examType' => 'I',
+                'examType' => $examType,
+                'semestr_id' => $semestrId,
+                'oraliqNazorat' => $oraliqNazorat,
+                'yakuniyNazorat' => $yakuniyNazorat,
                 'credit' => round($totalSoat / 30),
                 'totalHours' => $totalSoat,
                 'auditoriya' => [
@@ -450,7 +473,7 @@ function process_data_for_template(array $data, array $selectedVariants): array{
     ];
 }
 
-$data = process_data_for_template($oquv_rejalar, $selectedVariants);
+$data = process_data_for_template($oquv_rejalar, $selectedVariants, $examControlMap);
 
 // Izoh: Jadval bo'sh bo'lsa ham (fanlar chiqmasa) tanlangan yo'nalish+semestr bo'yicha
 // o'quv yilini headerda ko'rsatamiz.
@@ -577,10 +600,21 @@ function renderSubjectCells($subject, $side = 'left') {
         $kursBelgisi = 'K';
     }
 
+    $examType = htmlspecialchars((string)($subject['examType'] ?? 'T'));
+    $examTypeRaw = (string)($subject['examType'] ?? 'T');
+    $semestrId = (int)($subject['semestr_id'] ?? 0);
+    $fanCode = htmlspecialchars((string)($subject['code'] ?? ''), ENT_QUOTES, 'UTF-8');
     return '
         <td>' . htmlspecialchars($subject['code']) . '</td>
         <td style="text-align: left;">' . $fanNomiHtml . '</td>
-        <td><span class="exam-type exam-' . strtolower($subject['examType']) . '">' . $subject['examType'] . '</span></td>
+        <td>
+            <div class="exam-control-wrap" data-semestr-id="' . $semestrId . '" data-fan-code="' . $fanCode . '">
+                <select class="exam-type-select">
+                    <option value="T" ' . ($examTypeRaw === 'T' ? 'selected' : '') . '>T</option>
+                    <option value="I" ' . ($examTypeRaw === 'I' ? 'selected' : '') . '>I</option>
+                </select>
+            </div>
+        </td>
         <td>' . $calculatedCredit . '</td>
         <td>' . $subject['totalHours'] . '</td>
         <td>' . $subject['auditoriya']['total'] . '</td>
@@ -757,7 +791,7 @@ function renderSubjectCells($subject, $side = 'left') {
                                         <!-- Chap semestr -->
                                         <th rowspan="2">Kod</th>
                                         <th rowspan="2">Fan nomi</th>
-                                        <th rowspan="2">S/I</th>
+                                        <th rowspan="2">T/I</th>
                                         <th rowspan="2">Kredit</th>
                                         <th rowspan="2">Soat</th>
                                         <th colspan="5">Auditoriya soatlari</th>
@@ -769,7 +803,7 @@ function renderSubjectCells($subject, $side = 'left') {
                                         <!-- O'ng semestr -->
                                         <th rowspan="2">Kod</th>
                                         <th rowspan="2">Fan nomi</th>
-                                        <th rowspan="2">S/I</th>
+                                        <th rowspan="2">T/I</th>
                                         <th rowspan="2">Kredit</th>
                                         <th rowspan="2">Soat</th>
                                         <th colspan="5">Auditoriya soatlari</th>
@@ -873,7 +907,7 @@ function renderSubjectCells($subject, $side = 'left') {
                     <h6><i class="fas fa-info-circle me-2"></i>Belgilar:</h6>
                     <div class="legend-items">
                         <div class="legend-item">
-                            <span class="exam-type exam-s">S</span>
+                            <span class="exam-type exam-s">T</span>
                             <span>Sinov (Test/Quiz)</span>
                         </div>
                         <div class="legend-item">
@@ -975,9 +1009,37 @@ function renderSubjectCells($subject, $side = 'left') {
             });
         }
 
+        function initExamControls() {
+            const wraps = document.querySelectorAll('.exam-control-wrap');
+            wraps.forEach((wrap) => {
+                const typeSelect = wrap.querySelector('.exam-type-select');
+                const semestrId = wrap.dataset.semestrId || '';
+                const fanCode = wrap.dataset.fanCode || '';
+                if (!typeSelect || !semestrId || !fanCode) return;
+
+                const saveControl = () => {
+                    const payload = new URLSearchParams();
+                    payload.set('semestr_id', semestrId);
+                    payload.set('fan_code', fanCode);
+                    payload.set('exam_type', typeSelect.value);
+                    payload.set('oraliq_nazorat', '0');
+                    payload.set('yakuniy_nazorat', '0');
+
+                    fetch('insert/save_exam_control.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                        body: payload.toString()
+                    }).catch(() => {});
+                };
+
+                typeSelect.addEventListener('change', saveControl);
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             updateCurrentDate();
             initOverviewToggle();
+            initExamControls();
             
             document.getElementById('exportExcel')?.addEventListener('click', exportToExcel);
             document.getElementById('printTable')?.addEventListener('click', printTable);

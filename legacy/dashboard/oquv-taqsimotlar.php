@@ -264,6 +264,9 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
         let currentType = '';
         let teacherRows = [];
         let teacherRowCounter = 0;
+        let isTableLoading = false;
+        let currentAjaxRequest = null;
+        let pendingFilterPayload = null;
 
         function isScopedSoatTuri(soatTuri) {
             return ['oraliq_nazorat', 'yakuniy_nazorat'].includes(String(soatTuri || '').trim());
@@ -286,7 +289,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
 
             // Jadvaldagi guruh/talaba sonlari o'zgarishini dinamik ko'rsatish uchun periodik yangilash.
             setInterval(function () {
-                applyFilters();
+                applyFilters(true);
             }, 30000);
             
             $(document).on('wheel', function(e) {
@@ -318,19 +321,26 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             });
         });
 
-        function loadTableData(kafedraId = '', semestrId = '', oquvYilStart = '') {
+        function loadTableData(kafedraId = '', semestrId = '', oquvYilStart = '', options = {}) {
+            const silent = !!options.silent;
+            if (isTableLoading) {
+                return;
+            }
+            isTableLoading = true;
             const container = $('#yuklamaTableContainer');
             const resolvedOquvYilStart = (oquvYilStart === '' || oquvYilStart === null || typeof oquvYilStart === 'undefined')
                 ? ($('#oquvYilFilter').val() || '')
                 : oquvYilStart;
-            container.html(`
-                <div class="alert alert-info" style="margin-top: 16px;">
-                    <i class="fas fa-spinner fa-spin me-2"></i>
-                    Ma'lumotlar yuklanmoqda...
-                </div>
-            `);
+            if (!silent) {
+                container.html(`
+                    <div class="alert alert-info" style="margin-top: 16px;">
+                        <i class="fas fa-spinner fa-spin me-2"></i>
+                        Ma'lumotlar yuklanmoqda...
+                    </div>
+                `);
+            }
             
-            $.ajax({
+            currentAjaxRequest = $.ajax({
                 url: 'get/oquv_taqsimoti_table.php',
                 type: 'POST',
                 data: {
@@ -347,12 +357,24 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                     attachCellClickEvents();
                 },
                 error: function(xhr, status, error) {
+                    if (status === 'abort') {
+                        return;
+                    }
                     container.html(`
                         <div class="alert alert-danger">
                             <i class="fas fa-exclamation-triangle me-2"></i>
                             Ma'lumotlarni yuklab bo'lmadi: ${error}
                         </div>
                     `);
+                },
+                complete: function() {
+                    isTableLoading = false;
+                    currentAjaxRequest = null;
+                    if (pendingFilterPayload) {
+                        const next = pendingFilterPayload;
+                        pendingFilterPayload = null;
+                        loadTableData(next.kafedraId, next.semestrId, next.oquvYilStart, { silent: true });
+                    }
                 }
             });
         }
@@ -888,34 +910,40 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
         }
 
         // Qolgan funksiyalar o'zgartirilmagan
-        function applyFilters() {
+        function applyFilters(isAutoRefresh = false) {
             const kafedraId = $('#kafedraFilter').val();
             const semestrId = $('#semestrFilter').val();
             const oquvYilStart = $('#oquvYilFilter').val();
+            if (isTableLoading) {
+                pendingFilterPayload = { kafedraId, semestrId, oquvYilStart };
+                return;
+            }
             
             const filterBtn = $('.filter-actions .btn-primary');
             const originalText = filterBtn.html();
-            filterBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Filtrlash...');
-            filterBtn.prop('disabled', true);
+            if (!isAutoRefresh) {
+                filterBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Filtrlash...');
+            }
             
-            loadTableData(kafedraId, semestrId, oquvYilStart);
+            loadTableData(kafedraId, semestrId, oquvYilStart, { silent: isAutoRefresh });
             
-            setTimeout(() => {
-                filterBtn.html(originalText);
-                filterBtn.prop('disabled', false);
+            if (!isAutoRefresh) {
+                setTimeout(() => {
+                    filterBtn.html(originalText);
                 
-                const Toast = Swal.mixin({
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 1500
-                });
+                    const Toast = Swal.mixin({
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 1500
+                    });
                 
-                Toast.fire({
-                    icon: 'success',
-                    title: 'Filterlar qo\'llandi'
-                });
-            }, 1000);
+                    Toast.fire({
+                        icon: 'success',
+                        title: 'Filterlar qo\'llandi'
+                    });
+                }, 1000);
+            }
         }
 
         function resetFilters() {

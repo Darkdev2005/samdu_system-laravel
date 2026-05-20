@@ -132,8 +132,9 @@ if ($variantResult) {
         ];
     }
 }
+$examControlMap = $db->get_exam_controls_map();
 
-function process_data_for_template(array $data, array $selectedVariants = []): array{
+function process_data_for_template(array $data, array $selectedVariants = [], array $examControlMap = []): array{
     $semesters = [];
 
     foreach ($data as $row) {
@@ -163,6 +164,17 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
         $kursLoyihaFlag = (int)($row['kursLoyihaFlag'] ?? 0);
         $kursLoyihaExtraFlag = (int)($row['kursLoyihaExtraFlag'] ?? 0);
         $malaka    = (int)$row['malakaAmaliyot'];
+        $oraliqNazorat = (float)($row['oraliqNazorat'] ?? 0);
+        $yakuniyNazorat = (float)($row['yakuniyNazorat'] ?? 0);
+        $examType = $yakuniyNazorat > 0 ? 'I' : ($oraliqNazorat > 0 ? 'T' : '');
+        $examKey = $semestrId . '|' . $fanCode;
+        $manualExam = $examControlMap[$examKey] ?? null;
+        if (is_array($manualExam)) {
+            $examType = (string)($manualExam['exam_type'] ?? $examType);
+            if ($examType === 'T') {
+                $yakuniyNazorat = 0.0;
+            }
+        }
 
         $audTotal = $lecture + $practical + $lab + $seminar;
         $totalSoat = $audTotal + $mustaqil + $kursIshi + $malaka;
@@ -214,7 +226,7 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
                     'isTanlovFan' => true,
                     'variants' => $variants,
                     'variants_locked' => $hasSelectedVariants,
-                    'examType' => 'I',
+                    'examType' => $examType,
                     'credit' => round($totalSoat / 30),
                     'totalHours' => $totalSoat,
                     'auditoriya' => [
@@ -240,7 +252,7 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
                 'code' => $fanCode,
                 'name' => $row['fan_name'],
                 'isTanlovFan' => false,
-                'examType' => 'I',
+                'examType' => $examType,
                 'credit' => round($totalSoat / 30),
                 'totalHours' => $totalSoat,
                 'auditoriya' => [
@@ -321,7 +333,7 @@ function process_data_for_template(array $data, array $selectedVariants = []): a
     ];
 }
 
-$data = process_data_for_template($oquv_rejalar, $selectedVariants);
+$data = process_data_for_template($oquv_rejalar, $selectedVariants, $examControlMap);
 
 // Izoh: Reja bajarilish foizi endi semestr kesimida (jadvalga chiqqan fanlar bo'yicha) hisoblanadi.
 $totalSubjectsCount = 0;
@@ -558,7 +570,7 @@ function renderSubjectCells($subject, $side = 'left') {
                                         <!-- Chap semestr -->
                                         <th rowspan="2">Kod</th>
                                         <th rowspan="2">Fan nomi</th>
-                                        <th rowspan="2">S/I</th>
+                                        <th rowspan="2">T/I</th>
                                         <th rowspan="2">Kredit</th>
                                         <th rowspan="2">Soat</th>
                                         <th colspan="5">Auditoriya soatlari</th>
@@ -569,7 +581,7 @@ function renderSubjectCells($subject, $side = 'left') {
                                         <!-- O'ng semestr -->
                                         <th rowspan="2">Kod</th>
                                         <th rowspan="2">Fan nomi</th>
-                                        <th rowspan="2">S/I</th>
+                                        <th rowspan="2">T/I</th>
                                         <th rowspan="2">Kredit</th>
                                         <th rowspan="2">Soat</th>
                                         <th colspan="5">Auditoriya soatlari</th>
@@ -669,7 +681,7 @@ function renderSubjectCells($subject, $side = 'left') {
                     <h6><i class="fas fa-info-circle me-2"></i>Belgilar:</h6>
                     <div class="legend-items">
                         <div class="legend-item">
-                            <span class="exam-type exam-s">S</span>
+                            <span class="exam-type exam-s">T</span>
                             <span>Sinov (Test/Quiz)</span>
                         </div>
                         <div class="legend-item">

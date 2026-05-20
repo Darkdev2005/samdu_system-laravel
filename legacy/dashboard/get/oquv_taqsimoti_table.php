@@ -21,6 +21,35 @@ if (isset($_POST['oquv_yil_start']) && !empty($_POST['oquv_yil_start'])) {
 legacy_apply_kafedra_scope($filters);
 
 $oquv_taqsimotlar = $db->get_oquv_taqsimotlar($filters);
+$examControlMap = $db->get_exam_controls_map();
+$examTypeByFanCode = [];
+foreach ($examControlMap as $examKey => $examRow) {
+    $parts = explode('|', (string)$examKey, 2);
+    $fCode = trim((string)($parts[1] ?? ''));
+    $eType = strtoupper(trim((string)($examRow['exam_type'] ?? '')));
+    if ($fCode === '' || !in_array($eType, ['T', 'I'], true)) {
+        continue;
+    }
+    if (!isset($examTypeByFanCode[$fCode])) {
+        $examTypeByFanCode[$fCode] = $eType;
+    }
+}
+$resolveExamType = static function (array $row) use ($examControlMap, $examTypeByFanCode): string {
+    $semestrId = (int)($row['semestr_id'] ?? 0);
+    $fanCode = trim((string)($row['fan_code'] ?? ''));
+    if ($fanCode === '') {
+        return '';
+    }
+    if ($semestrId > 0) {
+        $key = $semestrId . '|' . $fanCode;
+        $val = strtoupper(trim((string)($examControlMap[$key]['exam_type'] ?? '')));
+        if (in_array($val, ['T', 'I'], true)) {
+            return $val;
+        }
+    }
+    $fallback = strtoupper(trim((string)($examTypeByFanCode[$fanCode] ?? '')));
+    return in_array($fallback, ['T', 'I'], true) ? $fallback : '';
+};
 $maxsus_oquv_taqsimotlar = [];
 if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
     $maxsus_oquv_taqsimotlar = $db->get_maxsus_oquv_taqsimotlar($filters);
@@ -195,12 +224,12 @@ foreach ([$oquv_taqsimotlar, $qoshimcha_oquv_taqsimotlar] as $rows) {
 
 $codeToYonalishId = [];
 if (!empty($allCodes)) {
-    $escapedCodes = array_map(static fn($c) => "'" . mysqli_real_escape_string($db->link, (string)$c) . "'", array_keys($allCodes));
-    $codeRows = $db->get_data_by_table_all('yonalishlar', "WHERE code IN (" . implode(',', $escapedCodes) . ")");
+    $codeRows = $db->get_data_by_table_all('yonalishlar');
+    $targetCodes = array_fill_keys(array_keys($allCodes), true);
     foreach ($codeRows as $cr) {
         $code = trim((string)($cr['code'] ?? ''));
         $id = (int)($cr['id'] ?? 0);
-        if ($code !== '' && $id > 0) {
+        if ($code !== '' && $id > 0 && isset($targetCodes[$code])) {
             $codeToYonalishId[$code] = $id;
             $allYonalishIds[] = $id;
         }
@@ -232,7 +261,76 @@ if (!empty($allYonalishIds)) {
     }
 }
 
-$resolveRowGroupChange = static function (array $row) use ($collectCodesFromText, $codeToYonalishId, $yonalishChangeTypeMap): string {
+$normalizeGroupToken = static function (string $value): string {
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    if (strpos($value, '/') !== false) {
+        $parts = explode('/', $value);
+        $value = trim((string)end($parts));
+    }
+    if (function_exists('mb_strtolower')) {
+        return (string)mb_strtolower($value, 'UTF-8');
+    }
+    return strtolower($value);
+};
+
+$groupHistoryStatusByYonalish = [];
+$activeDeletedGroupsByYonalish = [];
+if (!empty($allYonalishIds)) {
+    $groupHistoryRows = $db->query("
+        SELECT gh.yonalish_id, gh.guruh_nomer, gh.change_type
+        FROM guruhlar_history gh
+        INNER JOIN (
+            SELECT yonalish_id, guruh_nomer, MAX(id) AS max_id
+            FROM guruhlar_history
+            WHERE change_type IN ('create', 'delete')
+              AND yonalish_id IN (" . implode(',', array_map('intval', $allYonalishIds)) . ")
+            GROUP BY yonalish_id, guruh_nomer
+        ) latest ON latest.max_id = gh.id
+    ");
+    if ($groupHistoryRows) {
+        while ($gr = mysqli_fetch_assoc($groupHistoryRows)) {
+            $yid = (int)($gr['yonalish_id'] ?? 0);
+            $gname = $normalizeGroupToken((string)($gr['guruh_nomer'] ?? ''));
+            $ctype = trim((string)($gr['change_type'] ?? ''));
+            if ($yid > 0 && $gname !== '' && ($ctype === 'create' || $ctype === 'delete')) {
+                if (!isset($groupHistoryStatusByYonalish[$yid])) {
+                    $groupHistoryStatusByYonalish[$yid] = [];
+                }
+                $groupHistoryStatusByYonalish[$yid][$gname] = $ctype;
+            }
+        }
+    }
+
+    $latestDeletedRows = $db->query("
+        SELECT gh.yonalish_id, gh.guruh_nomer
+        FROM guruhlar_history gh
+        INNER JOIN (
+            SELECT yonalish_id, guruh_nomer, MAX(id) AS max_id
+            FROM guruhlar_history
+            WHERE change_type IN ('create', 'delete')
+              AND yonalish_id IN (" . implode(',', array_map('intval', $allYonalishIds)) . ")
+            GROUP BY yonalish_id, guruh_nomer
+        ) ld ON ld.max_id = gh.id
+        WHERE gh.change_type = 'delete'
+    ");
+    if ($latestDeletedRows) {
+        while ($dr = mysqli_fetch_assoc($latestDeletedRows)) {
+            $yid = (int)($dr['yonalish_id'] ?? 0);
+            $gname = trim((string)($dr['guruh_nomer'] ?? ''));
+            if ($yid > 0 && $gname !== '') {
+                if (!isset($activeDeletedGroupsByYonalish[$yid])) {
+                    $activeDeletedGroupsByYonalish[$yid] = [];
+                }
+                $activeDeletedGroupsByYonalish[$yid][] = $gname;
+            }
+        }
+    }
+}
+
+$resolveRowGroupChange = static function (array $row) use ($collectCodesFromText, $codeToYonalishId, $yonalishChangeTypeMap, $groupHistoryStatusByYonalish, $normalizeGroupToken): string {
     $ids = [];
     $directId = (int)($row['yonalish_id'] ?? 0);
     if ($directId > 0) {
@@ -247,9 +345,24 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
     if (empty($ids)) {
         return '';
     }
+    $groupsInRow = preg_split('/\s*\|\s*/', (string)($row['guruh_raqami'] ?? '')) ?: [];
     $hasCreate = false;
     $hasDelete = false;
     foreach (array_keys($ids) as $id) {
+        if (!empty($groupHistoryStatusByYonalish[(int)$id]) && !empty($groupsInRow)) {
+            foreach ($groupsInRow as $g) {
+                $norm = $normalizeGroupToken((string)$g);
+                if ($norm === '') {
+                    continue;
+                }
+                $gs = $groupHistoryStatusByYonalish[(int)$id][$norm] ?? '';
+                if ($gs === 'create') {
+                    $hasCreate = true;
+                } elseif ($gs === 'delete') {
+                    $hasDelete = true;
+                }
+            }
+        }
         $ctype = $yonalishChangeTypeMap[(int)$id] ?? '';
         if ($ctype === 'delete') {
             $hasDelete = true;
@@ -257,13 +370,36 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
             $hasCreate = true;
         }
     }
-    if ($hasDelete) {
-        return 'delete';
-    }
     if ($hasCreate) {
         return 'create';
     }
+    if ($hasDelete) {
+        return 'delete';
+    }
     return '';
+};
+
+$resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromText, $codeToYonalishId, $activeDeletedGroupsByYonalish): array {
+    $ids = [];
+    $directId = (int)($row['yonalish_id'] ?? 0);
+    if ($directId > 0) {
+        $ids[$directId] = true;
+    }
+    foreach ($collectCodesFromText((string)($row['yonalish_code'] ?? '')) as $code) {
+        $mappedId = (int)($codeToYonalishId[$code] ?? 0);
+        if ($mappedId > 0) {
+            $ids[$mappedId] = true;
+        }
+    }
+    $deleted = [];
+    foreach (array_keys($ids) as $id) {
+        if (!empty($activeDeletedGroupsByYonalish[(int)$id])) {
+            foreach ($activeDeletedGroupsByYonalish[(int)$id] as $name) {
+                $deleted[(string)$name] = true;
+            }
+        }
+    }
+    return array_keys($deleted);
 };
 ?>
 <style>
@@ -660,6 +796,7 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
                     foreach ($oquv_taqsimotlar as $row): 
                         $needsResync = !empty($row['needs_resync']);
                         $rowGroupChange = $resolveRowGroupChange($row);
+                        $deletedGroupNames = $resolveDeletedGroupNames($row);
                         $rowYonalishId = !empty($row['yonalish_id']) ? (int)$row['yonalish_id'] : 0;
                         if (!$needsResync && $rowYonalishId > 0 && !empty($pendingYonalishMap[$rowYonalishId])) {
                             $needsResync = true;
@@ -695,6 +832,7 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
                             : strtolower($shaklRaw);
                         $isMasofaviy = strpos($shakl, 'masof') !== false;
                         $isMaxsusRow = ($rowType === 'M' || !empty($row['is_maxsus']));
+                        $examType = $resolveExamType($row);
                         $oraliqNazorat = 0;
                         if (!$isMaxsusRow && !$isMasofaviy && $talabaSoni > 0) {
                             if ($auditoriyaSoat >= 60) {
@@ -703,9 +841,12 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
                                 $oraliqNazorat = (int)round($talabaSoni * 0.2);
                             }
                         }
-                        $yakuniyNazorat = (!$isMaxsusRow && $talabaSoni > 0 && $auditoriyaSoat > 0)
-                            ? (int)round($talabaSoni * 0.3)
-                            : 0;
+                        $yakuniyNazorat = 0;
+                        if ($examType !== 'T') {
+                            $yakuniyNazorat = (!$isMaxsusRow && $talabaSoni > 0 && $auditoriyaSoat > 0)
+                                ? (int)round($talabaSoni * 0.3)
+                                : 0;
+                        }
                         $rowKey = $rowKeyFn($row);
                         $scopeKey = trim((string)($row['yonalish_code'] ?? '')) . '|' . (string)((int)($row['semestr'] ?? 0)) . '|' . trim((string)($row['kafedra_nomi'] ?? ''));
                         if (function_exists('mb_strtolower')) {
@@ -747,15 +888,7 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
                                 'soat' => $finalSoat,
                             ];
                         }
-                        $guruhRaqamiRaw = trim((string)($row['guruh_raqami'] ?? ''));
-                        if (function_exists('mb_strtolower')) {
-                            $guruhRaqamiLower = (string)@mb_strtolower($guruhRaqamiRaw, 'UTF-8');
-                        } else {
-                            $guruhRaqamiLower = strtolower($guruhRaqamiRaw);
-                        }
-                        $isIqtidorliGuruh = strpos($guruhRaqamiLower, 'iqtidor') !== false;
-
-                        if ($isMaxsusRow || $isIqtidorliGuruh) {
+                        if ($isMaxsusRow) {
                             $qCellData['oraliq_nazorat']['soat'] = 0;
                             $qCellData['yakuniy_nazorat']['soat'] = 0;
                             $qCellData['oraliq_nazorat']['rid'] = 0;
@@ -786,9 +919,10 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
                     </td>
                     <td class="guruh-cell">
                         <?= htmlspecialchars($row['guruh_raqami']) ?>
-                        <?php if ($rowGroupChange === 'delete'): ?>
-                            <div class="guruh-change-badge delete">Guruh o'chirilgan</div>
-                        <?php elseif ($rowGroupChange === 'create'): ?>
+                        <?php if (!empty($deletedGroupNames) || $rowGroupChange === 'delete'): ?>
+                            <div class="guruh-change-badge delete"><?= htmlspecialchars((!empty($deletedGroupNames) ? implode(', ', $deletedGroupNames) . ' ' : '') . "o'chirilgan", ENT_QUOTES, 'UTF-8') ?></div>
+                        <?php endif; ?>
+                        <?php if ($rowGroupChange === 'create'): ?>
                             <div class="guruh-change-badge create">Guruh qo'shilgan</div>
                         <?php endif; ?>
                     </td>
@@ -878,6 +1012,7 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
                     foreach ($qoshimcha_oquv_taqsimotlar as $row):
                         $needsResync = !empty($row['needs_resync']);
                         $rowGroupChange = $resolveRowGroupChange($row);
+                        $deletedGroupNames = $resolveDeletedGroupNames($row);
                         $rowYonalishId = !empty($row['yonalish_id']) ? (int)$row['yonalish_id'] : 0;
                         if (!$needsResync && $rowYonalishId > 0 && !empty($pendingYonalishMap[$rowYonalishId])) {
                             $needsResync = true;
@@ -902,9 +1037,10 @@ $resolveRowGroupChange = static function (array $row) use ($collectCodesFromText
                     </td>
                     <td class="guruh-cell">
                         <?= htmlspecialchars($row['guruh_raqami']) ?>
-                        <?php if ($rowGroupChange === 'delete'): ?>
-                            <div class="guruh-change-badge delete">Guruh o'chirilgan</div>
-                        <?php elseif ($rowGroupChange === 'create'): ?>
+                        <?php if (!empty($deletedGroupNames) || $rowGroupChange === 'delete'): ?>
+                            <div class="guruh-change-badge delete"><?= htmlspecialchars((!empty($deletedGroupNames) ? implode(', ', $deletedGroupNames) . ' ' : '') . "o'chirilgan", ENT_QUOTES, 'UTF-8') ?></div>
+                        <?php endif; ?>
+                        <?php if ($rowGroupChange === 'create'): ?>
                             <div class="guruh-change-badge create">Guruh qo'shilgan</div>
                         <?php endif; ?>
                     </td>

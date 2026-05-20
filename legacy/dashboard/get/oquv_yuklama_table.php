@@ -52,6 +52,35 @@ legacy_apply_kafedra_scope($filters);
 
 $magistrDoktorantOnly = isset($_POST['magistr_doktorant_only']) && (int)$_POST['magistr_doktorant_only'] === 1;
 $oquv_yuklamalar = $magistrDoktorantOnly ? [] : $db->get_oquv_yuklamalar($filters);
+$examControlMap = $db->get_exam_controls_map();
+$examTypeByFanCode = [];
+foreach ($examControlMap as $examKey => $examRow) {
+    $parts = explode('|', (string)$examKey, 2);
+    $fCode = trim((string)($parts[1] ?? ''));
+    $eType = strtoupper(trim((string)($examRow['exam_type'] ?? '')));
+    if ($fCode === '' || !in_array($eType, ['T', 'I'], true)) {
+        continue;
+    }
+    if (!isset($examTypeByFanCode[$fCode])) {
+        $examTypeByFanCode[$fCode] = $eType;
+    }
+}
+$resolveExamType = static function (array $row) use ($examControlMap, $examTypeByFanCode): string {
+    $semestrId = (int)($row['semestr_id'] ?? 0);
+    $fanCode = trim((string)($row['fan_code'] ?? ''));
+    if ($fanCode === '') {
+        return '';
+    }
+    if ($semestrId > 0) {
+        $key = $semestrId . '|' . $fanCode;
+        $val = strtoupper(trim((string)($examControlMap[$key]['exam_type'] ?? '')));
+        if (in_array($val, ['T', 'I'], true)) {
+            return $val;
+        }
+    }
+    $fallback = strtoupper(trim((string)($examTypeByFanCode[$fanCode] ?? '')));
+    return in_array($fallback, ['T', 'I'], true) ? $fallback : '';
+};
 $maxsus_oquv_yuklamalar = [];
 if (!$magistrDoktorantOnly) {
     if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
@@ -134,12 +163,12 @@ foreach ([$oquv_yuklamalar, $qoshimcha_yuklamalar] as $rows) {
 
 $codeToYonalishId = [];
 if (!empty($allYonalishCodes)) {
-    $escapedCodes = array_map(static fn($c) => "'" . mysqli_real_escape_string($db->link, (string)$c) . "'", array_keys($allYonalishCodes));
-    $codeRows = $db->get_data_by_table_all('yonalishlar', "WHERE code IN (" . implode(',', $escapedCodes) . ")");
+    $codeRows = $db->get_data_by_table_all('yonalishlar');
+    $targetCodes = array_fill_keys(array_keys($allYonalishCodes), true);
     foreach ($codeRows as $cr) {
         $code = trim((string)($cr['code'] ?? ''));
         $id = (int)($cr['id'] ?? 0);
-        if ($code !== '' && $id > 0) {
+        if ($code !== '' && $id > 0 && isset($targetCodes[$code])) {
             $codeToYonalishId[$code] = $id;
         }
     }
@@ -170,7 +199,77 @@ if (!empty($codeToYonalishId)) {
     }
 }
 
-$resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes, $codeToYonalishId, $yonalishChangeTypeMap): string {
+$normalizeGroupToken = static function (string $value): string {
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    if (strpos($value, '/') !== false) {
+        $parts = explode('/', $value);
+        $value = trim((string)end($parts));
+    }
+    if (function_exists('mb_strtolower')) {
+        return (string)mb_strtolower($value, 'UTF-8');
+    }
+    return strtolower($value);
+};
+
+$groupHistoryStatusByYonalish = [];
+$activeDeletedGroupsByYonalish = [];
+if (!empty($codeToYonalishId)) {
+    $ids = array_values(array_unique(array_values($codeToYonalishId)));
+    $groupHistoryRows = $db->query("
+        SELECT gh.yonalish_id, gh.guruh_nomer, gh.change_type
+        FROM guruhlar_history gh
+        INNER JOIN (
+            SELECT yonalish_id, guruh_nomer, MAX(id) AS max_id
+            FROM guruhlar_history
+            WHERE change_type IN ('create', 'delete')
+              AND yonalish_id IN (" . implode(',', array_map('intval', $ids)) . ")
+            GROUP BY yonalish_id, guruh_nomer
+        ) latest ON latest.max_id = gh.id
+    ");
+    if ($groupHistoryRows) {
+        while ($gr = mysqli_fetch_assoc($groupHistoryRows)) {
+            $yid = (int)($gr['yonalish_id'] ?? 0);
+            $gname = $normalizeGroupToken((string)($gr['guruh_nomer'] ?? ''));
+            $ctype = trim((string)($gr['change_type'] ?? ''));
+            if ($yid > 0 && $gname !== '' && ($ctype === 'create' || $ctype === 'delete')) {
+                if (!isset($groupHistoryStatusByYonalish[$yid])) {
+                    $groupHistoryStatusByYonalish[$yid] = [];
+                }
+                $groupHistoryStatusByYonalish[$yid][$gname] = $ctype;
+            }
+        }
+    }
+
+    $latestDeletedRows = $db->query("
+        SELECT gh.yonalish_id, gh.guruh_nomer
+        FROM guruhlar_history gh
+        INNER JOIN (
+            SELECT yonalish_id, guruh_nomer, MAX(id) AS max_id
+            FROM guruhlar_history
+            WHERE change_type IN ('create', 'delete')
+              AND yonalish_id IN (" . implode(',', array_map('intval', $ids)) . ")
+            GROUP BY yonalish_id, guruh_nomer
+        ) ld ON ld.max_id = gh.id
+        WHERE gh.change_type = 'delete'
+    ");
+    if ($latestDeletedRows) {
+        while ($dr = mysqli_fetch_assoc($latestDeletedRows)) {
+            $yid = (int)($dr['yonalish_id'] ?? 0);
+            $gname = trim((string)($dr['guruh_nomer'] ?? ''));
+            if ($yid > 0 && $gname !== '') {
+                if (!isset($activeDeletedGroupsByYonalish[$yid])) {
+                    $activeDeletedGroupsByYonalish[$yid] = [];
+                }
+                $activeDeletedGroupsByYonalish[$yid][] = $gname;
+            }
+        }
+    }
+}
+
+$resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes, $codeToYonalishId, $yonalishChangeTypeMap, $groupHistoryStatusByYonalish, $normalizeGroupToken): string {
     $rowKey = md5(json_encode([
         $row['fan_name'] ?? $row['fan_nomi'] ?? '',
         $row['yonalish_code'] ?? '',
@@ -182,12 +281,27 @@ $resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes
     if (empty($codes)) {
         return '';
     }
+    $groupsInRow = preg_split('/\s*\|\s*/', (string)($row['guruh_raqami'] ?? '')) ?: [];
     $hasCreate = false;
     $hasDelete = false;
     foreach ($codes as $code) {
         $yid = (int)($codeToYonalishId[$code] ?? 0);
         if ($yid <= 0) {
             continue;
+        }
+        if (!empty($groupHistoryStatusByYonalish[$yid]) && !empty($groupsInRow)) {
+            foreach ($groupsInRow as $g) {
+                $norm = $normalizeGroupToken((string)$g);
+                if ($norm === '') {
+                    continue;
+                }
+                $gs = $groupHistoryStatusByYonalish[$yid][$norm] ?? '';
+                if ($gs === 'create') {
+                    $hasCreate = true;
+                } elseif ($gs === 'delete') {
+                    $hasDelete = true;
+                }
+            }
         }
         $ctype = $yonalishChangeTypeMap[$yid] ?? '';
         if ($ctype === 'delete') {
@@ -196,13 +310,34 @@ $resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes
             $hasCreate = true;
         }
     }
-    if ($hasDelete) {
-        return 'delete';
-    }
     if ($hasCreate) {
         return 'create';
     }
+    if ($hasDelete) {
+        return 'delete';
+    }
     return '';
+};
+
+$resolveDeletedGroupNames = static function (array $row, int $idx) use ($rowToCodes, $codeToYonalishId, $activeDeletedGroupsByYonalish): array {
+    $rowKey = md5(json_encode([
+        $row['fan_name'] ?? $row['fan_nomi'] ?? '',
+        $row['yonalish_code'] ?? '',
+        $row['biriktirilgan_yonalish_code'] ?? '',
+        $row['semestr'] ?? '',
+        $idx,
+    ], JSON_UNESCAPED_UNICODE));
+    $codes = $rowToCodes[$rowKey] ?? [];
+    $deleted = [];
+    foreach ($codes as $code) {
+        $yid = (int)($codeToYonalishId[$code] ?? 0);
+        if ($yid > 0 && !empty($activeDeletedGroupsByYonalish[$yid])) {
+            foreach ($activeDeletedGroupsByYonalish[$yid] as $name) {
+                $deleted[(string)$name] = true;
+            }
+        }
+    }
+    return array_keys($deleted);
 };
 ?>
 <style>
@@ -232,6 +367,14 @@ $resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes
     }
     .guruh-change-badge.create {
         background: #16a34a;
+    }
+    .guruh-token-create {
+        color: #16a34a;
+        font-weight: 700;
+    }
+    .guruh-token-delete {
+        color: #dc3545;
+        font-weight: 700;
     }
 </style>
 
@@ -356,8 +499,9 @@ $resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes
                         $isMasofaviy = strpos($shakl, 'masof') !== false;
                         $guruhRaqami = mb_strtolower(trim((string)($row['guruh_raqami'] ?? '')), 'UTF-8');
                         $isIqtidorli = strpos($guruhRaqami, 'iqtidor') !== false;
-                        $isMaxsus = !empty($row['is_maxsus']) || $isIqtidorli;
+                        $isMaxsus = !empty($row['is_maxsus']);
 
+                        $examType = $resolveExamType($row);
                         $oraliq = 0;
                         if (!$isMaxsus && !$isMasofaviy && $talaba > 0) {
                             if ($auditoriyaSoat >= 60) {
@@ -366,8 +510,11 @@ $resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes
                                 $oraliq = round($talaba * 0.2);
                             }
                         }
-                        // Auditoriya soatlari kiritilmagan bo'lsa yakuniy nazorat hisoblanmaydi.
-                        $yakuniy = (!$isMaxsus && $talaba > 0 && $auditoriyaSoat > 0) ? round($talaba * 0.3) : 0;
+                        // T bo'lsa yakuniy lock=0; I bo'lsa ham talaba soni formulasi bo'yicha hisoblanadi.
+                        $yakuniy = 0;
+                        if ($examType !== 'T') {
+                            $yakuniy = (!$isMaxsus && $talaba > 0 && $auditoriyaSoat > 0) ? round($talaba * 0.3) : 0;
+                        }
                         // Izoh: Kurs ishi/kurs loyihasi faqat qo'shimcha o'quv rejadan kiritilganda ko'rsatiladi.
                         $kursIshi = 0;
                         $kursLoyiha = 0;
@@ -423,7 +570,58 @@ $resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes
                         $totals['uzluksiz'] += $uzluksiz;
                         $totals['jami'] += $jamiAll;
                 ?>
-                <?php $rowGroupChange = $resolveRowGroupChange($row, $idx); ?>
+                <?php
+                    $rowGroupChange = $resolveRowGroupChange($row, $idx);
+                    $deletedGroupNames = $resolveDeletedGroupNames($row, $idx);
+                    $renderGuruhCell = static function (array $row, array $codes) use ($normalizeGroupToken, $groupHistoryStatusByYonalish, $codeToYonalishId): string {
+                        $raw = (string)($row['guruh_raqami'] ?? '');
+                        $parts = preg_split('/\s*\|\s*/', $raw) ?: [];
+                        if (empty($parts)) {
+                            return htmlspecialchars($raw, ENT_QUOTES, 'UTF-8');
+                        }
+                        $yids = [];
+                        foreach ($codes as $code) {
+                            $yid = (int)($codeToYonalishId[$code] ?? 0);
+                            if ($yid > 0) {
+                                $yids[$yid] = true;
+                            }
+                        }
+                        $out = [];
+                        foreach ($parts as $token) {
+                            $token = trim((string)$token);
+                            if ($token === '') {
+                                continue;
+                            }
+                            $norm = $normalizeGroupToken($token);
+                            $status = '';
+                            foreach (array_keys($yids) as $yid) {
+                                $s = $groupHistoryStatusByYonalish[(int)$yid][$norm] ?? '';
+                                if ($s === 'create') {
+                                    $status = 'create';
+                                    break;
+                                }
+                                if ($s === 'delete') {
+                                    $status = 'delete';
+                                }
+                            }
+                            if ($status === 'create') {
+                                $out[] = '<span class="guruh-token-create">' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '</span>';
+                            } elseif ($status === 'delete') {
+                                $out[] = '<span class="guruh-token-delete">' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '</span>';
+                            } else {
+                                $out[] = htmlspecialchars($token, ENT_QUOTES, 'UTF-8');
+                            }
+                        }
+                        return implode(' | ', $out);
+                    };
+                    $rowCodes = $rowToCodes[md5(json_encode([
+                        $row['fan_name'] ?? $row['fan_nomi'] ?? '',
+                        $row['yonalish_code'] ?? '',
+                        $row['biriktirilgan_yonalish_code'] ?? '',
+                        $row['semestr'] ?? '',
+                        $idx,
+                    ], JSON_UNESCAPED_UNICODE))] ?? [];
+                ?>
                 <tr>
                     <td><?= $counter++ ?></td>
                     <td class="left">
@@ -452,10 +650,11 @@ $resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes
                         <?= htmlspecialchars($talimYonalishiText) ?>
                     </td>
                     <td>
-                        <?= htmlspecialchars($row['guruh_raqami']) ?>
-                        <?php if ($rowGroupChange === 'delete'): ?>
-                            <div class="guruh-change-badge delete">Guruh o'chirilgan</div>
-                        <?php elseif ($rowGroupChange === 'create'): ?>
+                        <?= $renderGuruhCell($row, $rowCodes) ?>
+                        <?php if (!empty($deletedGroupNames) || $rowGroupChange === 'delete'): ?>
+                            <div class="guruh-change-badge delete"><?= htmlspecialchars((!empty($deletedGroupNames) ? implode(', ', $deletedGroupNames) . ' ' : '') . "o'chirilgan", ENT_QUOTES, 'UTF-8') ?></div>
+                        <?php endif; ?>
+                        <?php if ($rowGroupChange === 'create'): ?>
                             <div class="guruh-change-badge create">Guruh qo'shilgan</div>
                         <?php endif; ?>
                     </td>
@@ -535,16 +734,27 @@ $resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes
                         $totals['boshqa'] += (float)($row['boshqa_soatlar'] ?? 0);
                         $totals['jami'] += (float)($row['jami_soat'] ?? 0);
                 ?>
-                <?php $rowGroupChange = $resolveRowGroupChange($row, $idx); ?>
+                <?php
+                    $rowGroupChange = $resolveRowGroupChange($row, $idx);
+                    $deletedGroupNames = $resolveDeletedGroupNames($row, $idx);
+                    $rowCodes = $rowToCodes[md5(json_encode([
+                        $row['fan_name'] ?? $row['fan_nomi'] ?? '',
+                        $row['yonalish_code'] ?? '',
+                        $row['biriktirilgan_yonalish_code'] ?? '',
+                        $row['semestr'] ?? '',
+                        $idx,
+                    ], JSON_UNESCAPED_UNICODE))] ?? [];
+                ?>
                 <tr>
                     <td><?= $counter++ ?></td>
                     <td class="left"><?= htmlspecialchars($qoshimchaFanNomi) ?></td>
                     <td class="left"><?= htmlspecialchars($row['yonalish_code'] . ' - ' . $row['talim_yonalishi']) ?></td>
                     <td>
-                        <?= htmlspecialchars($row['guruh_raqami']) ?>
-                        <?php if ($rowGroupChange === 'delete'): ?>
-                            <div class="guruh-change-badge delete">Guruh o'chirilgan</div>
-                        <?php elseif ($rowGroupChange === 'create'): ?>
+                        <?= $renderGuruhCell($row, $rowCodes) ?>
+                        <?php if (!empty($deletedGroupNames) || $rowGroupChange === 'delete'): ?>
+                            <div class="guruh-change-badge delete"><?= htmlspecialchars((!empty($deletedGroupNames) ? implode(', ', $deletedGroupNames) . ' ' : '') . "o'chirilgan", ENT_QUOTES, 'UTF-8') ?></div>
+                        <?php endif; ?>
+                        <?php if ($rowGroupChange === 'create'): ?>
                             <div class="guruh-change-badge create">Guruh qo'shilgan</div>
                         <?php endif; ?>
                     </td>
