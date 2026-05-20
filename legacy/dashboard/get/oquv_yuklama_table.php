@@ -220,9 +220,12 @@ if ($magistrDoktorantOnly) {
                         $auditoriyaSoat = $rejaMaruza + $rejaAmaliy + $rejaLab + $rejaSeminar;
                         $shakl = mb_strtolower(trim($row['oquv_shakli'] ?? ''), 'UTF-8');
                         $isMasofaviy = strpos($shakl, 'masof') !== false;
+                        $guruhRaqami = mb_strtolower(trim((string)($row['guruh_raqami'] ?? '')), 'UTF-8');
+                        $isIqtidorli = strpos($guruhRaqami, 'iqtidor') !== false;
+                        $isMaxsus = !empty($row['is_maxsus']) || $isIqtidorli;
 
                         $oraliq = 0;
-                        if (!$isMasofaviy && $talaba > 0) {
+                        if (!$isMaxsus && !$isMasofaviy && $talaba > 0) {
                             if ($auditoriyaSoat >= 60) {
                                 $oraliq = round($talaba * 0.4);
                             } elseif ($auditoriyaSoat >= 30) {
@@ -230,7 +233,7 @@ if ($magistrDoktorantOnly) {
                             }
                         }
                         // Auditoriya soatlari kiritilmagan bo'lsa yakuniy nazorat hisoblanmaydi.
-                        $yakuniy = ($talaba > 0 && $auditoriyaSoat > 0) ? round($talaba * 0.3) : 0;
+                        $yakuniy = (!$isMaxsus && $talaba > 0 && $auditoriyaSoat > 0) ? round($talaba * 0.3) : 0;
                         // Izoh: Kurs ishi/kurs loyihasi faqat qo'shimcha o'quv rejadan kiritilganda ko'rsatiladi.
                         $kursIshi = 0;
                         $kursLoyiha = 0;
