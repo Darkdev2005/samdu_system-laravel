@@ -6,8 +6,11 @@ header('Content-Type: application/json');
 $yuklama_id = isset($_POST['yuklama_id']) ? (int)$_POST['yuklama_id'] : 0;
 $legacy_yuklama_id = isset($_POST['legacy_yuklama_id']) ? (int)$_POST['legacy_yuklama_id'] : 0;
 $type = strtoupper(trim($_POST['type'] ?? ''));
+$soatTuri = trim((string)($_POST['soat_turi'] ?? ''));
 $replaceMode = ((int)($_POST['replace_mode'] ?? 0) === 1);
 $taqsimotlar = json_decode($_POST['taqsimotlar'] ?? '[]', true);
+$useScopedSoatTuri = legacy_is_scoped_taqsimot_soat_turi($soatTuri);
+$safeSoatTuri = addslashes($soatTuri);
 
 if ($yuklama_id <= 0 || !in_array($type, ['A', 'Q', 'M'], true) || !is_array($taqsimotlar)) {
     echo json_encode([
@@ -73,19 +76,27 @@ if ($replaceMode) {
             $deleteIds[] = $legacy_yuklama_id;
         }
         $deleteIdsSql = implode(',', array_map('intval', array_unique($deleteIds)));
-        $deleted = $db->delete('taqsimotlar', "oquv_reja_id IN ({$deleteIdsSql}) AND type = '" . addslashes($type) . "'");
+        $deleteCondition = "oquv_reja_id IN ({$deleteIdsSql}) AND type = '" . addslashes($type) . "'";
+        if ($useScopedSoatTuri) {
+            $deleteCondition .= " AND COALESCE(soat_turi, '') = '{$safeSoatTuri}'";
+        }
+        $deleted = $db->delete('taqsimotlar', $deleteCondition);
         if (!$deleted) {
             $success = false;
         }
 
         if ($success) {
             foreach ($normalizedRows as $teacherId => $soat) {
-                $insertId = $db->insert('taqsimotlar', [
+                $insertPayload = [
                     'oquv_reja_id' => $yuklama_id,
                     'teacher_id' => (int)$teacherId,
                     'soat' => $soat,
-                    'type' => $type
-                ]);
+                    'type' => $type,
+                ];
+                if ($useScopedSoatTuri) {
+                    $insertPayload['soat_turi'] = $soatTuri;
+                }
+                $insertId = $db->insert('taqsimotlar', $insertPayload);
                 if ($insertId <= 0) {
                     $success = false;
                     break;
@@ -104,11 +115,15 @@ if ($replaceMode) {
     }
 } else {
     foreach ($normalizedRows as $teacherId => $soat) {
-        $exists = $db->get_data_by_table('taqsimotlar', [
+        $existsFilters = [
             'oquv_reja_id' => $yuklama_id,
             'teacher_id' => (int)$teacherId,
-            'type' => $type
-        ]);
+            'type' => $type,
+        ];
+        if ($useScopedSoatTuri) {
+            $existsFilters['soat_turi'] = $soatTuri;
+        }
+        $exists = $db->get_data_by_table('taqsimotlar', $existsFilters);
 
         if ($exists) {
             $res = $db->update(
@@ -117,12 +132,16 @@ if ($replaceMode) {
                 'id = ' . (int)$exists['id']
             );
         } else {
-            $res = $db->insert('taqsimotlar', [
+            $insertPayload = [
                 'oquv_reja_id' => $yuklama_id,
                 'teacher_id' => (int)$teacherId,
                 'soat' => $soat,
-                'type' => $type
-            ]);
+                'type' => $type,
+            ];
+            if ($useScopedSoatTuri) {
+                $insertPayload['soat_turi'] = $soatTuri;
+            }
+            $res = $db->insert('taqsimotlar', $insertPayload);
         }
 
         if ($res) {

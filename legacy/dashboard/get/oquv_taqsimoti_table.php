@@ -355,7 +355,7 @@ if (!empty($allYonalishIds)) {
 
                     return $resultMap;
                 }
-                function getMappedTaqsimotSoat($db, array &$taqsimotSoatMap, int $rejaId, string $type = 'A'): float {
+                function getMappedTaqsimotSoat($db, array &$taqsimotSoatMap, int $rejaId, string $type = 'A', string $soatTuri = ''): float {
                     if ($rejaId <= 0) {
                         return 0.0;
                     }
@@ -364,7 +364,10 @@ if (!empty($allYonalishIds)) {
                     if (!in_array($type, ['A', 'Q', 'M'], true)) {
                         $type = 'A';
                     }
-                    $cacheKey = $type . ':' . $rejaId;
+                    $useScopedSoatTuri = legacy_is_scoped_taqsimot_soat_turi($soatTuri);
+                    $cacheKey = $useScopedSoatTuri
+                        ? ($type . ':' . $rejaId . ':' . $soatTuri)
+                        : ($type . ':' . $rejaId);
 
                     if (array_key_exists($cacheKey, $taqsimotSoatMap)) {
                         return (float)$taqsimotSoatMap[$cacheKey];
@@ -375,6 +378,9 @@ if (!empty($allYonalishIds)) {
                         FROM taqsimotlar
                         WHERE type = '{$type}' AND oquv_reja_id = {$rejaId}
                     ";
+                    if ($useScopedSoatTuri) {
+                        $sql .= " AND COALESCE(soat_turi, '') = '" . addslashes($soatTuri) . "'";
+                    }
                     $queryResult = $db->query($sql);
                     $jamiSoat = 0.0;
                     if ($queryResult !== false) {
@@ -413,6 +419,25 @@ if (!empty($allYonalishIds)) {
                     }
                     return rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
                 }
+                function resolvePrimaryRejaId(array $row): int {
+                    foreach ([
+                        'maruza_reja_id',
+                        'amaliy_reja_id',
+                        'laboratoriya_reja_id',
+                        'seminar_reja_id',
+                        'legacy_maruza_reja_id',
+                        'legacy_amaliy_reja_id',
+                        'legacy_laboratoriya_reja_id',
+                        'legacy_seminar_reja_id',
+                    ] as $field) {
+                        $rejaId = (int)($row[$field] ?? 0);
+                        if ($rejaId > 0) {
+                            return $rejaId;
+                        }
+                    }
+
+                    return 0;
+                }
                 function isMaxsusLikeRow(array $row): bool {
                     $rowType = strtoupper(trim((string)($row['taqsimot_type'] ?? 'A')));
                     if ($rowType === 'M' || !empty($row['is_maxsus'])) {
@@ -439,12 +464,21 @@ if (!empty($allYonalishIds)) {
                     global $filters;
                     $rid = (int)($qCellData[$field]['rid'] ?? 0);
                     $soat = (float)($qCellData[$field]['soat'] ?? 0);
+                    $isScopedSoatTuri = legacy_is_scoped_taqsimot_soat_turi($field);
+                    $rowType = strtoupper(trim((string)($row['taqsimot_type'] ?? 'A')));
+                    if ($rowType === '') {
+                        $rowType = 'A';
+                    }
                     if (isMaxsusLikeRow($row) && ($field === 'oraliq_nazorat' || $field === 'yakuniy_nazorat')) {
                         $rid = 0;
                         $soat = 0.0;
+                    } elseif ($isScopedSoatTuri) {
+                        $rid = $soat > 0 ? resolvePrimaryRejaId($row) : 0;
                     }
                     $clickable = $soat > 0;
-                    $assigned = $rid > 0 ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, 'Q') : 0.0;
+                    $assigned = $rid > 0
+                        ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, $isScopedSoatTuri ? $rowType : 'Q', $isScopedSoatTuri ? $field : '')
+                        : 0.0;
                     $classes = [];
                     if ($clickable) {
                         $classes[] = 'soat-cell';
@@ -458,7 +492,7 @@ if (!empty($allYonalishIds)) {
 
                     $attrs = [
                         'class' => implode(' ', $classes),
-                        'data-type' => 'Q',
+                        'data-type' => $isScopedSoatTuri ? $rowType : 'Q',
                         'data-yuklama-id' => (string)$rid,
                         'data-soat-turi' => $field,
                         'data-max-soat' => (string)$soat,

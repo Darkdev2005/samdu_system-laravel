@@ -265,6 +265,10 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
         let teacherRows = [];
         let teacherRowCounter = 0;
 
+        function isScopedSoatTuri(soatTuri) {
+            return ['oraliq_nazorat', 'yakuniy_nazorat'].includes(String(soatTuri || '').trim());
+        }
+
         $(document).ready(function() {
             $('#kafedraFilter, #oquvYilFilter, #semestrFilter, #oqituvchiSelect').select2({
                 placeholder: "Tanlang",
@@ -381,9 +385,10 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                 const fanNomi = $cell.closest('tr').find('.fan-nomi').text();
                 const maxSoat = parseFloat($cell.data('max-soat')) || 0;
                 const type = $cell.data('type');
+                const scopedSoatTuri = isScopedSoatTuri(soatTuri);
                 
                 if (yuklamaId <= 0) {
-                    if (type === 'Q' && maxSoat > 0) {
+                    if (type === 'Q' && maxSoat > 0 && !scopedSoatTuri) {
                         $cell.addClass('disabled-cell');
                         $.post('api/ensure_qoshimcha_taqsimot_reja.php', {
                             q_dars_id: parseInt($cell.data('q-dars-id'), 10) || 0,
@@ -407,11 +412,19 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                             yuklamaId = parseInt(result.qoshimcha_reja_id, 10) || 0;
                             $cell.data('yuklama-id', yuklamaId).attr('data-yuklama-id', yuklamaId);
                             openTaqsimotModal($cell[0], yuklamaId, soatTuri, maxSoat, fanNomi, type);
-                        }).fail(function() {
+                        }).fail(function(xhr) {
+                            let errorMessage = "Qo'shimcha reja yaratishda xatolik yuz berdi.";
+                            try {
+                                const result = xhr.responseJSON || JSON.parse(xhr.responseText || '{}');
+                                if (result && result.message) {
+                                    errorMessage = result.message;
+                                }
+                            } catch (e) {
+                            }
                             Swal.fire({
                                 icon: 'error',
                                 title: 'Xatolik',
-                                text: "Qo'shimcha reja yaratishda xatolik yuz berdi."
+                                text: errorMessage
                             });
                         }).always(function() {
                             $cell.removeClass('disabled-cell');
@@ -473,7 +486,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             $.ajax({
                 url: 'api/get_oquv_reja_by_yuklama.php',
                 type: 'POST',
-                data: { yuklama_id: yuklamaId, legacy_yuklama_id: currentLegacyYuklamaId, type: type },
+                data: { yuklama_id: yuklamaId, legacy_yuklama_id: currentLegacyYuklamaId, type: type, soat_turi: soatTuri },
                 success: function(response) {
                     try {
                         const result = (typeof response === 'string') ? JSON.parse(response) : response;

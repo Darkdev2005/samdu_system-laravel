@@ -246,6 +246,14 @@ if (!function_exists('legacy_qoshimcha_display_name')) {
     }
 }
 
+if (!function_exists('legacy_is_scoped_taqsimot_soat_turi')) {
+    function legacy_is_scoped_taqsimot_soat_turi(?string $soatTuri): bool
+    {
+        $soatTuri = trim((string)$soatTuri);
+        return in_array($soatTuri, ['oraliq_nazorat', 'yakuniy_nazorat'], true);
+    }
+}
+
 if (!function_exists('legacy_can_access_teacher')) {
     function legacy_can_access_teacher(Database $db, int $teacherId): bool
     {
@@ -814,6 +822,17 @@ class Database{
         $archiveEntityIdCol = mysqli_query($this->link, "SHOW COLUMNS FROM taqsimotlar_archive LIKE 'entity_id'");
         if ($archiveEntityIdCol && mysqli_num_rows($archiveEntityIdCol) === 0) {
             mysqli_query($this->link, "ALTER TABLE taqsimotlar_archive ADD COLUMN entity_id INT NOT NULL DEFAULT 0 AFTER entity_type");
+        }
+        $hasTaqsimotlar = mysqli_query($this->link, "SHOW TABLES LIKE 'taqsimotlar'");
+        if ($hasTaqsimotlar && mysqli_num_rows($hasTaqsimotlar) > 0) {
+            $taqsimotSoatTuriCol = mysqli_query($this->link, "SHOW COLUMNS FROM taqsimotlar LIKE 'soat_turi'");
+            if ($taqsimotSoatTuriCol && mysqli_num_rows($taqsimotSoatTuriCol) === 0) {
+                mysqli_query($this->link, "ALTER TABLE taqsimotlar ADD COLUMN soat_turi VARCHAR(50) NULL AFTER type");
+            }
+        }
+        $archiveSoatTuriCol = mysqli_query($this->link, "SHOW COLUMNS FROM taqsimotlar_archive LIKE 'soat_turi'");
+        if ($archiveSoatTuriCol && mysqli_num_rows($archiveSoatTuriCol) === 0) {
+            mysqli_query($this->link, "ALTER TABLE taqsimotlar_archive ADD COLUMN soat_turi VARCHAR(50) NULL AFTER type");
         }
 
         // Izoh: O'chirilgan yo'nalishlardan qolib ketgan orphan semestrlarni avtomatik tozalaymiz.
@@ -1769,11 +1788,19 @@ class Database{
         $data = mysqli_fetch_assoc($result);
         return $data;
     }
-    public function get_taqsimot_by_teacher(int $oquvreja_id, string $type): array {
+    public function get_taqsimot_by_teacher(int $oquvreja_id, string $type, string $soatTuri = ''): array {
         $sql = "SELECT t.id, t.teacher_id, t.soat as soat_soni, t.type, o.fio, o.lavozim, t.oquv_reja_id
         FROM `taqsimotlar` t 
         JOIN oqituvchilar o ON o.id = t.teacher_id
-        WHERE t.oquv_reja_id=$oquvreja_id AND t.type='$type';";
+        WHERE t.oquv_reja_id=$oquvreja_id AND t.type='$type'";
+        if (legacy_is_scoped_taqsimot_soat_turi($soatTuri)) {
+            $safeSoatTuri = mysqli_real_escape_string($this->link, $soatTuri);
+            $sql .= " AND COALESCE(t.soat_turi, '') = '{$safeSoatTuri}'";
+        }
+        if (legacy_is_kafedra_mudiri()) {
+            $sql .= " AND o.kafedra_id = " . legacy_user_kafedra_id();
+        }
+        $sql .= ";";
         $result = $this->query($sql);
         $data = [];
         while ($row = mysqli_fetch_assoc($result)) {
