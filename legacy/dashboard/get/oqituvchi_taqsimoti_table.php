@@ -23,13 +23,18 @@ $mode = in_array($mode, ['taqsimot', 'report', 'full'], true) ? $mode : 'taqsimo
 $showTaqsimot = ($mode === 'taqsimot' || $mode === 'full');
 $showReport = ($mode === 'report' || $mode === 'full');
 
-// Izoh: Semestr juftligini aniqlash (1-2, 3-4, 5-6, 7-8).
+// Izoh: Semestr berilsa juftlik bo'yicha filter qilamiz, berilmasa barcha semestrlar chiqadi.
 $pairStart = 1;
+$pairEnd = 2;
+$semestrFilterSql = '';
+$useOddEvenBuckets = true;
 if (!empty($filters['semestr'])) {
     $s = (int)$filters['semestr'];
     $pairStart = ($s % 2 === 0) ? $s - 1 : $s;
+    $pairEnd = $pairStart + 1;
+    $semestrFilterSql = " AND s.semestr IN ($pairStart, $pairEnd)";
+    $useOddEvenBuckets = false;
 }
-$pairEnd = $pairStart + 1;
 
 // Izoh: Filterlar uchun SQL bo'laklari (oqituvchi/kafedra).
 $whereTeacher = '';
@@ -57,25 +62,29 @@ $sql = "
     )
     SELECT
         t.teacher_id,
-        o.fio,
-        o.lavozim,
-        o.stavka,
-        iu.name AS ilmiy_unvon,
-        id.name AS ilmiy_daraja,
-        isht.name AS shtat_turi,
-        y.name AS talim_yonalishi,
-        y.code AS yonalish_code,
-        ga.guruh_raqami,
-        ga.talabalar_soni,
+        MAX(o.fio) AS fio,
+        MAX(o.lavozim) AS lavozim,
+        MAX(o.stavka) AS stavka,
+        MAX(iu.name) AS ilmiy_unvon,
+        MAX(id.name) AS ilmiy_daraja,
+        MAX(isht.name) AS shtat_turi,
+        MAX(y.name) AS talim_yonalishi,
+        MAX(y.code) AS yonalish_code,
+        MAX(ga.guruh_raqami) AS guruh_raqami,
+        MAX(ga.talabalar_soni) AS talabalar_soni,
         MAX(y.patok_soni) AS patok_soni,
         MAX(y.kattaguruh_soni) AS kattaguruh_soni,
         MAX(y.kichikguruh_soni) AS kichikguruh_soni,
-        tsh.name AS oquv_shakli,
+        MAX(tsh.name) AS oquv_shakli,
         s.semestr,
-        FLOOR((s.semestr + 1)/2) AS kurs,
+        MAX(FLOOR((s.semestr + 1)/2)) AS kurs,
         f.id AS fan_id,
-        f.fan_code,
-        f.fan_name,
+        MAX(f.fan_code) AS fan_code,
+        CASE
+            WHEN MAX(bf.id) IS NOT NULL THEN CONCAT(MAX(bf.fan_name), ' | ', MAX(f.fan_name))
+            WHEN MAX(ivs.variant_names) IS NOT NULL AND MAX(ivs.variant_names) <> '' THEN CONCAT(MAX(f.fan_name), ' | ', MAX(ivs.variant_names))
+            ELSE MAX(f.fan_name)
+        END AS fan_name,
         r.dars_tur_id,
         NULL AS qoshimcha_id,
         SUM(t.soat) AS soat,
@@ -86,13 +95,25 @@ $sql = "
     JOIN semestrlar s ON s.id = f.semestr_id
     JOIN yonalishlar y ON y.id = s.yonalish_id
     JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
+    LEFT JOIN (
+        SELECT
+            ir.base_fan_id,
+            GROUP_CONCAT(DISTINCT fv.fan_name ORDER BY fv.fan_name SEPARATOR ' | ') AS variant_names
+        FROM ishchi_oquv_reja ir
+        JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ir.id
+        JOIN fanlar fv ON fv.id = iv.fan_id
+        GROUP BY ir.base_fan_id
+    ) ivs ON ivs.base_fan_id = f.id
+    LEFT JOIN ishchi_oquv_reja_variants iv ON iv.fan_id = f.id
+    LEFT JOIN ishchi_oquv_reja ir ON ir.id = iv.ishchi_reja_id
+    LEFT JOIN fanlar bf ON bf.id = ir.base_fan_id
     JOIN guruh_agg ga ON ga.yonalish_id = y.id
     JOIN oqituvchilar o ON o.id = t.teacher_id
     LEFT JOIN ilmiy_unvonlar iu ON iu.id = o.ilmiy_unvon_id
     LEFT JOIN ilmiy_darajalar id ON id.id = o.ilmiy_daraja_id
     LEFT JOIN ish_turlar isht ON isht.id = o.ishtur_id
     WHERE t.type = 'A'
-      AND s.semestr IN ($pairStart, $pairEnd)
+      $semestrFilterSql
       $whereTeacher
       $whereKafedra
       $whereShtat
@@ -102,25 +123,25 @@ $sql = "
 
     SELECT
         t.teacher_id,
-        o.fio,
-        o.lavozim,
-        o.stavka,
-        iu.name AS ilmiy_unvon,
-        id.name AS ilmiy_daraja,
-        isht.name AS shtat_turi,
-        y.name AS talim_yonalishi,
-        y.code AS yonalish_code,
-        ga.guruh_raqami,
-        ga.talabalar_soni,
+        MAX(o.fio) AS fio,
+        MAX(o.lavozim) AS lavozim,
+        MAX(o.stavka) AS stavka,
+        MAX(iu.name) AS ilmiy_unvon,
+        MAX(id.name) AS ilmiy_daraja,
+        MAX(isht.name) AS shtat_turi,
+        MAX(y.name) AS talim_yonalishi,
+        MAX(y.code) AS yonalish_code,
+        MAX(ga.guruh_raqami) AS guruh_raqami,
+        MAX(ga.talabalar_soni) AS talabalar_soni,
         MAX(y.patok_soni) AS patok_soni,
         MAX(y.kattaguruh_soni) AS kattaguruh_soni,
         MAX(y.kichikguruh_soni) AS kichikguruh_soni,
-        tsh.name AS oquv_shakli,
+        MAX(tsh.name) AS oquv_shakli,
         s.semestr,
-        FLOOR((s.semestr + 1)/2) AS kurs,
+        MAX(FLOOR((s.semestr + 1)/2)) AS kurs,
         0 AS fan_id,
         '' AS fan_code,
-        qf.fan_name,
+        MAX(qf.fan_name) AS fan_name,
         NULL AS dars_tur_id,
         qf.qoshimcha_dars_id AS qoshimcha_id,
         SUM(t.soat) AS soat,
@@ -137,7 +158,7 @@ $sql = "
     LEFT JOIN ilmiy_darajalar id ON id.id = o.ilmiy_daraja_id
     LEFT JOIN ish_turlar isht ON isht.id = o.ishtur_id
     WHERE t.type = 'Q'
-      AND s.semestr IN ($pairStart, $pairEnd)
+      $semestrFilterSql
       $whereTeacher
       $whereKafedra
       $whereShtat
@@ -191,6 +212,13 @@ function addToRow(&$row, $field, $value) {
     $row[$field] = ($row[$field] ?? 0) + (float)$value;
 }
 
+function semestr_prefix(int $semestr, int $pairStart, bool $useOddEvenBuckets): string {
+    if ($useOddEvenBuckets) {
+        return ($semestr % 2 === 1) ? 's1_' : 's2_';
+    }
+    return ($semestr === $pairStart) ? 's1_' : 's2_';
+}
+
 if ($result) {
     while ($r = mysqli_fetch_assoc($result)) {
         $tid = (int)$r['teacher_id'];
@@ -242,7 +270,7 @@ if ($result) {
 
         if ($type === 'A') {
             $darsTur = (int)$r['dars_tur_id'];
-            $prefix = ($semestr == $pairStart) ? 's1_' : 's2_';
+            $prefix = semestr_prefix($semestr, $pairStart, $useOddEvenBuckets);
             if ($darsTur === 1) addToRow($row, $prefix . 'maruza', $soat);
             if ($darsTur === 2) addToRow($row, $prefix . 'amaliy', $soat);
             if ($darsTur === 3) addToRow($row, $prefix . 'lab', $soat);
@@ -250,7 +278,7 @@ if ($result) {
             if ($darsTur === 5) addToRow($row, $prefix . 'konsult', $soat);
         } else {
             $qId = (int)$r['qoshimcha_id'];
-            $prefix = ($semestr == $pairStart) ? 's1_' : 's2_';
+            $prefix = semestr_prefix($semestr, $pairStart, $useOddEvenBuckets);
             if ($qId === 20) addToRow($row, $prefix . 'oraliq', $soat);
             if ($qId === 21) addToRow($row, $prefix . 'yakuniy', $soat);
             if ($qId === 1) addToRow($row, 'kurs_ishi', $soat);
@@ -445,10 +473,12 @@ $reportColspan = 31;
                 }
                 $rowSem = (int)($r['semestr'] ?? 0);
                 $rowAud = 0;
-                if ($rowSem === $pairStart) {
+                $isS1 = $useOddEvenBuckets ? (($rowSem % 2) === 1) : ($rowSem === $pairStart);
+                $isS2 = $useOddEvenBuckets ? (($rowSem % 2) === 0) : ($rowSem === $pairEnd);
+                if ($isS1) {
                     $rowAud = (float)$r['s1_maruza'] + (float)$r['s1_amaliy'] + (float)$r['s1_lab'] + (float)$r['s1_seminar'] + (float)$r['s1_konsult'];
                     $s1Boshqa += (row_total($r) - $rowAud);
-                } elseif ($rowSem === $pairEnd) {
+                } elseif ($isS2) {
                     $rowAud = (float)$r['s2_maruza'] + (float)$r['s2_amaliy'] + (float)$r['s2_lab'] + (float)$r['s2_seminar'] + (float)$r['s2_konsult'];
                     $s2Boshqa += (row_total($r) - $rowAud);
                 }

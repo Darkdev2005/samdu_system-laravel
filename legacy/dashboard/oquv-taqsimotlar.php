@@ -257,6 +257,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
         let showAllRows = false;
         let currentCell = null;
         let currentYuklamaId = null;
+        let currentLegacyYuklamaId = 0;
         let currentSoatTuri = null;
         let currentMaxSoat = 0;
         let currentFanNomi = '';
@@ -375,19 +376,49 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                     return;
                 }
                 
-                const yuklamaId = parseInt($cell.data('yuklama-id'), 10) || 0;
+                let yuklamaId = parseInt($cell.data('yuklama-id'), 10) || 0;
                 const soatTuri = $cell.data('soat-turi');
                 const fanNomi = $cell.closest('tr').find('.fan-nomi').text();
                 const maxSoat = parseFloat($cell.data('max-soat')) || 0;
                 const type = $cell.data('type');
-                const text = $cell.text().trim();
                 
-                // Agar soat mavjud bo'lmasa yoki to'liq taqsimlangan bo'lsa
-                if (maxSoat <= 0 || text === "" || text === "0") {
-                    return;
-                }
-
                 if (yuklamaId <= 0) {
+                    if (type === 'Q' && maxSoat > 0) {
+                        $cell.addClass('disabled-cell');
+                        $.post('api/ensure_qoshimcha_taqsimot_reja.php', {
+                            q_dars_id: parseInt($cell.data('q-dars-id'), 10) || 0,
+                            yonalish_id: parseInt($cell.data('yonalish-id'), 10) || 0,
+                            semestr: parseInt($cell.data('semestr'), 10) || 0,
+                            kafedra_id: parseInt($cell.data('kafedra-id'), 10) || parseInt($('#kafedraFilter').val(), 10) || 0,
+                            kafedra_nomi: $cell.data('kafedra-nomi') || '',
+                            fan_nomi: $cell.data('fan-nomi') || fanNomi,
+                            soat: maxSoat
+                        }, function(res) {
+                            const result = (typeof res === 'string') ? JSON.parse(res) : res;
+                            if (!result.success || !result.qoshimcha_reja_id) {
+                                Swal.fire({
+                                    icon: 'warning',
+                                    title: 'Taqsimot ochilmadi',
+                                    text: result.message || "Bu soat uchun qo'shimcha reja yaratilmadi."
+                                });
+                                return;
+                            }
+
+                            yuklamaId = parseInt(result.qoshimcha_reja_id, 10) || 0;
+                            $cell.data('yuklama-id', yuklamaId).attr('data-yuklama-id', yuklamaId);
+                            openTaqsimotModal($cell[0], yuklamaId, soatTuri, maxSoat, fanNomi, type);
+                        }).fail(function() {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Xatolik',
+                                text: "Qo'shimcha reja yaratishda xatolik yuz berdi."
+                            });
+                        }).always(function() {
+                            $cell.removeClass('disabled-cell');
+                        });
+                        return;
+                    }
+
                     Swal.fire({
                         icon: 'warning',
                         title: 'Taqsimot ochilmadi',
@@ -419,6 +450,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
         function openTaqsimotModal(cell, yuklamaId, soatTuri, maxSoat, fanNomi, type) {
             currentCell = cell;
             currentYuklamaId = yuklamaId;
+            currentLegacyYuklamaId = parseInt($(cell).data('legacy-yuklama-id'), 10) || 0;
             currentSoatTuri = soatTuri;
             currentFanNomi = fanNomi;
             currentType = type;
@@ -441,7 +473,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             $.ajax({
                 url: 'api/get_oquv_reja_by_yuklama.php',
                 type: 'POST',
-                data: { yuklama_id: yuklamaId, type: type },
+                data: { yuklama_id: yuklamaId, legacy_yuklama_id: currentLegacyYuklamaId, type: type },
                 success: function(response) {
                     try {
                         const result = (typeof response === 'string') ? JSON.parse(response) : response;
@@ -478,22 +510,17 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                         if (taqsimotlar.length === 0) {
                             $('#taqsimotList').html('<div style="padding:6px;color:#6c757d;">Hozircha taqsimot mavjud emas</div>');
                         }
-
-                        currentMaxSoat = Math.max(0, (parseFloat(maxSoat) || 0) - existingAssignedHours);
+                        currentMaxSoat = parseFloat(maxSoat) || 0;
                         $('#modalMaxSoat').text(currentMaxSoat.toFixed(1));
-                        updateHoursControl(0);
+                        updateHoursControl(existingAssignedHours);
 
-                        if (currentMaxSoat <= 0) {
-                            Swal.fire({
-                                icon: 'info',
-                                title: 'Barcha soatlar taqsimlangan',
-                                text: 'Yangi taqsimot kiritib bo‘lmaydi'
+                        if (taqsimotlar.length > 0) {
+                            taqsimotlar.forEach(t => {
+                                addTeacherRow(t.teacher_id || '', parseFloat(t.soat_soni || 0));
                             });
-                            $('#taqsimotModal').addClass('show');
-                            return;
+                        } else {
+                            addTeacherRow();
                         }
-
-                        addTeacherRow();
 
                     } catch (e) {
                         console.error('JSON xato:', e);
@@ -684,6 +711,9 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                 'dala_amaliyoti_otm': "Dala amaliyoti (OTM)",
                 'ishlab_chiqarish': "Ishlab chiqarish amaliyot",
                 'bmi_rahbarligi': "BMI rahbarligi",
+                'ilmiy_tadqiqot_ishi': "Ilmiy-tadqiqot ishi (Magistratura)",
+                'ilmiy_pedagogik_ishi': "Ilmiy-pedagogik ish (Magistratura)",
+                'ilmiy_stajirovka': "Ilmiy stajirovka (Magistratura)",
                 'mag_ilmiy_tadqiqot': "Ilmiy-tadqiqot ishi (Magistratura)",
                 'mag_ilmiy_pedagogik': "Ilmiy-pedagogik ish (Magistratura)",
                 'mag_ilmiy_stajirovka': "Ilmiy stajirovka (Magistratura)",
@@ -702,7 +732,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             if (!teacherId) return;
 
             $.post('api/get_teacher_total_hours.php', { teacher_id: teacherId }, function(res) {
-                const result = JSON.parse(res);
+                const result = (typeof res === 'string') ? JSON.parse(res) : res;
                 if (!result.success) return;
 
                 const d = result.data;
@@ -789,8 +819,10 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                 dataType: 'json',
                 data: {
                     yuklama_id: currentYuklamaId,
+                    legacy_yuklama_id: currentLegacyYuklamaId,
                     soat_turi: currentSoatTuri,
                     type: currentType,
+                    replace_mode: 1,
                     taqsimotlar: JSON.stringify(taqsimotlar)
                 },
                 success: function(response) {
@@ -828,6 +860,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             $('#taqsimotModal').removeClass('show');
             currentCell = null;
             currentYuklamaId = null;
+            currentLegacyYuklamaId = 0;
             currentSoatTuri = null;
             currentMaxSoat = 0;
             currentFanNomi = '';

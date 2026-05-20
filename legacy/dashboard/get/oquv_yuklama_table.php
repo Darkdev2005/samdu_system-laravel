@@ -2,6 +2,12 @@
 include_once '../config.php';
 $db = new Database();
 
+// Izoh: Og'ir hisobot so'rovlari uchun bajarilish vaqtini sekundlarda oshiramiz.
+if (function_exists('set_time_limit')) {
+    @set_time_limit(60);
+}
+@ini_set('max_execution_time', '60');
+
 $filters = [];
 $rowLimit = 150;
 if (isset($_POST['show_all']) && (int)$_POST['show_all'] === 1) {

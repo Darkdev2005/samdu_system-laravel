@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 include_once '../config.php';
 $db = new Database();
 
@@ -43,13 +43,102 @@ $qoshimcha_oquv_taqsimotlar = [];
 if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
     $qoshimcha_oquv_taqsimotlar = $db->get_qoshimcha_oquv_taqsimotlar($filters);
 } else {
-    $remainingLimit = max(0, (int)$filters['limit'] - count($oquv_taqsimotlar));
-    if ($remainingLimit > 0) {
-        $qoshimcha_oquv_taqsimotlar = $db->get_qoshimcha_oquv_taqsimotlar($filters + ['limit' => $remainingLimit]);
+    // Izoh: Umumiy jadval limiti (150) buzilmasligi uchun qolgan limitni qo'llaymiz.
+    $remainingLimitForQoshimcha = max(0, (int)$filters['limit'] - count($oquv_taqsimotlar));
+    if ($remainingLimitForQoshimcha > 0) {
+        $qoshimcha_oquv_taqsimotlar = $db->get_qoshimcha_oquv_taqsimotlar($filters + ['limit' => $remainingLimitForQoshimcha]);
     }
 }
 $oquv_taqsimotlar = is_array($oquv_taqsimotlar) ? $oquv_taqsimotlar : [];
 $qoshimcha_oquv_taqsimotlar = is_array($qoshimcha_oquv_taqsimotlar) ? $qoshimcha_oquv_taqsimotlar : [];
+
+// Izoh: Jadvalda limit bo'lsa ham, soat ustunlarini bog'lash uchun qo'shimcha rejalarni to'liq olamiz.
+$qoshimchaMapRows = $db->get_qoshimcha_oquv_taqsimotlar($filters + ['limit' => 0]);
+$qoshimchaMapRows = is_array($qoshimchaMapRows) ? $qoshimchaMapRows : [];
+
+$rowKeyFn = static function (array $row): string {
+    $fan = trim((string)($row['fan_nomi'] ?? ''));
+    $yonalish = trim((string)($row['yonalish_code'] ?? ''));
+    $semestr = (string)((int)($row['semestr'] ?? 0));
+    $kafedra = trim((string)($row['kafedra_nomi'] ?? ''));
+    if (function_exists('mb_strtolower')) {
+        return (string)@mb_strtolower($fan . '|' . $yonalish . '|' . $semestr . '|' . $kafedra, 'UTF-8');
+    }
+    return strtolower($fan . '|' . $yonalish . '|' . $semestr . '|' . $kafedra);
+};
+
+$qDarsToFieldMap = [
+    1 => 'kurs_ishi',
+    2 => 'kurs_loyiha',
+    3 => 'oquv_ped_amaliyot',
+    4 => 'uzluksiz_malakaviy',
+    5 => 'dala_amaliyoti_otm',
+    6 => 'dala_amaliyoti_tashqarida',
+    7 => 'ishlab_chiqarish',
+    8 => 'bmi_rahbarligi',
+    9 => 'ilmiy_tadqiqot_ishi',
+    10 => 'ilmiy_pedagogik_ishi',
+    11 => 'ilmiy_stajirovka',
+    12 => 'tayanch_doktorantura',
+    13 => 'katta_ilmiy_tadqiqotchi',
+    14 => 'stajyor_tadqiqotchi',
+    15 => 'ochiq_dars',
+    16 => 'yadak',
+    17 => 'boshqa_soatlar',
+    20 => 'oraliq_nazorat',
+    21 => 'yakuniy_nazorat',
+];
+$qFieldToDarsMap = [];
+foreach ($qDarsToFieldMap as $darsId => $fieldName) {
+    $qFieldToDarsMap[$fieldName] = (int)$darsId;
+}
+
+$qFieldRejaIdMap = [];
+$qFieldRejaIdScopeMap = [];
+$qFieldSoatMap = [];
+$qFieldSoatScopeMap = [];
+foreach ($qDarsToFieldMap as $fieldName) {
+    $qFieldRejaIdMap[$fieldName] = [];
+    $qFieldRejaIdScopeMap[$fieldName] = [];
+    $qFieldSoatMap[$fieldName] = [];
+    $qFieldSoatScopeMap[$fieldName] = [];
+}
+
+foreach ($qoshimchaMapRows as $qRow) {
+    $rid = (int)($qRow['qoshimcha_reja_id'] ?? 0);
+    $k = $rowKeyFn($qRow);
+    $scopeKey = trim((string)($qRow['yonalish_code'] ?? '')) . '|' . (string)((int)($qRow['semestr'] ?? 0)) . '|' . trim((string)($qRow['kafedra_nomi'] ?? ''));
+    if (function_exists('mb_strtolower')) {
+        $scopeKey = (string)@mb_strtolower($scopeKey, 'UTF-8');
+    } else {
+        $scopeKey = strtolower($scopeKey);
+    }
+    $qDarsId = (int)($qRow['qoshimcha_dars_id'] ?? 0);
+    $fieldName = $qDarsToFieldMap[$qDarsId] ?? '';
+    if ($fieldName === '') {
+        continue;
+    }
+
+    $fieldSoat = (float)($qRow[$fieldName] ?? ($qRow['jami_soat'] ?? 0));
+    if ($fieldSoat > 0) {
+        if (!isset($qFieldSoatMap[$fieldName][$k])) {
+            $qFieldSoatMap[$fieldName][$k] = 0.0;
+        }
+        $qFieldSoatMap[$fieldName][$k] += $fieldSoat;
+
+        if (!isset($qFieldSoatScopeMap[$fieldName][$scopeKey])) {
+            $qFieldSoatScopeMap[$fieldName][$scopeKey] = 0.0;
+        }
+        $qFieldSoatScopeMap[$fieldName][$scopeKey] += $fieldSoat;
+    }
+
+    if ($rid > 0 && !isset($qFieldRejaIdMap[$fieldName][$k])) {
+        $qFieldRejaIdMap[$fieldName][$k] = $rid;
+    }
+    if ($rid > 0 && !isset($qFieldRejaIdScopeMap[$fieldName][$scopeKey])) {
+        $qFieldRejaIdScopeMap[$fieldName][$scopeKey] = $rid;
+    }
+}
 
 // Izoh: config.php dagi ayrim eski versiyalarda needs_resync SELECTda bo'lmasligi mumkin.
 // Shu holatda fallback sifatida pending eventlarni yonalish_id bo'yicha shu faylda tekshiramiz.
@@ -120,6 +209,15 @@ if (!empty($allYonalishIds)) {
     vertical-align: middle;
     white-space: nowrap;
 }
+.soat-cell {
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, outline-color 0.15s ease;
+}
+.soat-cell:hover {
+    outline: 2px solid #22c55e;
+    outline-offset: -2px;
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+}
 
 </style>
 <div class="table-container-wrapper">
@@ -139,7 +237,7 @@ if (!empty($allYonalishIds)) {
         <table id="yuklamaTable">
             <thead>
                 <tr>
-                    <th rowspan="3">№</th>
+                    <th rowspan="3">в„–</th>
                     <th rowspan="3">O'qitiladigan fan va boshqa turdagi o'quv ishlari</th>
                     <th rowspan="3">Ta'lim yo'nalishi</th>
                     <th rowspan="3" class="vertical">Guruh raqami</th>
@@ -208,7 +306,16 @@ if (!empty($allYonalishIds)) {
                         if (!in_array($rowType, ['A', 'Q', 'M'], true)) {
                             $rowType = 'A';
                         }
-                        foreach (['maruza_reja_id', 'amaliy_reja_id', 'laboratoriya_reja_id', 'seminar_reja_id'] as $field) {
+                        foreach ([
+                            'maruza_reja_id',
+                            'amaliy_reja_id',
+                            'laboratoriya_reja_id',
+                            'seminar_reja_id',
+                            'legacy_maruza_reja_id',
+                            'legacy_amaliy_reja_id',
+                            'legacy_laboratoriya_reja_id',
+                            'legacy_seminar_reja_id',
+                        ] as $field) {
                             $rejaId = (int)($row[$field] ?? 0);
                             if ($rejaId > 0) {
                                 if (!isset($rejaIdsByType[$rowType])) {
@@ -278,11 +385,122 @@ if (!empty($allYonalishIds)) {
                     $taqsimotSoatMap[$cacheKey] = $jamiSoat;
                     return $jamiSoat;
                 }
+                function getTaqsimotSoatWithLegacy(
+                    $db,
+                    array &$taqsimotSoatMap,
+                    int $rejaId,
+                    int $legacyRejaId,
+                    string $type,
+                    bool $allowLegacy
+                ): float {
+                    $assigned = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rejaId, $type);
+                    if ($assigned > 0 || !$allowLegacy || $legacyRejaId <= 0 || $legacyRejaId === $rejaId) {
+                        return $assigned;
+                    }
+
+                    return getMappedTaqsimotSoat($db, $taqsimotSoatMap, $legacyRejaId, $type);
+                }
                 function getCellClass($jami, $max) {
                     if ($max <= 0) return '';
                     if ($jami == $max) return 'full-soat';     
                     if ($jami < $max && $jami > 0)  return 'partial-soat';  
                     return '';
+                }
+                function formatSoatValue($value): string {
+                    $num = (float)$value;
+                    if ($num <= 0) {
+                        return '';
+                    }
+                    return rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
+                }
+                function isMaxsusLikeRow(array $row): bool {
+                    $rowType = strtoupper(trim((string)($row['taqsimot_type'] ?? 'A')));
+                    if ($rowType === 'M' || !empty($row['is_maxsus'])) {
+                        return true;
+                    }
+
+                    $guruhRaqamiRaw = trim((string)($row['guruh_raqami'] ?? ''));
+                    if (function_exists('mb_strtolower')) {
+                        $guruhRaqamiRaw = (string)@mb_strtolower($guruhRaqamiRaw, 'UTF-8');
+                    } else {
+                        $guruhRaqamiRaw = strtolower($guruhRaqamiRaw);
+                    }
+
+                    return strpos($guruhRaqamiRaw, 'iqtidor') !== false;
+                }
+                function renderQSoatCell(
+                    string $field,
+                    array $qCellData,
+                    array $qFieldToDarsMap,
+                    array $row,
+                    Database $db,
+                    array &$taqsimotSoatMap
+                ): string {
+                    global $filters;
+                    $rid = (int)($qCellData[$field]['rid'] ?? 0);
+                    $soat = (float)($qCellData[$field]['soat'] ?? 0);
+                    if (isMaxsusLikeRow($row) && ($field === 'oraliq_nazorat' || $field === 'yakuniy_nazorat')) {
+                        $rid = 0;
+                        $soat = 0.0;
+                    }
+                    $clickable = $soat > 0;
+                    $assigned = $rid > 0 ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, 'Q') : 0.0;
+                    $classes = [];
+                    if ($clickable) {
+                        $classes[] = 'soat-cell';
+                    }
+                    if ($rid > 0) {
+                        $cellClass = getCellClass($assigned, $soat);
+                        if ($cellClass !== '') {
+                            $classes[] = $cellClass;
+                        }
+                    }
+
+                    $attrs = [
+                        'class' => implode(' ', $classes),
+                        'data-type' => 'Q',
+                        'data-yuklama-id' => (string)$rid,
+                        'data-soat-turi' => $field,
+                        'data-max-soat' => (string)$soat,
+                        'data-q-dars-id' => (string)((int)($qFieldToDarsMap[$field] ?? 0)),
+                        'data-yonalish-id' => (string)((int)($row['yonalish_id'] ?? 0)),
+                        'data-semestr' => (string)((int)($row['semestr'] ?? 0)),
+                        'data-kafedra-id' => (string)((int)($row['kafedra_id'] ?? ($filters['kafedra_id'] ?? 0))),
+                        'data-kafedra-nomi' => (string)($row['kafedra_nomi'] ?? ''),
+                        'data-fan-nomi' => (string)($row['fan_nomi'] ?? ''),
+                    ];
+
+                    $attrHtml = '';
+                    foreach ($attrs as $name => $value) {
+                        if ($name === 'class' && trim($value) === '') {
+                            continue;
+                        }
+                        $attrHtml .= ' ' . $name . '="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"';
+                    }
+
+                    return '<td' . $attrHtml . '>' . formatSoatValue($soat) . '</td>';
+                }
+                function renderExistingQRejaCell(string $field, array $row, Database $db, array &$taqsimotSoatMap): string {
+                    $rid = (int)($row['qoshimcha_reja_id'] ?? 0);
+                    $soat = (float)($row[$field] ?? 0);
+                    if (isMaxsusLikeRow($row) && ($field === 'oraliq_nazorat' || $field === 'yakuniy_nazorat')) {
+                        $rid = 0;
+                        $soat = 0.0;
+                    }
+                    $assigned = $rid > 0 ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, 'Q') : 0.0;
+                    $classes = ['soat-cell'];
+                    $cellClass = getCellClass($assigned, $soat);
+                    if ($cellClass !== '') {
+                        $classes[] = $cellClass;
+                    }
+
+                    return '<td class="' . htmlspecialchars(implode(' ', $classes), ENT_QUOTES, 'UTF-8') . '"'
+                        . ' data-type="Q"'
+                        . ' data-yuklama-id="' . $rid . '"'
+                        . ' data-soat-turi="' . htmlspecialchars($field, ENT_QUOTES, 'UTF-8') . '"'
+                        . ' data-max-soat="' . htmlspecialchars((string)$soat, ENT_QUOTES, 'UTF-8') . '">'
+                        . formatSoatValue($soat)
+                        . '</td>';
                 }
                 $taqsimotSoatMap = buildTaqsimotSoatMap($db, $oquv_taqsimotlar);
                 if (!empty($oquv_taqsimotlar) || !empty($qoshimcha_oquv_taqsimotlar)):
@@ -296,14 +514,19 @@ if (!empty($allYonalishIds)) {
                         $amaliyRejaId = (int)($row['amaliy_reja_id'] ?? 0);
                         $labRejaId = (int)($row['laboratoriya_reja_id'] ?? 0);
                         $seminarRejaId = (int)($row['seminar_reja_id'] ?? 0);
-                        $rowType = trim((string)($row['taqsimot_type'] ?? 'A'));
+                        $legacyMaruzaRejaId = (int)($row['legacy_maruza_reja_id'] ?? 0);
+                        $legacyAmaliyRejaId = (int)($row['legacy_amaliy_reja_id'] ?? 0);
+                        $legacyLabRejaId = (int)($row['legacy_laboratoriya_reja_id'] ?? 0);
+                        $legacySeminarRejaId = (int)($row['legacy_seminar_reja_id'] ?? 0);
+                        $allowLegacyTaqsimot = !empty($row['is_legacy_tanlov_owner']);
+                        $rowType = strtoupper(trim((string)($row['taqsimot_type'] ?? 'A')));
                         if ($rowType === '') {
                             $rowType = 'A';
                         }
-                        $maruzaJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $maruzaRejaId, $rowType);
-                        $amaliyJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $amaliyRejaId, $rowType);
-                        $labJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $labRejaId, $rowType);
-                        $seminarJami = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $seminarRejaId, $rowType);
+                        $maruzaJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $maruzaRejaId, $legacyMaruzaRejaId, $rowType, $allowLegacyTaqsimot);
+                        $amaliyJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $amaliyRejaId, $legacyAmaliyRejaId, $rowType, $allowLegacyTaqsimot);
+                        $labJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $labRejaId, $legacyLabRejaId, $rowType, $allowLegacyTaqsimot);
+                        $seminarJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $seminarRejaId, $legacySeminarRejaId, $rowType, $allowLegacyTaqsimot);
 
                         // Izoh: Yuklama sahifasidagi qoida bilan bir xil reyting nazorat hisob-kitobi.
                         $rejaMaruza = (float)($row['reja_maruz'] ?? ($row['maruza_soat'] ?? 0));
@@ -317,18 +540,81 @@ if (!empty($allYonalishIds)) {
                             ? (string)@mb_strtolower($shaklRaw, 'UTF-8')
                             : strtolower($shaklRaw);
                         $isMasofaviy = strpos($shakl, 'masof') !== false;
+                        $isMaxsusRow = ($rowType === 'M' || !empty($row['is_maxsus']));
                         $oraliqNazorat = 0;
-                        if (!$isMasofaviy && $talabaSoni > 0) {
+                        if (!$isMaxsusRow && !$isMasofaviy && $talabaSoni > 0) {
                             if ($auditoriyaSoat >= 60) {
                                 $oraliqNazorat = (int)round($talabaSoni * 0.4);
                             } elseif ($auditoriyaSoat >= 30) {
                                 $oraliqNazorat = (int)round($talabaSoni * 0.2);
                             }
                         }
-                        $yakuniyNazorat = ($talabaSoni > 0 && $auditoriyaSoat > 0)
+                        $yakuniyNazorat = (!$isMaxsusRow && $talabaSoni > 0 && $auditoriyaSoat > 0)
                             ? (int)round($talabaSoni * 0.3)
                             : 0;
+                        $rowKey = $rowKeyFn($row);
+                        $scopeKey = trim((string)($row['yonalish_code'] ?? '')) . '|' . (string)((int)($row['semestr'] ?? 0)) . '|' . trim((string)($row['kafedra_nomi'] ?? ''));
+                        if (function_exists('mb_strtolower')) {
+                            $scopeKey = (string)@mb_strtolower($scopeKey, 'UTF-8');
+                        } else {
+                            $scopeKey = strtolower($scopeKey);
+                        }
+                        $qFields = [
+                            'oraliq_nazorat',
+                            'yakuniy_nazorat',
+                            'kurs_ishi',
+                            'kurs_loyiha',
+                            'oquv_ped_amaliyot',
+                            'uzluksiz_malakaviy',
+                            'dala_amaliyoti_otm',
+                            'dala_amaliyoti_tashqarida',
+                            'ishlab_chiqarish',
+                            'bmi_rahbarligi',
+                            'ilmiy_tadqiqot_ishi',
+                            'ilmiy_pedagogik_ishi',
+                            'ilmiy_stajirovka',
+                            'tayanch_doktorantura',
+                            'katta_ilmiy_tadqiqotchi',
+                            'stajyor_tadqiqotchi',
+                            'ochiq_dars',
+                            'yadak',
+                            'boshqa_soatlar',
+                        ];
+                        $qCellData = [];
+                        foreach ($qFields as $qField) {
+                            // Izoh: Qo'shimcha soatlar boshqa fan/qatorga ko'chib ketmasligi uchun
+                            // faqat aniq row-key bo'yicha bog'laymiz (scope fallback ishlatilmaydi).
+                            $mappedId = (int)($qFieldRejaIdMap[$qField][$rowKey] ?? 0);
+                            $mappedSoat = (float)($qFieldSoatMap[$qField][$rowKey] ?? 0);
+                            $directSoat = (float)($row[$qField] ?? 0);
+                            $finalSoat = max($mappedSoat, $directSoat);
+                            $qCellData[$qField] = [
+                                'rid' => $mappedId,
+                                'soat' => $finalSoat,
+                            ];
+                        }
+                        $guruhRaqamiRaw = trim((string)($row['guruh_raqami'] ?? ''));
+                        if (function_exists('mb_strtolower')) {
+                            $guruhRaqamiLower = (string)@mb_strtolower($guruhRaqamiRaw, 'UTF-8');
+                        } else {
+                            $guruhRaqamiLower = strtolower($guruhRaqamiRaw);
+                        }
+                        $isIqtidorliGuruh = strpos($guruhRaqamiLower, 'iqtidor') !== false;
 
+                        if ($isMaxsusRow || $isIqtidorliGuruh) {
+                            $qCellData['oraliq_nazorat']['soat'] = 0;
+                            $qCellData['yakuniy_nazorat']['soat'] = 0;
+                            $qCellData['oraliq_nazorat']['rid'] = 0;
+                            $qCellData['yakuniy_nazorat']['rid'] = 0;
+                        } else {
+                            // Izoh: Reyting formulasi bo'yicha hisoblangan qiymat bo'lsa, uni ustuvor ko'rsatamiz.
+                            if ($oraliqNazorat > 0) {
+                                $qCellData['oraliq_nazorat']['soat'] = max((float)$qCellData['oraliq_nazorat']['soat'], (float)$oraliqNazorat);
+                            }
+                            if ($yakuniyNazorat > 0) {
+                                $qCellData['yakuniy_nazorat']['soat'] = max((float)$qCellData['yakuniy_nazorat']['soat'], (float)$yakuniyNazorat);
+                            }
+                        }
                 ?>
                 <tr class="<?= $needsResync ? 'needs-resync' : '' ?>">
                     <td><?= $counter++ ?></td>
@@ -355,67 +641,71 @@ if (!empty($allYonalishIds)) {
                     <td class="soat-cell  <?= getCellClass($maruzaJami, $row['amalda_maruz']) ?>"
                         data-type="<?= htmlspecialchars($rowType) ?>"
                         data-yuklama-id="<?= $row['maruza_reja_id'] ?: 0 ?>"
+                        data-legacy-yuklama-id="<?= $allowLegacyTaqsimot ? ($legacyMaruzaRejaId ?: 0) : 0 ?>"
                         data-soat-turi="amalda_maruz"
                         data-max-soat="<?= $row['amalda_maruz'] ?>">
                         <?= $row['amalda_maruz'] ?: '' ?>
                         
                     </td>
-                    <!-- 🔥 AMALIY -->
+                    <!-- AMALIY -->
                     <td class="soat-cell <?= getCellClass($amaliyJami, $row['amalda_amaliy']) ?>"
                         data-type="<?= htmlspecialchars($rowType) ?>"
                         data-yuklama-id="<?= $row['amaliy_reja_id'] ?: 0 ?>"
+                        data-legacy-yuklama-id="<?= $allowLegacyTaqsimot ? ($legacyAmaliyRejaId ?: 0) : 0 ?>"
                         data-soat-turi="amalda_amaliy"
                         data-max-soat="<?= $row['amalda_amaliy'] ?: 0 ?>">
                         <?= $row['amalda_amaliy'] ?: '' ?>
                         
                     </td>
-                    <!-- 🔥 LAB -->
+                    <!-- LAB -->
                     <td class="soat-cell <?= getCellClass($labJami, $row['amalda_laboratoriya']) ?>"
                         data-type="<?= htmlspecialchars($rowType) ?>"
                         data-yuklama-id="<?= $row['laboratoriya_reja_id'] ?: 0 ?>"
+                        data-legacy-yuklama-id="<?= $allowLegacyTaqsimot ? ($legacyLabRejaId ?: 0) : 0 ?>"
                         data-soat-turi="amalda_laboratoriya"
                         data-max-soat="<?= $row['amalda_laboratoriya'] ?: 0 ?>">
                         <?= $row['amalda_laboratoriya'] ?: '' ?>
                         
                     </td>
-                    <!-- 🔥 SEMINAR -->
+                    <!-- SEMINAR -->
                     <td class="soat-cell <?= getCellClass($seminarJami, $row['amalda_seminar']) ?>"
                         data-type="<?= htmlspecialchars($rowType) ?>"
                         data-yuklama-id="<?= $row['seminar_reja_id'] ?: 0 ?>"
+                        data-legacy-yuklama-id="<?= $allowLegacyTaqsimot ? ($legacySeminarRejaId ?: 0) : 0 ?>"
                         data-soat-turi="amalda_seminar"
                         data-max-soat="<?= $row['amalda_seminar'] ?: 0 ?>">
                         <?= $row['amalda_seminar'] ?: '' ?>
                         
                     </td>
                     <!-- Reyting -->
-                    <td><?= $oraliqNazorat ?: '' ?></td>
-                    <td><?= $yakuniyNazorat ?: '' ?></td>
+                    <?= renderQSoatCell('oraliq_nazorat', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('yakuniy_nazorat', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
                     <!-- Kurs ishlari -->
-                    <td></td>
-                    <td></td>
+                    <?= renderQSoatCell('kurs_ishi', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('kurs_loyiha', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
                     <!-- Malakaviy amaliyot -->
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
+                    <?= renderQSoatCell('oquv_ped_amaliyot', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('uzluksiz_malakaviy', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('dala_amaliyoti_otm', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('dala_amaliyoti_tashqarida', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('ishlab_chiqarish', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
                     <!-- BMI rahbarligi -->
-                    <td></td>
+                    <?= renderQSoatCell('bmi_rahbarligi', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
                     
                     <!-- Magistratura -->
-                    <td></td>
-                    <td></td>
-                    <td></td>
+                    <?= renderQSoatCell('ilmiy_tadqiqot_ishi', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('ilmiy_pedagogik_ishi', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('ilmiy_stajirovka', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
                     
                     <!-- Doktorantura -->
-                    <td></td>
-                    <td></td>
-                    <td></td>
+                    <?= renderQSoatCell('tayanch_doktorantura', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('katta_ilmiy_tadqiqotchi', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('stajyor_tadqiqotchi', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
                     
                     <!-- Qo'shimcha soatlar -->
-                    <td></td>
-                    <td></td>
-                    <td></td>
+                    <?= renderQSoatCell('ochiq_dars', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('yadak', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderQSoatCell('boshqa_soatlar', $qCellData, $qFieldToDarsMap, $row, $db, $taqsimotSoatMap) ?>
                     
                     <!-- JAMI soat -->
                     <td class="total-cell">
@@ -463,75 +753,31 @@ if (!empty($allYonalishIds)) {
                     <td></td>
                     <td></td>
                     <!-- Reyting nazorati -->
-                    <td class="soat-cell"
-                        data-type="Q"
-                        data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?: 0?>"
-                        data-soat-turi="oraliq_nazorat"
-                        data-max-soat="<?= $row['oraliq_nazorat'] ?: 0 ?>">
-                        <?= $row['oraliq_nazorat'] ?: '' ?>
-                    </td>
-                    <td class="soat-cell"
-                        data-type="Q"
-                        data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?:0 ?>"
-                        data-soat-turi="yakuniy_nazorat"
-                        data-max-soat="<?= $row['yakuniy_nazorat'] ?: 0 ?>">
-                        <?= $row['yakuniy_nazorat'] ?: '' ?>
-                    </td>
-                     <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="kurs_ishi" data-max-soat="<?= $row['kurs_ishi'] ?>">
-                        <?= $row['kurs_ishi'] > 0 ? $row['kurs_ishi'] : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="kurs_loyiha" data-max-soat="<?= $row['kurs_loyiha'] ?>">
-                        <?= $row['kurs_loyiha'] > 0 ? $row['kurs_loyiha'] : '' ?>
-                    </td>
+                    <?= renderExistingQRejaCell('oraliq_nazorat', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('yakuniy_nazorat', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('kurs_ishi', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('kurs_loyiha', $row, $db, $taqsimotSoatMap) ?>
                     <!-- Malakaviy amaliyot -->
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="oquv_ped_amaliyot" data-max-soat="<?= $row['oquv_ped_amaliyot'] ?>">
-                        <?= $row['oquv_ped_amaliyot'] > 0 ? $row['oquv_ped_amaliyot'] : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="uzluksiz_malakaviy" data-max-soat="<?= $row['uzluksiz_malakaviy'] ?>">
-                        <?= $row['uzluksiz_malakaviy'] > 0 ? $row['uzluksiz_malakaviy'] : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="dala_amaliyoti_otm" data-max-soat="<?= $row['dala_amaliyoti_otm'] ?>">
-                        <?= $row['dala_amaliyoti_otm'] > 0 ? $row['dala_amaliyoti_otm'] : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="dala_amaliyoti_tashqarida" data-max-soat="<?= $row['dala_amaliyoti_tashqarida'] ?>">
-                        <?= $row['dala_amaliyoti_tashqarida'] > 0 ? $row['dala_amaliyoti_tashqarida'] : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="ishlab_chiqarish" data-max-soat="<?= $row['ishlab_chiqarish'] ?>">
-                        <?= $row['ishlab_chiqarish'] > 0 ? $row['ishlab_chiqarish'] : '' ?>
-                    </td>
+                    <?= renderExistingQRejaCell('oquv_ped_amaliyot', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('uzluksiz_malakaviy', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('dala_amaliyoti_otm', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('dala_amaliyoti_tashqarida', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('ishlab_chiqarish', $row, $db, $taqsimotSoatMap) ?>
                     <!-- BMI rahbarligi -->
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="bmi_rahbarligi" data-max-soat="<?= $row['bmi_rahbarligi'] ?>">
-                        <?= $row['bmi_rahbarligi'] > 0 ? $row['bmi_rahbarligi'] : '' ?>
-                    </td>
+                    <?= renderExistingQRejaCell('bmi_rahbarligi', $row, $db, $taqsimotSoatMap) ?>
                     <!-- Magistratura -->
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="mag_ilmiy_tadqiqot" data-max-soat="0">
-                        
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="mag_ilmiy_pedagogik" data-max-soat="0">
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="mag_ilmiy_stajirovka" data-max-soat="0">
-                    </td>
+                    <?= renderExistingQRejaCell('ilmiy_tadqiqot_ishi', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('ilmiy_pedagogik_ishi', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('ilmiy_stajirovka', $row, $db, $taqsimotSoatMap) ?>
                     <!-- Doktorantura -->
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="tayanch_doktorantura" data-max-soat="<?= $row['tayanch_doktorantura'] ?? 0 ?>">
-                        <?= ($row['tayanch_doktorantura'] ?? 0) > 0 ? ($row['tayanch_doktorantura'] ?? 0) : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="katta_ilmiy_tadqiqotchi" data-max-soat="<?= $row['katta_ilmiy_tadqiqotchi'] ?? 0 ?>">
-                        <?= ($row['katta_ilmiy_tadqiqotchi'] ?? 0) > 0 ? ($row['katta_ilmiy_tadqiqotchi'] ?? 0) : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="stajyor_tadqiqotchi" data-max-soat="<?= $row['stajyor_tadqiqotchi'] ?? 0 ?>">
-                        <?= ($row['stajyor_tadqiqotchi'] ?? 0) > 0 ? ($row['stajyor_tadqiqotchi'] ?? 0) : '' ?>
-                    </td>
+                    <?= renderExistingQRejaCell('tayanch_doktorantura', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('katta_ilmiy_tadqiqotchi', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('stajyor_tadqiqotchi', $row, $db, $taqsimotSoatMap) ?>
                     
                     <!-- Qo'shimcha soatlar -->
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="ochiq_dars" data-max-soat="<?= $row['ochiq_dars'] ?? 0 ?>">
-                        <?= ($row['ochiq_dars'] ?? 0) > 0 ? ($row['ochiq_dars'] ?? 0) : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="yadak" data-max-soat="<?= $row['yadak'] ?? 0 ?>">
-                        <?= ($row['yadak'] ?? 0) > 0 ? ($row['yadak'] ?? 0) : '' ?>
-                    </td>
-                    <td class="soat-cell" data-type='Q' data-yuklama-id="<?= $row['qoshimcha_reja_id'] ?>" data-soat-turi="boshqa_soatlar" data-max-soat="<?= $row['boshqa_soatlar'] ?? 0 ?>">
-                        <?= ($row['boshqa_soatlar'] ?? 0) > 0 ? ($row['boshqa_soatlar'] ?? 0) : '' ?>
-                    </td>
+                    <?= renderExistingQRejaCell('ochiq_dars', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('yadak', $row, $db, $taqsimotSoatMap) ?>
+                    <?= renderExistingQRejaCell('boshqa_soatlar', $row, $db, $taqsimotSoatMap) ?>
                     <!-- JAMI soat -->
                     <td class="total-cell">
                         <?= $row['jami_soat'] ?> 
@@ -550,3 +796,4 @@ if (!empty($allYonalishIds)) {
         </table>
     </div>
 </div>
+

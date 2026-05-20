@@ -1770,7 +1770,7 @@ class Database{
         return $data;
     }
     public function get_taqsimot_by_teacher(int $oquvreja_id, string $type): array {
-        $sql = "SELECT t.id, t.soat as soat_soni, t.type, o.fio, o.lavozim, t.oquv_reja_id
+        $sql = "SELECT t.id, t.teacher_id, t.soat as soat_soni, t.type, o.fio, o.lavozim, t.oquv_reja_id
         FROM `taqsimotlar` t 
         JOIN oqituvchilar o ON o.id = t.teacher_id
         WHERE t.oquv_reja_id=$oquvreja_id AND t.type='$type';";
@@ -3115,6 +3115,8 @@ class Database{
         $whereMerged = [];
         $filterOquvYilCte = '';
         $filterVariantDept = '';
+        $fanRejaWhereSql = '';
+        $filterRejaFanIds = [];
         if (!empty($filters['kafedra_id'])) {
             $kid = (int)$filters['kafedra_id'];
             $filterVariantDept = " AND fv.kafedra_id = {$kid}";
@@ -3165,7 +3167,58 @@ class Database{
         }
         if (!empty($filters['oquv_reja_id'])) {
             $rid = (int)$filters['oquv_reja_id'];
-            $whereBase[] = "({$rid} IN (fr.maruza_reja_id, fr.amaliy_reja_id, fr.laboratoriya_reja_id, fr.seminar_reja_id))";
+            $targetFanRes = mysqli_query($this->link, "
+                SELECT f.id AS fan_id
+                FROM oquv_rejalar r
+                JOIN fanlar f ON f.id = r.fan_id
+                WHERE r.id = {$rid}
+                LIMIT 1
+            ");
+            if ($targetFanRes) {
+                $targetFanRow = mysqli_fetch_assoc($targetFanRes);
+                $targetFanId = (int)($targetFanRow['fan_id'] ?? 0);
+                if ($targetFanId > 0) {
+                    $filterRejaFanIds[$targetFanId] = true;
+
+                    $baseRes = mysqli_query($this->link, "
+                        SELECT ir.base_fan_id
+                        FROM ishchi_oquv_reja_variants iv
+                        JOIN ishchi_oquv_reja ir ON ir.id = iv.ishchi_reja_id
+                        WHERE iv.fan_id = {$targetFanId}
+                    ");
+                    if ($baseRes) {
+                        while ($baseRow = mysqli_fetch_assoc($baseRes)) {
+                            $baseFanId = (int)($baseRow['base_fan_id'] ?? 0);
+                            if ($baseFanId > 0) {
+                                $filterRejaFanIds[$baseFanId] = true;
+                            }
+                        }
+                    }
+
+                    $variantRes = mysqli_query($this->link, "
+                        SELECT iv.fan_id
+                        FROM ishchi_oquv_reja ir
+                        JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ir.id
+                        WHERE ir.base_fan_id IN (" . implode(',', array_map('intval', array_keys($filterRejaFanIds))) . ")
+                    ");
+                    if ($variantRes) {
+                        while ($variantRow = mysqli_fetch_assoc($variantRes)) {
+                            $variantFanId = (int)($variantRow['fan_id'] ?? 0);
+                            if ($variantFanId > 0) {
+                                $filterRejaFanIds[$variantFanId] = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!empty($filterRejaFanIds)) {
+                $fanRejaWhereSql = "WHERE f.id IN (" . implode(',', array_map('intval', array_keys($filterRejaFanIds))) . ")";
+            }
+            $whereBase[] = "(
+                {$rid} IN (fr.maruza_reja_id, fr.amaliy_reja_id, fr.laboratoriya_reja_id, fr.seminar_reja_id)
+                OR {$rid} IN (vfr.maruza_reja_id, vfr.amaliy_reja_id, vfr.laboratoriya_reja_id, vfr.seminar_reja_id)
+            )";
             $whereMerged[] = "({$rid} IN (ufs.maruza_reja_id, ufs.amaliy_reja_id, ufs.laboratoriya_reja_id, ufs.seminar_reja_id))";
         }
 
@@ -3198,6 +3251,7 @@ class Database{
                     SUM(CASE WHEN r.dars_tur_id = 4 THEN r.dars_soat ELSE 0 END) AS seminar_soat
                 FROM fanlar f
                 JOIN oquv_rejalar r ON r.fan_id = f.id
+                $fanRejaWhereSql
                 GROUP BY f.id, f.fan_name, f.fan_code, f.semestr_id, f.kafedra_id
             ),
             fan_reja_umum AS (
@@ -3533,10 +3587,25 @@ class Database{
             SELECT *
             FROM (
                 SELECT
-                    fr.maruza_reja_id,
-                    fr.amaliy_reja_id,
-                    fr.laboratoriya_reja_id,
-                    fr.seminar_reja_id,
+                    CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.maruza_reja_id, fr.maruza_reja_id) ELSE fr.maruza_reja_id END AS maruza_reja_id,
+                    CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.amaliy_reja_id, fr.amaliy_reja_id) ELSE fr.amaliy_reja_id END AS amaliy_reja_id,
+                    CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.laboratoriya_reja_id, fr.laboratoriya_reja_id) ELSE fr.laboratoriya_reja_id END AS laboratoriya_reja_id,
+                    CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.seminar_reja_id, fr.seminar_reja_id) ELSE fr.seminar_reja_id END AS seminar_reja_id,
+                    fr.maruza_reja_id AS legacy_maruza_reja_id,
+                    fr.amaliy_reja_id AS legacy_amaliy_reja_id,
+                    fr.laboratoriya_reja_id AS legacy_laboratoriya_reja_id,
+                    fr.seminar_reja_id AS legacy_seminar_reja_id,
+                    CASE
+                        WHEN tft.variant_fan_id IS NOT NULL
+                         AND tft.variant_fan_id = (
+                            SELECT MIN(tft_min.variant_fan_id)
+                            FROM tanlov_fan_talablar tft_min
+                            WHERE tft_min.base_fan_id = fr.fan_id
+                              AND tft_min.semestr_id = fr.semestr_id
+                              AND tft_min.talabalar_soni > 0
+                         )
+                        THEN 1 ELSE 0
+                    END AS is_legacy_tanlov_owner,
                     y.id AS yonalish_id,
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN COALESCE(NULLIF(ctbg.variant_fan_name, ''), fr.fan_name)
@@ -3588,16 +3657,16 @@ class Database{
                         WHERE tre.yonalish_id = y.id
                           AND tre.status = 'pending'
                     ) AS needs_resync,
-                    fr.maruza_soat AS reja_maruz,
-                    fr.amaliy_soat AS reja_amaliy,
-                    fr.laboratoriya_soat AS reja_laboratoriya,
-                    fr.seminar_soat AS reja_seminar,
-                    fr.maruza_soat *
+                    CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.maruza_soat, fr.maruza_soat) ELSE fr.maruza_soat END AS reja_maruz,
+                    CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.amaliy_soat, fr.amaliy_soat) ELSE fr.amaliy_soat END AS reja_amaliy,
+                    CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.laboratoriya_soat, fr.laboratoriya_soat) ELSE fr.laboratoriya_soat END AS reja_laboratoriya,
+                    CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.seminar_soat, fr.seminar_soat) ELSE fr.seminar_soat END AS reja_seminar,
+                    (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.maruza_soat, fr.maruza_soat) ELSE fr.maruza_soat END) *
                     CASE
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
                         ELSE y.patok_soni
                     END AS amalda_maruz,
-                    fr.amaliy_soat *
+                    (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.amaliy_soat, fr.amaliy_soat) ELSE fr.amaliy_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
@@ -3607,7 +3676,7 @@ class Database{
                             END
                         ELSE y.kattaguruh_soni
                     END AS amalda_amaliy,
-                    fr.laboratoriya_soat *
+                    (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.laboratoriya_soat, fr.laboratoriya_soat) ELSE fr.laboratoriya_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
                         WHEN tft.variant_fan_id IS NOT NULL THEN
@@ -3617,7 +3686,7 @@ class Database{
                             END
                         ELSE y.kichikguruh_soni
                     END AS amalda_laboratoriya,
-                    fr.seminar_soat *
+                    (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.seminar_soat, fr.seminar_soat) ELSE fr.seminar_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
@@ -3627,12 +3696,12 @@ class Database{
                             END
                         ELSE y.kattaguruh_soni
                     END AS amalda_seminar,
-                    fr.maruza_soat *
+                    (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.maruza_soat, fr.maruza_soat) ELSE fr.maruza_soat END) *
                     CASE
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
                         ELSE y.patok_soni
                     END
-                    + fr.amaliy_soat *
+                    + (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.amaliy_soat, fr.amaliy_soat) ELSE fr.amaliy_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
@@ -3642,7 +3711,7 @@ class Database{
                             END
                         ELSE y.kattaguruh_soni
                     END
-                    + fr.laboratoriya_soat *
+                    + (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.laboratoriya_soat, fr.laboratoriya_soat) ELSE fr.laboratoriya_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
                         WHEN tft.variant_fan_id IS NOT NULL THEN
@@ -3652,7 +3721,7 @@ class Database{
                             END
                         ELSE y.kichikguruh_soni
                     END
-                    + fr.seminar_soat *
+                    + (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.seminar_soat, fr.seminar_soat) ELSE fr.seminar_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
@@ -3673,6 +3742,7 @@ class Database{
                    AND tft.semestr_id = fr.semestr_id
                    AND tft.talabalar_soni > 0
                 LEFT JOIN fanlar vf ON vf.id = tft.variant_fan_id
+                LEFT JOIN fan_reja vfr ON vfr.fan_id = tft.variant_fan_id
                 LEFT JOIN kafedralar vk ON vk.id = vf.kafedra_id
                 LEFT JOIN chet_tili_biriktirilgan_agg ctbg
                     ON ctbg.semestr_num = s.semestr
@@ -3772,6 +3842,11 @@ class Database{
                     ufs.amaliy_reja_id,
                     ufs.laboratoriya_reja_id,
                     ufs.seminar_reja_id,
+                    0 AS legacy_maruza_reja_id,
+                    0 AS legacy_amaliy_reja_id,
+                    0 AS legacy_laboratoriya_reja_id,
+                    0 AS legacy_seminar_reja_id,
+                    0 AS is_legacy_tanlov_owner,
                     0 AS yonalish_id,
                     ul.fan_name AS fan_nomi,
                     ul.talim_yonalishi,
@@ -3879,8 +3954,16 @@ class Database{
                 ga.guruh_raqami,
                 ga.guruhlar_soni,
                 ga.talabalar_soni,
-                CASE WHEN qf.qoshimcha_dars_id = 20 THEN q.dars_soati ELSE 0 END AS oraliq_nazorat,
-                CASE WHEN qf.qoshimcha_dars_id = 21 THEN q.dars_soati ELSE 0 END AS yakuniy_nazorat,
+                CASE
+                    WHEN LOWER(COALESCE(ga.guruh_raqami, '')) LIKE '%iqtidor%' THEN 0
+                    WHEN qf.qoshimcha_dars_id = 20 THEN q.dars_soati
+                    ELSE 0
+                END AS oraliq_nazorat,
+                CASE
+                    WHEN LOWER(COALESCE(ga.guruh_raqami, '')) LIKE '%iqtidor%' THEN 0
+                    WHEN qf.qoshimcha_dars_id = 21 THEN q.dars_soati
+                    ELSE 0
+                END AS yakuniy_nazorat,
                 y.patok_soni,
                 y.kattaguruh_soni,
                 y.kichikguruh_soni,
@@ -4133,21 +4216,31 @@ class Database{
             $talaba = (int)($row['talabalar_soni'] ?? 0);
             $fanSoat = (float)($row['fan_soat'] ?? 0);
             $isMasofaviy = $this->isMasofaviyEducationForm($row['oquv_shakli'] ?? '');
+            $guruhRaqami = trim((string)($row['guruh_raqami'] ?? ''));
+            $guruhRaqamiLower = function_exists('mb_strtolower')
+                ? (string)@mb_strtolower($guruhRaqami, 'UTF-8')
+                : strtolower($guruhRaqami);
+            $isIqtidorliYokiMaxsus = (!empty($row['is_maxsus']) || strpos($guruhRaqamiLower, 'iqtidor') !== false);
 
-            if (($row['oraliq_nazorat'] ?? 0) <= 0 && $talaba > 0) {
-                if ($isMasofaviy) {
-                    $row['oraliq_nazorat'] = 0;
-                } elseif ($fanSoat >= 60) {
-                    $row['oraliq_nazorat'] = round($talaba * 0.4);
-                } elseif ($fanSoat >= 30) {
-                    $row['oraliq_nazorat'] = round($talaba * 0.2);
-                } else {
-                    $row['oraliq_nazorat'] = 0;
+            if ($isIqtidorliYokiMaxsus) {
+                $row['oraliq_nazorat'] = 0;
+                $row['yakuniy_nazorat'] = 0;
+            } else {
+                if (($row['oraliq_nazorat'] ?? 0) <= 0 && $talaba > 0) {
+                    if ($isMasofaviy) {
+                        $row['oraliq_nazorat'] = 0;
+                    } elseif ($fanSoat >= 60) {
+                        $row['oraliq_nazorat'] = round($talaba * 0.4);
+                    } elseif ($fanSoat >= 30) {
+                        $row['oraliq_nazorat'] = round($talaba * 0.2);
+                    } else {
+                        $row['oraliq_nazorat'] = 0;
+                    }
                 }
-            }
 
-            if (($row['yakuniy_nazorat'] ?? 0) <= 0 && $talaba > 0) {
-                $row['yakuniy_nazorat'] = round($talaba * 0.3);
+                if (($row['yakuniy_nazorat'] ?? 0) <= 0 && $talaba > 0) {
+                    $row['yakuniy_nazorat'] = round($talaba * 0.3);
+                }
             }
 
             if (($row['kurs_ishi'] ?? 0) <= 0 && $talaba > 0) {

@@ -3,11 +3,13 @@ include_once __DIR__ . '/../config.php';
 $db = new Database();
 header('Content-Type: application/json');
 
-$yuklama_id  = isset($_POST['yuklama_id']) ? (int)$_POST['yuklama_id'] : 0;
-$type        = trim($_POST['type'] ?? '');
+$yuklama_id = isset($_POST['yuklama_id']) ? (int)$_POST['yuklama_id'] : 0;
+$legacy_yuklama_id = isset($_POST['legacy_yuklama_id']) ? (int)$_POST['legacy_yuklama_id'] : 0;
+$type = strtoupper(trim($_POST['type'] ?? ''));
+$replaceMode = ((int)($_POST['replace_mode'] ?? 0) === 1);
 $taqsimotlar = json_decode($_POST['taqsimotlar'] ?? '[]', true);
 
-if ($yuklama_id <= 0 || empty($type) || !is_array($taqsimotlar)) {
+if ($yuklama_id <= 0 || !in_array($type, ['A', 'Q', 'M'], true) || !is_array($taqsimotlar)) {
     echo json_encode([
         'success' => false,
         'message' => "Noto'g'ri ma'lumot yuborildi"
@@ -23,57 +25,110 @@ if (legacy_is_kafedra_mudiri()) {
     } elseif ($type === 'Q') {
         $scopeFilters['qoshimcha_oquv_reja_id'] = $yuklama_id;
         $allowedRows = $db->get_qoshimcha_oquv_taqsimotlar($scopeFilters);
-    } elseif ($type === 'M') {
+    } else {
         $scopeFilters['maxsus_oquv_reja_id'] = $yuklama_id;
         $allowedRows = $db->get_maxsus_oquv_taqsimotlar($scopeFilters);
-    } else {
-        $allowedRows = [];
     }
 
     if (empty($allowedRows)) {
         echo json_encode([
             'success' => false,
-            'message' => 'Bu yuklama sizning kafedrangizga tegishli emas.'
+            'message' => "Bu yuklama sizning kafedrangizga tegishli emas."
         ]);
         return;
     }
 }
 
-$success = false;
-foreach ($taqsimotlar as $t) {
-    $teacher_id = (int)($t['oqituvchi_id'] ?? 0);
-    $soat       = (float)($t['soat_soni'] ?? 0);
-    if ($teacher_id <= 0 || $soat <= 0) continue;
+$normalizedRows = [];
+foreach ($taqsimotlar as $row) {
+    $teacherId = (int)($row['oqituvchi_id'] ?? 0);
+    $soat = (float)($row['soat_soni'] ?? 0);
+    if ($teacherId <= 0 || $soat <= 0) {
+        continue;
+    }
 
-    if (!legacy_can_access_teacher($db, $teacher_id)) {
+    if (!legacy_can_access_teacher($db, $teacherId)) {
         echo json_encode([
             'success' => false,
-            'message' => 'Tanlangan o‘qituvchi sizning kafedrangizga tegishli emas.'
+            'message' => "Tanlangan o'qituvchi sizning kafedrangizga tegishli emas."
         ]);
         return;
     }
 
-    $exists = $db->get_data_by_table('taqsimotlar', [
-        'oquv_reja_id' => $yuklama_id,
-        'teacher_id'   => $teacher_id,
-        'type'         => $type
-    ]);
-
-    if ($exists) {
-        $res = $db->update(
-            'taqsimotlar',
-            ['soat' => $soat + (float)$exists['soat']],
-            'id = ' . (int)$exists['id']
-        );
-    } else {
-        $res = $db->insert('taqsimotlar', [
-            'oquv_reja_id' => $yuklama_id,
-            'teacher_id'   => $teacher_id,
-            'soat'         => $soat,
-            'type'         => $type
-        ]);
+    if (!isset($normalizedRows[$teacherId])) {
+        $normalizedRows[$teacherId] = 0.0;
     }
-    if ($res) $success = true;
+    $normalizedRows[$teacherId] += $soat;
+}
+
+$success = false;
+
+if ($replaceMode) {
+    $success = true;
+    $db->query('START TRANSACTION');
+
+    try {
+        $deleteIds = [$yuklama_id];
+        if ($legacy_yuklama_id > 0 && $legacy_yuklama_id !== $yuklama_id) {
+            $deleteIds[] = $legacy_yuklama_id;
+        }
+        $deleteIdsSql = implode(',', array_map('intval', array_unique($deleteIds)));
+        $deleted = $db->delete('taqsimotlar', "oquv_reja_id IN ({$deleteIdsSql}) AND type = '" . addslashes($type) . "'");
+        if (!$deleted) {
+            $success = false;
+        }
+
+        if ($success) {
+            foreach ($normalizedRows as $teacherId => $soat) {
+                $insertId = $db->insert('taqsimotlar', [
+                    'oquv_reja_id' => $yuklama_id,
+                    'teacher_id' => (int)$teacherId,
+                    'soat' => $soat,
+                    'type' => $type
+                ]);
+                if ($insertId <= 0) {
+                    $success = false;
+                    break;
+                }
+            }
+        }
+
+        if ($success) {
+            $db->query('COMMIT');
+        } else {
+            $db->query('ROLLBACK');
+        }
+    } catch (Throwable $e) {
+        $db->query('ROLLBACK');
+        $success = false;
+    }
+} else {
+    foreach ($normalizedRows as $teacherId => $soat) {
+        $exists = $db->get_data_by_table('taqsimotlar', [
+            'oquv_reja_id' => $yuklama_id,
+            'teacher_id' => (int)$teacherId,
+            'type' => $type
+        ]);
+
+        if ($exists) {
+            $res = $db->update(
+                'taqsimotlar',
+                ['soat' => $soat + (float)$exists['soat']],
+                'id = ' . (int)$exists['id']
+            );
+        } else {
+            $res = $db->insert('taqsimotlar', [
+                'oquv_reja_id' => $yuklama_id,
+                'teacher_id' => (int)$teacherId,
+                'soat' => $soat,
+                'type' => $type
+            ]);
+        }
+
+        if ($res) {
+            $success = true;
+        }
+    }
 }
 
 // Izoh: Qayta taqsimot pending bo'lib turgan yo'nalish bo'lsa, taqsimot kiritilgach "done" qilamiz.
@@ -97,15 +152,14 @@ if ($success) {
     }
 
     if ($yonalishId > 0) {
-        $db->query("
-            UPDATE taqsimot_resync_events
-            SET status = 'done', done_at = NOW()
-            WHERE yonalish_id = {$yonalishId} AND status = 'pending'
-        ");
+        $db->query("\n            UPDATE taqsimot_resync_events\n            SET status = 'done', done_at = NOW()\n            WHERE yonalish_id = {$yonalishId} AND status = 'pending'\n        ");
     }
 }
 
 echo json_encode([
     'success' => $success,
-    'message' => $success ? 'Taqsimot saqlandi' : 'Saqlashda xatolik'
+    'message' => $success
+        ? ($replaceMode ? 'Taqsimot yangilandi' : 'Taqsimot saqlandi')
+        : 'Saqlashda xatolik'
 ]);
+?>
