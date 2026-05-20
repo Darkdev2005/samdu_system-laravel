@@ -161,6 +161,110 @@ if (!empty($allYonalishIds)) {
         $pendingYonalishMap[(int)$pr['yonalish_id']] = true;
     }
 }
+
+$collectCodesFromText = static function (string $text): array {
+    $text = trim($text);
+    if ($text === '') {
+        return [];
+    }
+    $parts = preg_split('/\s*[|,]\s*/', $text) ?: [];
+    $codes = [];
+    foreach ($parts as $part) {
+        $part = trim($part);
+        if ($part === '') {
+            continue;
+        }
+        if (preg_match('/^([0-9A-Za-z_()\-\/\.]+)/u', $part, $m)) {
+            $code = trim((string)$m[1]);
+            if ($code !== '') {
+                $codes[$code] = true;
+            }
+        }
+    }
+    return array_keys($codes);
+};
+
+$allCodes = [];
+foreach ([$oquv_taqsimotlar, $qoshimcha_oquv_taqsimotlar] as $rows) {
+    foreach ($rows as $row) {
+        foreach ($collectCodesFromText((string)($row['yonalish_code'] ?? '')) as $code) {
+            $allCodes[$code] = true;
+        }
+    }
+}
+
+$codeToYonalishId = [];
+if (!empty($allCodes)) {
+    $escapedCodes = array_map(static fn($c) => "'" . mysqli_real_escape_string($db->link, (string)$c) . "'", array_keys($allCodes));
+    $codeRows = $db->get_data_by_table_all('yonalishlar', "WHERE code IN (" . implode(',', $escapedCodes) . ")");
+    foreach ($codeRows as $cr) {
+        $code = trim((string)($cr['code'] ?? ''));
+        $id = (int)($cr['id'] ?? 0);
+        if ($code !== '' && $id > 0) {
+            $codeToYonalishId[$code] = $id;
+            $allYonalishIds[] = $id;
+        }
+    }
+}
+
+$allYonalishIds = array_values(array_unique(array_filter($allYonalishIds)));
+$yonalishChangeTypeMap = [];
+if (!empty($allYonalishIds)) {
+    $historyRows = $db->query("
+        SELECT gh.yonalish_id, gh.change_type
+        FROM guruhlar_history gh
+        INNER JOIN (
+            SELECT yonalish_id, MAX(id) AS max_id
+            FROM guruhlar_history
+            WHERE change_type IN ('create', 'delete')
+              AND yonalish_id IN (" . implode(',', array_map('intval', $allYonalishIds)) . ")
+            GROUP BY yonalish_id
+        ) latest ON latest.max_id = gh.id
+    ");
+    if ($historyRows) {
+        while ($hr = mysqli_fetch_assoc($historyRows)) {
+            $yid = (int)($hr['yonalish_id'] ?? 0);
+            $ctype = trim((string)($hr['change_type'] ?? ''));
+            if ($yid > 0 && ($ctype === 'create' || $ctype === 'delete')) {
+                $yonalishChangeTypeMap[$yid] = $ctype;
+            }
+        }
+    }
+}
+
+$resolveRowGroupChange = static function (array $row) use ($collectCodesFromText, $codeToYonalishId, $yonalishChangeTypeMap): string {
+    $ids = [];
+    $directId = (int)($row['yonalish_id'] ?? 0);
+    if ($directId > 0) {
+        $ids[$directId] = true;
+    }
+    foreach ($collectCodesFromText((string)($row['yonalish_code'] ?? '')) as $code) {
+        $mappedId = (int)($codeToYonalishId[$code] ?? 0);
+        if ($mappedId > 0) {
+            $ids[$mappedId] = true;
+        }
+    }
+    if (empty($ids)) {
+        return '';
+    }
+    $hasCreate = false;
+    $hasDelete = false;
+    foreach (array_keys($ids) as $id) {
+        $ctype = $yonalishChangeTypeMap[(int)$id] ?? '';
+        if ($ctype === 'delete') {
+            $hasDelete = true;
+        } elseif ($ctype === 'create') {
+            $hasCreate = true;
+        }
+    }
+    if ($hasDelete) {
+        return 'delete';
+    }
+    if ($hasCreate) {
+        return 'create';
+    }
+    return '';
+};
 ?>
 <style>
     .full-soat {
@@ -208,6 +312,21 @@ if (!empty($allYonalishIds)) {
     background: #0ea5e9;
     vertical-align: middle;
     white-space: nowrap;
+}
+.guruh-change-badge {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+}
+.guruh-change-badge.delete {
+    background: #dc3545;
+}
+.guruh-change-badge.create {
+    background: #16a34a;
 }
 .soat-cell {
     cursor: pointer;
@@ -540,6 +659,7 @@ if (!empty($allYonalishIds)) {
                 if (!empty($oquv_taqsimotlar) || !empty($qoshimcha_oquv_taqsimotlar)):
                     foreach ($oquv_taqsimotlar as $row): 
                         $needsResync = !empty($row['needs_resync']);
+                        $rowGroupChange = $resolveRowGroupChange($row);
                         $rowYonalishId = !empty($row['yonalish_id']) ? (int)$row['yonalish_id'] : 0;
                         if (!$needsResync && $rowYonalishId > 0 && !empty($pendingYonalishMap[$rowYonalishId])) {
                             $needsResync = true;
@@ -664,7 +784,14 @@ if (!empty($allYonalishIds)) {
                             <div class="resync-badge">Qayta taqsimot kerak</div>
                         <?php endif; ?>
                     </td>
-                    <td class="guruh-cell"><?= htmlspecialchars($row['guruh_raqami']) ?></td>
+                    <td class="guruh-cell">
+                        <?= htmlspecialchars($row['guruh_raqami']) ?>
+                        <?php if ($rowGroupChange === 'delete'): ?>
+                            <div class="guruh-change-badge delete">Guruh o'chirilgan</div>
+                        <?php elseif ($rowGroupChange === 'create'): ?>
+                            <div class="guruh-change-badge create">Guruh qo'shilgan</div>
+                        <?php endif; ?>
+                    </td>
                     <td><?= $row['oquv_shakli'] ?></td>
                     <td><?= $row['kurs'] ?></td>
                     <td><?= $row['semestr'] ?></td>
@@ -750,6 +877,7 @@ if (!empty($allYonalishIds)) {
                     endforeach;
                     foreach ($qoshimcha_oquv_taqsimotlar as $row):
                         $needsResync = !empty($row['needs_resync']);
+                        $rowGroupChange = $resolveRowGroupChange($row);
                         $rowYonalishId = !empty($row['yonalish_id']) ? (int)$row['yonalish_id'] : 0;
                         if (!$needsResync && $rowYonalishId > 0 && !empty($pendingYonalishMap[$rowYonalishId])) {
                             $needsResync = true;
@@ -772,7 +900,14 @@ if (!empty($allYonalishIds)) {
                             <div class="resync-badge">Qayta taqsimot kerak</div>
                         <?php endif; ?>
                     </td>
-                    <td class="guruh-cell"><?= htmlspecialchars($row['guruh_raqami']) ?></td>
+                    <td class="guruh-cell">
+                        <?= htmlspecialchars($row['guruh_raqami']) ?>
+                        <?php if ($rowGroupChange === 'delete'): ?>
+                            <div class="guruh-change-badge delete">Guruh o'chirilgan</div>
+                        <?php elseif ($rowGroupChange === 'create'): ?>
+                            <div class="guruh-change-badge create">Guruh qo'shilgan</div>
+                        <?php endif; ?>
+                    </td>
                     <td><?= $row['oquv_shakli'] ?></td>
                     <td><?= $row['kurs'] ?></td>
                     <td><?= $row['semestr'] ?></td>
@@ -830,4 +965,3 @@ if (!empty($allYonalishIds)) {
         </table>
     </div>
 </div>
-

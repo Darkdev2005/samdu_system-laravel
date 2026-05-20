@@ -220,6 +220,11 @@
 	                loadTableData();
 	            }
 	            updateRowModeUI();
+
+                // Jadvaldagi guruh/talaba sonlari o'zgarishini dinamik ko'rsatish uchun periodik yangilash.
+                setInterval(function () {
+                    applyFilters();
+                }, 30000);
             
             $(document).on('wheel', function(e) {
                 if (e.ctrlKey) {

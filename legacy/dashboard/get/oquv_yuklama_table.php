@@ -85,6 +85,125 @@ if ($magistrDoktorantOnly) {
         $qoshimcha_yuklamalar = $db->get_qoshimcha_oquv_yuklamalar($filters + ['limit' => $remainingLimit]);
     }
 }
+
+$collectCodesFromText = static function (string $text): array {
+    $text = trim($text);
+    if ($text === '') {
+        return [];
+    }
+    $parts = preg_split('/\s*[|,]\s*/', $text) ?: [];
+    $codes = [];
+    foreach ($parts as $part) {
+        $part = trim($part);
+        if ($part === '') {
+            continue;
+        }
+        if (preg_match('/^([0-9A-Za-z_()\-\/\.]+)/u', $part, $m)) {
+            $code = trim((string)$m[1]);
+            if ($code !== '') {
+                $codes[$code] = true;
+            }
+        }
+    }
+    return array_keys($codes);
+};
+
+$rowToCodes = [];
+$allYonalishCodes = [];
+foreach ([$oquv_yuklamalar, $qoshimcha_yuklamalar] as $rows) {
+    foreach ($rows as $idx => $row) {
+        $rowKey = md5(json_encode([
+            $row['fan_name'] ?? $row['fan_nomi'] ?? '',
+            $row['yonalish_code'] ?? '',
+            $row['biriktirilgan_yonalish_code'] ?? '',
+            $row['semestr'] ?? '',
+            $idx,
+        ], JSON_UNESCAPED_UNICODE));
+        $codes = [];
+        $codes = array_merge($codes, $collectCodesFromText((string)($row['yonalish_code'] ?? '')));
+        $codes = array_merge($codes, $collectCodesFromText((string)($row['biriktirilgan_yonalish_code'] ?? '')));
+        $codes = array_values(array_unique($codes));
+        if (!empty($codes)) {
+            $rowToCodes[$rowKey] = $codes;
+            foreach ($codes as $code) {
+                $allYonalishCodes[$code] = true;
+            }
+        }
+    }
+}
+
+$codeToYonalishId = [];
+if (!empty($allYonalishCodes)) {
+    $escapedCodes = array_map(static fn($c) => "'" . mysqli_real_escape_string($db->link, (string)$c) . "'", array_keys($allYonalishCodes));
+    $codeRows = $db->get_data_by_table_all('yonalishlar', "WHERE code IN (" . implode(',', $escapedCodes) . ")");
+    foreach ($codeRows as $cr) {
+        $code = trim((string)($cr['code'] ?? ''));
+        $id = (int)($cr['id'] ?? 0);
+        if ($code !== '' && $id > 0) {
+            $codeToYonalishId[$code] = $id;
+        }
+    }
+}
+
+$yonalishChangeTypeMap = [];
+if (!empty($codeToYonalishId)) {
+    $ids = array_values(array_unique(array_values($codeToYonalishId)));
+    $historyRows = $db->query("
+        SELECT gh.yonalish_id, gh.change_type
+        FROM guruhlar_history gh
+        INNER JOIN (
+            SELECT yonalish_id, MAX(id) AS max_id
+            FROM guruhlar_history
+            WHERE change_type IN ('create', 'delete')
+              AND yonalish_id IN (" . implode(',', array_map('intval', $ids)) . ")
+            GROUP BY yonalish_id
+        ) latest ON latest.max_id = gh.id
+    ");
+    if ($historyRows) {
+        while ($hr = mysqli_fetch_assoc($historyRows)) {
+            $yid = (int)($hr['yonalish_id'] ?? 0);
+            $ctype = trim((string)($hr['change_type'] ?? ''));
+            if ($yid > 0 && ($ctype === 'create' || $ctype === 'delete')) {
+                $yonalishChangeTypeMap[$yid] = $ctype;
+            }
+        }
+    }
+}
+
+$resolveRowGroupChange = static function (array $row, int $idx) use ($rowToCodes, $codeToYonalishId, $yonalishChangeTypeMap): string {
+    $rowKey = md5(json_encode([
+        $row['fan_name'] ?? $row['fan_nomi'] ?? '',
+        $row['yonalish_code'] ?? '',
+        $row['biriktirilgan_yonalish_code'] ?? '',
+        $row['semestr'] ?? '',
+        $idx,
+    ], JSON_UNESCAPED_UNICODE));
+    $codes = $rowToCodes[$rowKey] ?? [];
+    if (empty($codes)) {
+        return '';
+    }
+    $hasCreate = false;
+    $hasDelete = false;
+    foreach ($codes as $code) {
+        $yid = (int)($codeToYonalishId[$code] ?? 0);
+        if ($yid <= 0) {
+            continue;
+        }
+        $ctype = $yonalishChangeTypeMap[$yid] ?? '';
+        if ($ctype === 'delete') {
+            $hasDelete = true;
+        } elseif ($ctype === 'create') {
+            $hasCreate = true;
+        }
+    }
+    if ($hasDelete) {
+        return 'delete';
+    }
+    if ($hasCreate) {
+        return 'create';
+    }
+    return '';
+};
 ?>
 <style>
     .maxsus-badge {
@@ -98,6 +217,21 @@ if ($magistrDoktorantOnly) {
         background: #0ea5e9;
         vertical-align: middle;
         white-space: nowrap;
+    }
+    .guruh-change-badge {
+        display: inline-block;
+        margin-top: 4px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #fff;
+    }
+    .guruh-change-badge.delete {
+        background: #dc3545;
+    }
+    .guruh-change-badge.create {
+        background: #16a34a;
     }
 </style>
 
@@ -211,7 +345,7 @@ if ($magistrDoktorantOnly) {
                     'jami' => 0
                 ];
                 if (!empty($oquv_yuklamalar) || !empty($qoshimcha_yuklamalar)):
-                    foreach ($oquv_yuklamalar as $row): 
+                    foreach ($oquv_yuklamalar as $idx => $row): 
                         $rejaMaruza = (float)($row['maruza_soat'] ?? ($row['reja_maruz'] ?? 0));
                         $rejaAmaliy = (float)($row['amaliy_soat'] ?? ($row['reja_amaliy'] ?? 0));
                         $rejaLab = (float)($row['laboratoriya_soat'] ?? ($row['reja_laboratoriya'] ?? 0));
@@ -289,6 +423,7 @@ if ($magistrDoktorantOnly) {
                         $totals['uzluksiz'] += $uzluksiz;
                         $totals['jami'] += $jamiAll;
                 ?>
+                <?php $rowGroupChange = $resolveRowGroupChange($row, $idx); ?>
                 <tr>
                     <td><?= $counter++ ?></td>
                     <td class="left">
@@ -316,7 +451,14 @@ if ($magistrDoktorantOnly) {
                         ?>
                         <?= htmlspecialchars($talimYonalishiText) ?>
                     </td>
-                    <td><?= htmlspecialchars($row['guruh_raqami']) ?></td>
+                    <td>
+                        <?= htmlspecialchars($row['guruh_raqami']) ?>
+                        <?php if ($rowGroupChange === 'delete'): ?>
+                            <div class="guruh-change-badge delete">Guruh o'chirilgan</div>
+                        <?php elseif ($rowGroupChange === 'create'): ?>
+                            <div class="guruh-change-badge create">Guruh qo'shilgan</div>
+                        <?php endif; ?>
+                    </td>
                     <td><?= $row['oquv_shakli'] ?></td>
                     <td><?= $row['kurs'] ?></td>
                     <td><?= $row['semestr'] ?></td>
@@ -366,7 +508,7 @@ if ($magistrDoktorantOnly) {
                 </tr>
                 <?php 
                     endforeach;
-                    foreach ($qoshimcha_yuklamalar as $row):
+                    foreach ($qoshimcha_yuklamalar as $idx => $row):
                         $qoshimchaFanNomi = legacy_qoshimcha_display_name(
                             (string)($row['fan_nomi'] ?? ''),
                             (int)($row['qoshimcha_dars_id'] ?? 0),
@@ -393,11 +535,19 @@ if ($magistrDoktorantOnly) {
                         $totals['boshqa'] += (float)($row['boshqa_soatlar'] ?? 0);
                         $totals['jami'] += (float)($row['jami_soat'] ?? 0);
                 ?>
+                <?php $rowGroupChange = $resolveRowGroupChange($row, $idx); ?>
                 <tr>
                     <td><?= $counter++ ?></td>
                     <td class="left"><?= htmlspecialchars($qoshimchaFanNomi) ?></td>
                     <td class="left"><?= htmlspecialchars($row['yonalish_code'] . ' - ' . $row['talim_yonalishi']) ?></td>
-                    <td><?= htmlspecialchars($row['guruh_raqami']) ?></td>
+                    <td>
+                        <?= htmlspecialchars($row['guruh_raqami']) ?>
+                        <?php if ($rowGroupChange === 'delete'): ?>
+                            <div class="guruh-change-badge delete">Guruh o'chirilgan</div>
+                        <?php elseif ($rowGroupChange === 'create'): ?>
+                            <div class="guruh-change-badge create">Guruh qo'shilgan</div>
+                        <?php endif; ?>
+                    </td>
                     <td><?= $row['oquv_shakli'] ?></td>
                     <td><?= $row['kurs'] ?></td>
                     <td><?= $row['semestr'] ?></td>
