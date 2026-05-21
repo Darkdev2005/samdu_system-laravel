@@ -17,6 +17,9 @@ if (!$row) {
 }
 
 $deleted = $db->delete('magistr_doktorant_qoshimcha_rejalar', 'id = ' . $id);
+if ($deleted) {
+    $db->delete('taqsimotlar', "oquv_reja_id = {$id} AND type = 'D'");
+}
 
 echo json_encode([
     'success' => (bool)$deleted,

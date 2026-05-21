@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 include_once '../config.php';
 $db = new Database();
 
@@ -38,7 +38,7 @@ $resolveExamType = static function (array $row) use ($examControlMap, $examTypeB
     $semestrId = (int)($row['semestr_id'] ?? 0);
     $fanCode = trim((string)($row['fan_code'] ?? ''));
     if ($fanCode === '') {
-        return '';
+        return 'I';
     }
     if ($semestrId > 0) {
         $key = $semestrId . '|' . $fanCode;
@@ -48,7 +48,7 @@ $resolveExamType = static function (array $row) use ($examControlMap, $examTypeB
         }
     }
     $fallback = strtoupper(trim((string)($examTypeByFanCode[$fanCode] ?? '')));
-    return in_array($fallback, ['T', 'I'], true) ? $fallback : '';
+    return in_array($fallback, ['T', 'I'], true) ? $fallback : 'I';
 };
 $maxsus_oquv_taqsimotlar = [];
 if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
@@ -78,11 +78,23 @@ if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
         $qoshimcha_oquv_taqsimotlar = $db->get_qoshimcha_oquv_taqsimotlar($filters + ['limit' => $remainingLimitForQoshimcha]);
     }
 }
+$magistr_doktorant_taqsimotlar = [];
+if (empty($filters['limit']) || (int)$filters['limit'] === 0) {
+    $magistr_doktorant_taqsimotlar = $db->get_magistr_doktorant_taqsimotlar($filters);
+} else {
+    // Izoh: Jadval tezkor rejimda jami 150 qator limitdan oshmasligi kerak.
+    $remainingLimitForMd = max(0, (int)$filters['limit'] - count($oquv_taqsimotlar) - count($qoshimcha_oquv_taqsimotlar));
+    if ($remainingLimitForMd > 0) {
+        $magistr_doktorant_taqsimotlar = $db->get_magistr_doktorant_taqsimotlar($filters + ['limit' => $remainingLimitForMd]);
+    }
+}
 $oquv_taqsimotlar = is_array($oquv_taqsimotlar) ? $oquv_taqsimotlar : [];
 $qoshimcha_oquv_taqsimotlar = is_array($qoshimcha_oquv_taqsimotlar) ? $qoshimcha_oquv_taqsimotlar : [];
+$magistr_doktorant_taqsimotlar = is_array($magistr_doktorant_taqsimotlar) ? $magistr_doktorant_taqsimotlar : [];
+$qoshimcha_oquv_taqsimotlar = array_merge($qoshimcha_oquv_taqsimotlar, $magistr_doktorant_taqsimotlar);
 
 // Izoh: Jadvalda limit bo'lsa ham, soat ustunlarini bog'lash uchun qo'shimcha rejalarni to'liq olamiz.
-$qoshimchaMapRows = $db->get_qoshimcha_oquv_taqsimotlar($filters + ['limit' => 0]);
+$qoshimchaMapRows = $db->get_qoshimcha_oquv_taqsimotlar(array_merge($filters, ['limit' => 0]));
 $qoshimchaMapRows = is_array($qoshimchaMapRows) ? $qoshimchaMapRows : [];
 
 $rowKeyFn = static function (array $row): string {
@@ -492,7 +504,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
         <table id="yuklamaTable">
             <thead>
                 <tr>
-                    <th rowspan="3">в„–</th>
+                    <th rowspan="3">№</th>
                     <th rowspan="3">O'qitiladigan fan va boshqa turdagi o'quv ishlari</th>
                     <th rowspan="3">Ta'lim yo'nalishi</th>
                     <th rowspan="3" class="vertical">Guruh raqami</th>
@@ -558,7 +570,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
 
                     foreach ($rows as $row) {
                         $rowType = trim((string)($row['taqsimot_type'] ?? 'A'));
-                        if (!in_array($rowType, ['A', 'Q', 'M'], true)) {
+                        if (!in_array($rowType, ['A', 'Q', 'M', 'D'], true)) {
                             $rowType = 'A';
                         }
                         foreach ([
@@ -616,7 +628,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                     }
 
                     $type = trim($type);
-                    if (!in_array($type, ['A', 'Q', 'M'], true)) {
+                    if (!in_array($type, ['A', 'Q', 'M', 'D'], true)) {
                         $type = 'A';
                     }
                     $useScopedSoatTuri = legacy_is_scoped_taqsimot_soat_turi($soatTuri);
@@ -727,12 +739,10 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                     if (isMaxsusLikeRow($row) && ($field === 'oraliq_nazorat' || $field === 'yakuniy_nazorat')) {
                         $rid = 0;
                         $soat = 0.0;
-                    } elseif ($isScopedSoatTuri) {
-                        $rid = $soat > 0 ? resolvePrimaryRejaId($row) : 0;
                     }
                     $clickable = $soat > 0;
                     $assigned = $rid > 0
-                        ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, $isScopedSoatTuri ? $rowType : 'Q', $isScopedSoatTuri ? $field : '')
+                        ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, $isScopedSoatTuri ? 'Q' : 'Q', $isScopedSoatTuri ? $field : '')
                         : 0.0;
                     $classes = [];
                     if ($clickable) {
@@ -747,7 +757,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
 
                     $attrs = [
                         'class' => implode(' ', $classes),
-                        'data-type' => $isScopedSoatTuri ? $rowType : 'Q',
+                        'data-type' => 'Q',
                         'data-yuklama-id' => (string)$rid,
                         'data-soat-turi' => $field,
                         'data-max-soat' => (string)$soat,
@@ -772,19 +782,26 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                 function renderExistingQRejaCell(string $field, array $row, Database $db, array &$taqsimotSoatMap): string {
                     $rid = (int)($row['qoshimcha_reja_id'] ?? 0);
                     $soat = (float)($row[$field] ?? 0);
+                    $rowType = strtoupper(trim((string)($row['taqsimot_type'] ?? 'Q')));
+                    if (!in_array($rowType, ['Q', 'D'], true)) {
+                        $rowType = 'Q';
+                    }
                     if (isMaxsusLikeRow($row) && ($field === 'oraliq_nazorat' || $field === 'yakuniy_nazorat')) {
                         $rid = 0;
                         $soat = 0.0;
                     }
-                    $assigned = $rid > 0 ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, 'Q') : 0.0;
-                    $classes = ['soat-cell'];
+                    $assigned = $rid > 0 ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, $rowType) : 0.0;
+                    $classes = [];
+                    if ($soat > 0) {
+                        $classes[] = 'soat-cell';
+                    }
                     $cellClass = getCellClass($assigned, $soat);
                     if ($cellClass !== '') {
                         $classes[] = $cellClass;
                     }
 
                     return '<td class="' . htmlspecialchars(implode(' ', $classes), ENT_QUOTES, 'UTF-8') . '"'
-                        . ' data-type="Q"'
+                        . ' data-type="' . htmlspecialchars($rowType, ENT_QUOTES, 'UTF-8') . '"'
                         . ' data-yuklama-id="' . $rid . '"'
                         . ' data-soat-turi="' . htmlspecialchars($field, ENT_QUOTES, 'UTF-8') . '"'
                         . ' data-max-soat="' . htmlspecialchars((string)$soat, ENT_QUOTES, 'UTF-8') . '">'
@@ -831,10 +848,11 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                             ? (string)@mb_strtolower($shaklRaw, 'UTF-8')
                             : strtolower($shaklRaw);
                         $isMasofaviy = strpos($shakl, 'masof') !== false;
+                        $isSirtqi = strpos($shakl, 'sirt') !== false;
                         $isMaxsusRow = ($rowType === 'M' || !empty($row['is_maxsus']));
                         $examType = $resolveExamType($row);
                         $oraliqNazorat = 0;
-                        if (!$isMaxsusRow && !$isMasofaviy && $talabaSoni > 0) {
+                        if (!$isMaxsusRow && !$isMasofaviy && !$isSirtqi && $talabaSoni > 0) {
                             if ($auditoriyaSoat >= 60) {
                                 $oraliqNazorat = (int)round($talabaSoni * 0.4);
                             } elseif ($auditoriyaSoat >= 30) {
@@ -1017,14 +1035,17 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                         if (!$needsResync && $rowYonalishId > 0 && !empty($pendingYonalishMap[$rowYonalishId])) {
                             $needsResync = true;
                         }
+                        $qoshimchaRowType = strtoupper(trim((string)($row['taqsimot_type'] ?? 'Q')));
                         $qoshimchaBaseName = (int)($row['qoshimcha_dars_id'] ?? 0) === 16
                             ? 'YADAK'
                             : (string)($row['fan_nomi'] ?? '');
-                        $qoshimchaFanNomi = legacy_qoshimcha_display_name(
-                            $qoshimchaBaseName,
-                            (int)($row['qoshimcha_dars_id'] ?? 0),
-                            (string)($row['subtype_code'] ?? '')
-                        );
+                        $qoshimchaFanNomi = ($qoshimchaRowType === 'D')
+                            ? $qoshimchaBaseName
+                            : legacy_qoshimcha_display_name(
+                                $qoshimchaBaseName,
+                                (int)($row['qoshimcha_dars_id'] ?? 0),
+                                (string)($row['subtype_code'] ?? '')
+                            );
                 ?>
                 <tr class="<?= $needsResync ? 'needs-resync' : '' ?>">
                     <td><?= $counter++ ?></td>

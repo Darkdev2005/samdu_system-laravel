@@ -166,11 +166,11 @@ function process_data_for_template(array $data, array $selectedVariants = [], ar
         $malaka    = (int)$row['malakaAmaliyot'];
         $oraliqNazorat = (float)($row['oraliqNazorat'] ?? 0);
         $yakuniyNazorat = (float)($row['yakuniyNazorat'] ?? 0);
-        $examType = $yakuniyNazorat > 0 ? 'I' : ($oraliqNazorat > 0 ? 'T' : '');
+        $examType = $yakuniyNazorat > 0 ? 'I' : ($oraliqNazorat > 0 ? 'T' : 'I');
         $examKey = $semestrId . '|' . $fanCode;
         $manualExam = $examControlMap[$examKey] ?? null;
         if (is_array($manualExam)) {
-            $examType = (string)($manualExam['exam_type'] ?? $examType);
+            $examType = strtoupper((string)($manualExam['exam_type'] ?? $examType));
             if ($examType === 'T') {
                 $yakuniyNazorat = 0.0;
             }
@@ -227,6 +227,7 @@ function process_data_for_template(array $data, array $selectedVariants = [], ar
                     'variants' => $variants,
                     'variants_locked' => $hasSelectedVariants,
                     'examType' => $examType,
+                    'semestr_id' => $semestrId,
                     'credit' => round($totalSoat / 30),
                     'totalHours' => $totalSoat,
                     'auditoriya' => [
@@ -253,6 +254,7 @@ function process_data_for_template(array $data, array $selectedVariants = [], ar
                 'name' => $row['fan_name'],
                 'isTanlovFan' => false,
                 'examType' => $examType,
+                'semestr_id' => $semestrId,
                 'credit' => round($totalSoat / 30),
                 'totalHours' => $totalSoat,
                 'auditoriya' => [
@@ -391,10 +393,21 @@ function renderSubjectCells($subject, $side = 'left') {
         $kursBelgisi = 'K';
     }
 
+    $examTypeRaw = (string)($subject['examType'] ?? 'I');
+    $semestrId = (int)($subject['semestr_id'] ?? 0);
+    $fanCode = htmlspecialchars((string)($subject['code'] ?? ''), ENT_QUOTES, 'UTF-8');
+
     return '
         <td>' . htmlspecialchars($subject['code']) . '</td>
         <td style="text-align: left;">' . $fanNomiHtml . '</td>
-        <td><span class="exam-type exam-' . strtolower($subject['examType']) . '">' . $subject['examType'] . '</span></td>
+        <td>
+            <div class="exam-control-wrap" data-semestr-id="' . $semestrId . '" data-fan-code="' . $fanCode . '">
+                <select class="exam-type-select">
+                    <option value="T" ' . ($examTypeRaw === 'T' ? 'selected' : '') . '>T</option>
+                    <option value="I" ' . ($examTypeRaw === 'I' ? 'selected' : '') . '>I</option>
+                </select>
+            </div>
+        </td>
         <td>' . $calculatedCredit . '</td>
         <td>' . $subject['totalHours'] . '</td>
         <td>' . $subject['auditoriya']['total'] . '</td>
@@ -501,6 +514,10 @@ function renderSubjectCells($subject, $side = 'left') {
                             <?php endif; ?>
                         </div>
                         <div class="action-buttons" style="display: flex; gap: 10px;">
+                            <button class="btn btn-primary" id="saveExamControls" type="button">
+                                <i class="fas fa-save"></i> Imtihon turini saqlash
+                            </button>
+                            <span id="examSaveStatus" style="align-self:center; font-weight:600;"></span>
                             <button class="btn btn-success" id="exportExcel">
                                 <i class="fas fa-file-excel"></i> Excel ga eksport
                             </button>
@@ -783,9 +800,85 @@ function renderSubjectCells($subject, $side = 'left') {
             });
         }
 
+        function initExamControls() {
+            const saveBtn = document.getElementById('saveExamControls');
+            const statusEl = document.getElementById('examSaveStatus');
+            if (!saveBtn) {
+                return;
+            }
+
+            const setStatus = (message, isError = false) => {
+                if (!statusEl) return;
+                statusEl.textContent = message;
+                statusEl.style.color = isError ? '#dc2626' : '#15803d';
+            };
+
+            const collectControls = () => {
+                const controls = [];
+                const seen = new Set();
+                document.querySelectorAll('.exam-control-wrap').forEach((wrap) => {
+                    const typeSelect = wrap.querySelector('.exam-type-select');
+                    const semestrId = wrap.dataset.semestrId || '';
+                    const fanCode = wrap.dataset.fanCode || '';
+                    if (!typeSelect || !semestrId || !fanCode) return;
+
+                    const key = `${semestrId}|${fanCode}`;
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    controls.push({
+                        semestr_id: semestrId,
+                        fan_code: fanCode,
+                        exam_type: typeSelect.value || 'I'
+                    });
+                });
+                return controls;
+            };
+
+            document.querySelectorAll('.exam-type-select').forEach((typeSelect) => {
+                typeSelect.addEventListener('change', () => {
+                    setStatus("O'zgarishlar saqlanmadi", true);
+                });
+            });
+
+            saveBtn.addEventListener('click', () => {
+                const controls = collectControls();
+                if (controls.length === 0) {
+                    setStatus("Saqlash uchun T/I tanlovlari topilmadi", true);
+                    return;
+                }
+
+                saveBtn.disabled = true;
+                setStatus('Saqlanmoqda...', false);
+
+                const payload = new URLSearchParams();
+                payload.set('controls', JSON.stringify(controls));
+
+                fetch('insert/save_exam_control.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                    body: payload.toString()
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        if (!data || !data.success) {
+                            setStatus((data && data.message) ? data.message : 'Saqlashda xatolik', true);
+                            return;
+                        }
+                        setStatus(data.message || 'Saqlandi', false);
+                    })
+                    .catch(() => {
+                        setStatus('Saqlashda xatolik', true);
+                    })
+                    .finally(() => {
+                        saveBtn.disabled = false;
+                    });
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             updateCurrentDate();
             initOverviewToggle();
+            initExamControls();
             
             document.getElementById('exportExcel')?.addEventListener('click', exportToExcel);
             document.getElementById('printTable')?.addEventListener('click', printTable);

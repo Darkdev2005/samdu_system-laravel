@@ -69,7 +69,7 @@ $resolveExamType = static function (array $row) use ($examControlMap, $examTypeB
     $semestrId = (int)($row['semestr_id'] ?? 0);
     $fanCode = trim((string)($row['fan_code'] ?? ''));
     if ($fanCode === '') {
-        return '';
+        return 'I';
     }
     if ($semestrId > 0) {
         $key = $semestrId . '|' . $fanCode;
@@ -79,7 +79,7 @@ $resolveExamType = static function (array $row) use ($examControlMap, $examTypeB
         }
     }
     $fallback = strtoupper(trim((string)($examTypeByFanCode[$fanCode] ?? '')));
-    return in_array($fallback, ['T', 'I'], true) ? $fallback : '';
+    return in_array($fallback, ['T', 'I'], true) ? $fallback : 'I';
 };
 $maxsus_oquv_yuklamalar = [];
 if (!$magistrDoktorantOnly) {
@@ -339,6 +339,48 @@ $resolveDeletedGroupNames = static function (array $row, int $idx) use ($rowToCo
     }
     return array_keys($deleted);
 };
+
+$renderGuruhCell = static function (array $row, array $codes) use ($normalizeGroupToken, $groupHistoryStatusByYonalish, $codeToYonalishId): string {
+    $raw = (string)($row['guruh_raqami'] ?? '');
+    $parts = preg_split('/\s*\|\s*/', $raw) ?: [];
+    if (empty($parts)) {
+        return htmlspecialchars($raw, ENT_QUOTES, 'UTF-8');
+    }
+    $yids = [];
+    foreach ($codes as $code) {
+        $yid = (int)($codeToYonalishId[$code] ?? 0);
+        if ($yid > 0) {
+            $yids[$yid] = true;
+        }
+    }
+    $out = [];
+    foreach ($parts as $token) {
+        $token = trim((string)$token);
+        if ($token === '') {
+            continue;
+        }
+        $norm = $normalizeGroupToken($token);
+        $status = '';
+        foreach (array_keys($yids) as $yid) {
+            $s = $groupHistoryStatusByYonalish[(int)$yid][$norm] ?? '';
+            if ($s === 'create') {
+                $status = 'create';
+                break;
+            }
+            if ($s === 'delete') {
+                $status = 'delete';
+            }
+        }
+        if ($status === 'create') {
+            $out[] = '<span class="guruh-token-create">' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '</span>';
+        } elseif ($status === 'delete') {
+            $out[] = '<span class="guruh-token-delete">' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '</span>';
+        } else {
+            $out[] = htmlspecialchars($token, ENT_QUOTES, 'UTF-8');
+        }
+    }
+    return implode(' | ', $out);
+};
 ?>
 <style>
     .maxsus-badge {
@@ -497,13 +539,14 @@ $resolveDeletedGroupNames = static function (array $row, int $idx) use ($rowToCo
                         $auditoriyaSoat = $rejaMaruza + $rejaAmaliy + $rejaLab + $rejaSeminar;
                         $shakl = mb_strtolower(trim($row['oquv_shakli'] ?? ''), 'UTF-8');
                         $isMasofaviy = strpos($shakl, 'masof') !== false;
+                        $isSirtqi = strpos($shakl, 'sirt') !== false;
                         $guruhRaqami = mb_strtolower(trim((string)($row['guruh_raqami'] ?? '')), 'UTF-8');
                         $isIqtidorli = strpos($guruhRaqami, 'iqtidor') !== false;
                         $isMaxsus = !empty($row['is_maxsus']);
 
                         $examType = $resolveExamType($row);
                         $oraliq = 0;
-                        if (!$isMaxsus && !$isMasofaviy && $talaba > 0) {
+                        if (!$isMaxsus && !$isMasofaviy && !$isSirtqi && $talaba > 0) {
                             if ($auditoriyaSoat >= 60) {
                                 $oraliq = round($talaba * 0.4);
                             } elseif ($auditoriyaSoat >= 30) {
@@ -573,47 +616,6 @@ $resolveDeletedGroupNames = static function (array $row, int $idx) use ($rowToCo
                 <?php
                     $rowGroupChange = $resolveRowGroupChange($row, $idx);
                     $deletedGroupNames = $resolveDeletedGroupNames($row, $idx);
-                    $renderGuruhCell = static function (array $row, array $codes) use ($normalizeGroupToken, $groupHistoryStatusByYonalish, $codeToYonalishId): string {
-                        $raw = (string)($row['guruh_raqami'] ?? '');
-                        $parts = preg_split('/\s*\|\s*/', $raw) ?: [];
-                        if (empty($parts)) {
-                            return htmlspecialchars($raw, ENT_QUOTES, 'UTF-8');
-                        }
-                        $yids = [];
-                        foreach ($codes as $code) {
-                            $yid = (int)($codeToYonalishId[$code] ?? 0);
-                            if ($yid > 0) {
-                                $yids[$yid] = true;
-                            }
-                        }
-                        $out = [];
-                        foreach ($parts as $token) {
-                            $token = trim((string)$token);
-                            if ($token === '') {
-                                continue;
-                            }
-                            $norm = $normalizeGroupToken($token);
-                            $status = '';
-                            foreach (array_keys($yids) as $yid) {
-                                $s = $groupHistoryStatusByYonalish[(int)$yid][$norm] ?? '';
-                                if ($s === 'create') {
-                                    $status = 'create';
-                                    break;
-                                }
-                                if ($s === 'delete') {
-                                    $status = 'delete';
-                                }
-                            }
-                            if ($status === 'create') {
-                                $out[] = '<span class="guruh-token-create">' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '</span>';
-                            } elseif ($status === 'delete') {
-                                $out[] = '<span class="guruh-token-delete">' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '</span>';
-                            } else {
-                                $out[] = htmlspecialchars($token, ENT_QUOTES, 'UTF-8');
-                            }
-                        }
-                        return implode(' | ', $out);
-                    };
                     $rowCodes = $rowToCodes[md5(json_encode([
                         $row['fan_name'] ?? $row['fan_nomi'] ?? '',
                         $row['yonalish_code'] ?? '',

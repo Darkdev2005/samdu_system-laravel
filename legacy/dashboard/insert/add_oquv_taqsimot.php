@@ -12,7 +12,7 @@ $taqsimotlar = json_decode($_POST['taqsimotlar'] ?? '[]', true);
 $useScopedSoatTuri = legacy_is_scoped_taqsimot_soat_turi($soatTuri);
 $safeSoatTuri = addslashes($soatTuri);
 
-if ($yuklama_id <= 0 || !in_array($type, ['A', 'Q', 'M'], true) || !is_array($taqsimotlar)) {
+if ($yuklama_id <= 0 || !in_array($type, ['A', 'Q', 'M', 'D'], true) || !is_array($taqsimotlar)) {
     echo json_encode([
         'success' => false,
         'message' => "Noto'g'ri ma'lumot yuborildi"
@@ -28,9 +28,12 @@ if (legacy_is_kafedra_mudiri()) {
     } elseif ($type === 'Q') {
         $scopeFilters['qoshimcha_oquv_reja_id'] = $yuklama_id;
         $allowedRows = $db->get_qoshimcha_oquv_taqsimotlar($scopeFilters);
-    } else {
+    } elseif ($type === 'M') {
         $scopeFilters['maxsus_oquv_reja_id'] = $yuklama_id;
         $allowedRows = $db->get_maxsus_oquv_taqsimotlar($scopeFilters);
+    } else {
+        $scopeFilters['qoshimcha_oquv_reja_id'] = $yuklama_id;
+        $allowedRows = $db->get_magistr_doktorant_taqsimotlar($scopeFilters);
     }
 
     if (empty($allowedRows)) {
@@ -165,6 +168,11 @@ if ($success) {
         }
     } elseif ($type === 'M') {
         $row = $db->get_data_by_table_all('maxsus_oquv_reja_soatlar ms JOIN maxsus_oquv_rejalar mr ON mr.id = ms.maxsus_reja_id', "WHERE ms.id = {$yuklama_id} LIMIT 1");
+        if (!empty($row[0]['yonalish_id'])) {
+            $yonalishId = (int)$row[0]['yonalish_id'];
+        }
+    } elseif ($type === 'D') {
+        $row = $db->get_data_by_table_all('magistr_doktorant_qoshimcha_rejalar mdqr JOIN magistr_doktorant_yuklamalar mdy ON mdy.id = mdqr.magistr_doktorant_id LEFT JOIN semestrlar s ON s.id = mdy.semestr_id', "WHERE mdqr.id = {$yuklama_id} LIMIT 1");
         if (!empty($row[0]['yonalish_id'])) {
             $yonalishId = (int)$row[0]['yonalish_id'];
         }

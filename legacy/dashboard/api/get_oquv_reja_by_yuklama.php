@@ -114,6 +114,24 @@
                 'message' => legacy_is_kafedra_mudiri() ? 'Bu yuklama sizning kafedrangizga tegishli emas.' : 'Ma\'lumot topilmadi'
             ]);
         }
+    } else if ($type === 'D') {
+        $filters = ['qoshimcha_oquv_reja_id' => $yuklama_id, 'limit' => 1];
+        legacy_apply_kafedra_scope($filters);
+        $oquv_reja = $db->get_magistr_doktorant_taqsimotlar($filters);
+        $oquv_taqsimotlar = $db->get_taqsimot_by_teacher($yuklama_id, $type, $soatTuri);
+        if (!empty($oquv_reja)) {
+            $data = $oquv_reja[0];
+            echo json_encode([
+                'success' => true,
+                'data' => $data,
+                'taqsimotlar' => $oquv_taqsimotlar
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => legacy_is_kafedra_mudiri() ? 'Bu yuklama sizning kafedrangizga tegishli emas.' : 'Ma\'lumot topilmadi'
+            ]);
+        }
     } else {
         echo json_encode([
             'success' => false,

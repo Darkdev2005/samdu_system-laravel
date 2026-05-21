@@ -412,10 +412,9 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                 const fanNomi = $cell.closest('tr').find('.fan-nomi').text();
                 const maxSoat = parseFloat($cell.data('max-soat')) || 0;
                 const type = $cell.data('type');
-                const scopedSoatTuri = isScopedSoatTuri(soatTuri);
                 
                 if (yuklamaId <= 0) {
-                    if (type === 'Q' && maxSoat > 0 && !scopedSoatTuri) {
+                    if (type === 'Q' && maxSoat > 0) {
                         $cell.addClass('disabled-cell');
                         $.post('api/ensure_qoshimcha_taqsimot_reja.php', {
                             q_dars_id: parseInt($cell.data('q-dars-id'), 10) || 0,

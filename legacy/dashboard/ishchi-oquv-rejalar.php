@@ -278,13 +278,11 @@ function process_data_for_template(array $data, array $selectedVariants, array $
         $malaka    = (int)$row['malakaAmaliyot'];
         $oraliqNazorat = (float)($row['oraliqNazorat'] ?? 0);
         $yakuniyNazorat = (float)($row['yakuniyNazorat'] ?? 0);
-        $examType = $yakuniyNazorat > 0 ? 'I' : ($oraliqNazorat > 0 ? 'T' : '');
+        $examType = $yakuniyNazorat > 0 ? 'I' : ($oraliqNazorat > 0 ? 'T' : 'I');
         $examKey = $semestrId . '|' . $fanCode;
         $manualExam = $examControlMap[$examKey] ?? null;
         if (is_array($manualExam)) {
-            $examType = (string)($manualExam['exam_type'] ?? $examType);
-            $oraliqNazorat = (float)($manualExam['oraliq_nazorat'] ?? $oraliqNazorat);
-            $yakuniyNazorat = (float)($manualExam['yakuniy_nazorat'] ?? $yakuniyNazorat);
+            $examType = strtoupper((string)($manualExam['exam_type'] ?? $examType));
             if ($examType === 'T') {
                 $yakuniyNazorat = 0.0;
             }
@@ -600,8 +598,8 @@ function renderSubjectCells($subject, $side = 'left') {
         $kursBelgisi = 'K';
     }
 
-    $examType = htmlspecialchars((string)($subject['examType'] ?? 'T'));
-    $examTypeRaw = (string)($subject['examType'] ?? 'T');
+    $examType = htmlspecialchars((string)($subject['examType'] ?? 'I'));
+    $examTypeRaw = (string)($subject['examType'] ?? 'I');
     $semestrId = (int)($subject['semestr_id'] ?? 0);
     $fanCode = htmlspecialchars((string)($subject['code'] ?? ''), ENT_QUOTES, 'UTF-8');
     return '
@@ -722,6 +720,10 @@ function renderSubjectCells($subject, $side = 'left') {
                             <?php endif; ?>
                         </div>
                         <div class="action-buttons" style="display: flex; gap: 10px;">
+                            <button class="btn btn-primary" id="saveExamControls" type="button">
+                                <i class="fas fa-save"></i> Imtihon turini saqlash
+                            </button>
+                            <span id="examSaveStatus" style="align-self:center; font-weight:600;"></span>
                             <button class="btn btn-success" id="exportExcel">
                                 <i class="fas fa-file-excel"></i> Excel ga eksport
                             </button>
@@ -1010,29 +1012,78 @@ function renderSubjectCells($subject, $side = 'left') {
         }
 
         function initExamControls() {
-            const wraps = document.querySelectorAll('.exam-control-wrap');
-            wraps.forEach((wrap) => {
-                const typeSelect = wrap.querySelector('.exam-type-select');
-                const semestrId = wrap.dataset.semestrId || '';
-                const fanCode = wrap.dataset.fanCode || '';
-                if (!typeSelect || !semestrId || !fanCode) return;
+            const saveBtn = document.getElementById('saveExamControls');
+            const statusEl = document.getElementById('examSaveStatus');
+            if (!saveBtn) {
+                return;
+            }
 
-                const saveControl = () => {
-                    const payload = new URLSearchParams();
-                    payload.set('semestr_id', semestrId);
-                    payload.set('fan_code', fanCode);
-                    payload.set('exam_type', typeSelect.value);
-                    payload.set('oraliq_nazorat', '0');
-                    payload.set('yakuniy_nazorat', '0');
+            const setStatus = (message, isError = false) => {
+                if (!statusEl) return;
+                statusEl.textContent = message;
+                statusEl.style.color = isError ? '#dc2626' : '#15803d';
+            };
 
-                    fetch('insert/save_exam_control.php', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-                        body: payload.toString()
-                    }).catch(() => {});
-                };
+            const collectControls = () => {
+                const controls = [];
+                const seen = new Set();
+                const wraps = document.querySelectorAll('.exam-control-wrap');
+                wraps.forEach((wrap) => {
+                    const typeSelect = wrap.querySelector('.exam-type-select');
+                    const semestrId = wrap.dataset.semestrId || '';
+                    const fanCode = wrap.dataset.fanCode || '';
+                    if (!typeSelect || !semestrId || !fanCode) return;
 
-                typeSelect.addEventListener('change', saveControl);
+                    const key = `${semestrId}|${fanCode}`;
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    controls.push({
+                        semestr_id: semestrId,
+                        fan_code: fanCode,
+                        exam_type: typeSelect.value || 'I'
+                    });
+                });
+                return controls;
+            };
+
+            document.querySelectorAll('.exam-type-select').forEach((typeSelect) => {
+                typeSelect.addEventListener('change', () => {
+                    setStatus("O'zgarishlar saqlanmadi", true);
+                });
+            });
+
+            saveBtn.addEventListener('click', () => {
+                const controls = collectControls();
+                if (controls.length === 0) {
+                    setStatus("Saqlash uchun T/I tanlovlari topilmadi", true);
+                    return;
+                }
+
+                saveBtn.disabled = true;
+                setStatus('Saqlanmoqda...', false);
+
+                const payload = new URLSearchParams();
+                payload.set('controls', JSON.stringify(controls));
+
+                fetch('insert/save_exam_control.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                    body: payload.toString()
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        if (!data || !data.success) {
+                            setStatus((data && data.message) ? data.message : 'Saqlashda xatolik', true);
+                            return;
+                        }
+                        setStatus(data.message || 'Saqlandi', false);
+                    })
+                    .catch(() => {
+                        setStatus('Saqlashda xatolik', true);
+                    })
+                    .finally(() => {
+                        saveBtn.disabled = false;
+                    });
             });
         }
 

@@ -1674,7 +1674,7 @@ class Database{
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 semestr_id INT NOT NULL,
                 fan_code VARCHAR(64) NOT NULL,
-                exam_type ENUM('T','I') NOT NULL DEFAULT 'T',
+                exam_type ENUM('T','I') NOT NULL DEFAULT 'I',
                 oraliq_nazorat DECIMAL(10,2) NOT NULL DEFAULT 0,
                 yakuniy_nazorat DECIMAL(10,2) NOT NULL DEFAULT 0,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1692,7 +1692,7 @@ class Database{
             while ($row = mysqli_fetch_assoc($result)) {
                 $key = (int)($row['semestr_id'] ?? 0) . '|' . trim((string)($row['fan_code'] ?? ''));
                 $map[$key] = [
-                    'exam_type' => (string)($row['exam_type'] ?? 'T'),
+                    'exam_type' => (string)($row['exam_type'] ?? 'I'),
                     'oraliq_nazorat' => (float)($row['oraliq_nazorat'] ?? 0),
                     'yakuniy_nazorat' => (float)($row['yakuniy_nazorat'] ?? 0),
                 ];
@@ -1708,7 +1708,7 @@ class Database{
         }
         $examType = strtoupper(trim($examType));
         if (!in_array($examType, ['T', 'I'], true)) {
-            $examType = 'T';
+            $examType = 'I';
         }
         if ($examType === 'T') {
             $yakuniy = 0.0;
@@ -2000,7 +2000,7 @@ class Database{
                 y.name AS talim_yonalishi,
                 y.code AS yonalish_code,
                 COALESCE(k.name, 'Kafedra belgilanmagan') AS kafedra_nomi,
-                tsh.name AS oquv_shakli,
+                CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END AS oquv_shakli,
                 s.semestr,
                 FLOOR((s.semestr + 1)/2) AS kurs,
                 g.guruh_nomer AS guruh_raqami,
@@ -2089,7 +2089,7 @@ class Database{
                 y.name AS talim_yonalishi,
                 y.code AS yonalish_code,
                 COALESCE(k.name, 'Kafedra belgilanmagan') AS kafedra_nomi,
-                tsh.name AS oquv_shakli,
+                CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END AS oquv_shakli,
                 s.semestr,
                 FLOOR((s.semestr + 1)/2) AS kurs,
                 g.guruh_nomer AS guruh_raqami,
@@ -2582,8 +2582,9 @@ class Database{
             umumtalim_lecture AS (
                 SELECT
                     ub.umumtalim_fan_id,
-                    ub.fan_code,
-                    ub.fan_name,
+                    MIN(s.id) AS semestr_id,
+                    MAX(ub.fan_code) AS fan_code,
+                    MAX(ub.fan_name) AS fan_name,
                     ub.kafedra_id,
                     s.semestr,
                     FLOOR((s.semestr + 1)/2) AS kurs,
@@ -2592,7 +2593,7 @@ class Database{
                     COALESCE(SUM(uga.talabalar_soni), SUM(COALESCE(ga.talabalar_soni, 0))) AS talabalar_soni,
                     GROUP_CONCAT(DISTINCT y.code ORDER BY y.code SEPARATOR ', ') AS yonalish_code,
                     GROUP_CONCAT(DISTINCT CONCAT(y.name, ' - ', y.kirish_yili) ORDER BY y.code SEPARATOR ' | ') AS talim_yonalishi,
-                    GROUP_CONCAT(DISTINCT tsh.name ORDER BY tsh.name SEPARATOR ' | ') AS oquv_shakli
+                    GROUP_CONCAT(DISTINCT CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END ORDER BY tsh.name SEPARATOR ' | ') AS oquv_shakli
                 FROM umumtalim_birik ub
                 JOIN semestrlar s ON s.id = ub.semestr_id
                 JOIN yonalishlar y ON y.id = ub.yonalish_id
@@ -2648,10 +2649,12 @@ class Database{
                         WHEN tft.variant_fan_id IS NOT NULL THEN CONCAT(fr.fan_name, ' | ', COALESCE(vf.fan_name, 'Variant'))
                         ELSE COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name)
                     END AS fan_name,
+                    fr.semestr_id,
+                    fr.fan_code,
                     COALESCE(NULLIF(ctbg.talim_yonalishi, ''), y.name) AS talim_yonalishi,
                     COALESCE(NULLIF(ctbg.yonalish_code, ''), y.code) AS yonalish_code,
                     COALESCE(NULLIF(ctbg.kafedra_nomi, ''), NULLIF(vk.name, ''), NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
-                    tsh.name AS oquv_shakli,
+                    CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END AS oquv_shakli,
                     s.semestr,
                     FLOOR((s.semestr + 1)/2) AS kurs,
 
@@ -2881,6 +2884,8 @@ class Database{
                 -- Izoh: Umumta'lim fanlari uchun birlashtirilgan MA'RUZA satri.
                 SELECT
                     ul.fan_name,
+                    ul.semestr_id,
+                    ul.fan_code,
                     ul.talim_yonalishi,
                     ul.yonalish_code,
                     k.name AS kafedra_nomi,
@@ -3021,7 +3026,7 @@ class Database{
                 y.name AS talim_yonalishi,
                 y.code AS yonalish_code,
                 k.name AS kafedra_nomi,
-                tsh.name AS oquv_shakli,
+                CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END AS oquv_shakli,
                 s.semestr,
                 FLOOR((s.semestr + 1)/2) AS kurs,
 
@@ -3126,7 +3131,7 @@ class Database{
                 '' AS talim_yonalishi,
                 '' AS yonalish_code,
                 k.name AS kafedra_nomi,
-                '' AS oquv_shakli,
+                CASE WHEN mdy.turi = 'doktorant' THEN 'Doktorant' ELSE 'Magistr' END AS oquv_shakli,
                 0 AS semestr,
                 mdy.kurs,
                 '' AS guruh_raqami,
@@ -3545,6 +3550,8 @@ class Database{
                     ub.umumtalim_fan_id,
                     ub.fan_name_key,
                     ub.kafedra_id,
+                    MIN(s.id) AS semestr_id,
+                    MAX(ub.fan_code) AS fan_code,
                     s.semestr,
                     MAX(ub.fan_name) AS fan_name,
                     MIN(COALESCE(fr_src.maruza_reja_id, fr_fb.maruza_reja_id, fr_name.maruza_reja_id)) AS maruza_reja_id,
@@ -3611,6 +3618,8 @@ class Database{
                 SELECT
                     ub.umumtalim_fan_id,
                     ub.fan_name_key,
+                    MIN(s.id) AS semestr_id,
+                    MAX(ub.fan_code) AS fan_code,
                     MAX(ub.fan_name) AS fan_name,
                     ub.kafedra_id,
                     s.semestr,
@@ -3620,7 +3629,7 @@ class Database{
                     COALESCE(SUM(uga.talabalar_soni), SUM(COALESCE(ga.talabalar_soni, 0))) AS talabalar_soni,
                     GROUP_CONCAT(DISTINCT y.code ORDER BY y.code SEPARATOR ', ') AS yonalish_code,
                     GROUP_CONCAT(DISTINCT CONCAT(y.name, ' - ', y.kirish_yili) ORDER BY y.code SEPARATOR ' | ') AS talim_yonalishi,
-                    GROUP_CONCAT(DISTINCT tsh.name ORDER BY tsh.name SEPARATOR ' | ') AS oquv_shakli,
+                    GROUP_CONCAT(DISTINCT CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END ORDER BY tsh.name SEPARATOR ' | ') AS oquv_shakli,
                     MAX(
                         CASE WHEN EXISTS (
                             SELECT 1
@@ -3694,6 +3703,8 @@ class Database{
                          )
                         THEN 1 ELSE 0
                     END AS is_legacy_tanlov_owner,
+                    fr.semestr_id,
+                    fr.fan_code,
                     y.id AS yonalish_id,
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN COALESCE(NULLIF(ctbg.variant_fan_name, ''), fr.fan_name)
@@ -3703,7 +3714,7 @@ class Database{
                     COALESCE(NULLIF(ctbg.talim_yonalishi, ''), y.name) AS talim_yonalishi,
                     COALESCE(NULLIF(ctbg.yonalish_code, ''), y.code) AS yonalish_code,
                     COALESCE(NULLIF(ctbg.kafedra_nomi, ''), NULLIF(vk.name, ''), NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
-                    tsh.name AS oquv_shakli,
+                    CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END AS oquv_shakli,
                     s.semestr,
                     FLOOR((s.semestr + 1) / 2) AS kurs,
                     COALESCE(ctbg.guruh_raqami, ga.guruh_raqami) AS guruh_raqami,
@@ -3935,6 +3946,8 @@ class Database{
                     0 AS legacy_laboratoriya_reja_id,
                     0 AS legacy_seminar_reja_id,
                     0 AS is_legacy_tanlov_owner,
+                    ufs.semestr_id,
+                    ufs.fan_code,
                     0 AS yonalish_id,
                     ul.fan_name AS fan_nomi,
                     ul.talim_yonalishi,
@@ -4035,7 +4048,7 @@ class Database{
                 y.name AS talim_yonalishi,
                 y.code AS yonalish_code,
                 k.name AS kafedra_nomi,
-                tsh.name AS oquv_shakli,
+                CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END AS oquv_shakli,
                 s.semestr,
                 FLOOR((s.semestr + 1)/2) AS kurs,
 
@@ -4121,6 +4134,9 @@ class Database{
         if (!empty($filters['yonalish_id'])) {
             $where[] = "y.id = " . (int)$filters['yonalish_id'];
         }
+        if (!empty($filters['qoshimcha_oquv_reja_id'])) {
+            $where[] = "mdqr.id = " . (int)$filters['qoshimcha_oquv_reja_id'];
+        }
         $whereSQL = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
         $limitSQL = $limit > 0 ? "LIMIT {$limit}" : '';
         $sql = "
@@ -4134,21 +4150,35 @@ class Database{
                 GROUP BY yonalish_id
             )
             SELECT
-                0 AS qoshimcha_reja_id,
-                y.id AS yonalish_id,
-                CONCAT(mdy.kod, ' - ', mdy.ism_familiya, ' (', CASE WHEN mdy.turi = 'doktorant' THEN 'Doktorant' ELSE 'Magistr' END, ')') AS fan_nomi,
-                y.name AS talim_yonalishi,
-                y.code AS yonalish_code,
+                mdqr.id AS qoshimcha_reja_id,
+                mdy.id AS magistr_doktorant_id,
+                mdqr.qoshimcha_dars_id,
+                qdt.name AS qoshimcha_dars_nomi,
+                'D' AS taqsimot_type,
+                COALESCE(y.id, 0) AS yonalish_id,
+                CONCAT(
+                    mdy.kod,
+                    ' - ',
+                    mdy.ism_familiya,
+                    ' (',
+                    CASE WHEN mdy.turi = 'doktorant' THEN 'Doktorant' ELSE 'Magistr' END,
+                    CASE WHEN qdt.name IS NOT NULL AND qdt.name <> '' THEN CONCAT(', ', qdt.name) ELSE '' END,
+                    ')'
+                ) AS fan_nomi,
+                COALESCE(y.name, '') AS talim_yonalishi,
+                COALESCE(y.code, '') AS yonalish_code,
                 k.name AS kafedra_nomi,
-                tsh.name AS oquv_shakli,
-                s.semestr,
-                FLOOR((s.semestr + 1)/2) AS kurs,
+                k.id AS kafedra_id,
+                CASE WHEN mdy.turi = 'doktorant' THEN 'Doktorant' ELSE 'Magistr' END AS oquv_shakli,
+                COALESCE(s.id, 0) AS semestr_id,
+                COALESCE(s.semestr, 0) AS semestr,
+                CASE WHEN COALESCE(s.semestr, 0) > 0 THEN FLOOR((s.semestr + 1)/2) ELSE mdy.kurs END AS kurs,
                 COALESCE(ga.guruh_raqami, '') AS guruh_raqami,
                 COALESCE(ga.guruhlar_soni, 0) AS guruhlar_soni,
                 COALESCE(ga.talabalar_soni, 0) AS talabalar_soni,
-                y.patok_soni,
-                y.kattaguruh_soni,
-                y.kichikguruh_soni,
+                COALESCE(y.patok_soni, 0) AS patok_soni,
+                COALESCE(y.kattaguruh_soni, 0) AS kattaguruh_soni,
+                COALESCE(y.kichikguruh_soni, 0) AS kichikguruh_soni,
                 0 AS needs_resync,
                 0 AS oraliq_nazorat,
                 0 AS yakuniy_nazorat,
@@ -4160,24 +4190,25 @@ class Database{
                 0 AS dala_amaliyoti_tashqarida,
                 0 AS ishlab_chiqarish,
                 0 AS bmi_rahbarligi,
-                0 AS ilmiy_tadqiqot_ishi,
-                0 AS ilmiy_pedagogik_ishi,
-                0 AS ilmiy_stajirovka,
-                0 AS tayanch_doktorantura,
-                0 AS katta_ilmiy_tadqiqotchi,
-                0 AS stajyor_tadqiqotchi,
+                CASE WHEN mdqr.qoshimcha_dars_id = 9 THEN mdqr.dars_soati ELSE 0 END AS ilmiy_tadqiqot_ishi,
+                CASE WHEN mdqr.qoshimcha_dars_id = 10 THEN mdqr.dars_soati ELSE 0 END AS ilmiy_pedagogik_ishi,
+                CASE WHEN mdqr.qoshimcha_dars_id = 11 THEN mdqr.dars_soati ELSE 0 END AS ilmiy_stajirovka,
+                CASE WHEN mdqr.qoshimcha_dars_id = 12 THEN mdqr.dars_soati ELSE 0 END AS tayanch_doktorantura,
+                CASE WHEN mdqr.qoshimcha_dars_id = 13 THEN mdqr.dars_soati ELSE 0 END AS katta_ilmiy_tadqiqotchi,
+                CASE WHEN mdqr.qoshimcha_dars_id = 14 THEN mdqr.dars_soati ELSE 0 END AS stajyor_tadqiqotchi,
                 0 AS ochiq_dars,
                 0 AS yadak,
                 0 AS boshqa_soatlar,
-                0 AS jami_soat
-            FROM magistr_doktorant_yuklamalar mdy
-            JOIN semestrlar s ON s.id = mdy.semestr_id
-            JOIN yonalishlar y ON y.id = s.yonalish_id
-            JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
+                mdqr.dars_soati AS jami_soat
+            FROM magistr_doktorant_qoshimcha_rejalar mdqr
+            JOIN magistr_doktorant_yuklamalar mdy ON mdy.id = mdqr.magistr_doktorant_id
+            LEFT JOIN semestrlar s ON s.id = mdy.semestr_id
+            LEFT JOIN yonalishlar y ON y.id = s.yonalish_id
             JOIN kafedralar k ON k.id = mdy.kafedra_id
+            LEFT JOIN qoshimcha_dars_turlar qdt ON qdt.id = mdqr.qoshimcha_dars_id
             LEFT JOIN guruh_agg ga ON ga.yonalish_id = y.id
             $whereSQL
-            ORDER BY s.semestr, mdy.turi, mdy.ism_familiya
+            ORDER BY COALESCE(s.semestr, 0), mdy.turi, mdy.ism_familiya, mdqr.qoshimcha_dars_id
             {$limitSQL}
         ";
         $result = $this->query($sql);
@@ -4240,7 +4271,7 @@ class Database{
     }
 
     public function get_oqituvchi_taqsimotlar($filters = []){
-        // Izoh: O'qituvchilar bo'yicha taqsimot soatlarini hisoblaymiz (A va Q turlari).
+        // Izoh: O'qituvchilar bo'yicha taqsimot soatlarini hisoblaymiz (A, Q va magistr/doktorant D turlari).
         $where = [];
         if (!empty($filters['kafedra_id'])) {
             $where[] = "o.kafedra_id = " . (int)$filters['kafedra_id'];
@@ -4281,6 +4312,19 @@ class Database{
                 JOIN qoshimcha_fanlar qf ON qf.id = q.qoshimcha_fanid
                 JOIN semestrlar s ON s.id = qf.semestr_id
                 WHERE t.type = 'Q'
+
+                UNION ALL
+
+                SELECT
+                    t.teacher_id,
+                    t.soat,
+                    t.type,
+                    COALESCE(s.semestr, 0) AS semestr
+                FROM taqsimotlar t
+                JOIN magistr_doktorant_qoshimcha_rejalar mdqr ON mdqr.id = t.oquv_reja_id
+                JOIN magistr_doktorant_yuklamalar mdy ON mdy.id = mdqr.magistr_doktorant_id
+                LEFT JOIN semestrlar s ON s.id = mdy.semestr_id
+                WHERE t.type = 'D'
             )
             SELECT
                 o.id AS oqituvchi_id,
@@ -4288,7 +4332,7 @@ class Database{
                 k.name AS kafedra_nomi,
                 SUM(ts.soat) AS jami_soat,
                 SUM(CASE WHEN ts.type = 'A' THEN ts.soat ELSE 0 END) AS asosiy_soat,
-                SUM(CASE WHEN ts.type = 'Q' THEN ts.soat ELSE 0 END) AS qoshimcha_soat
+                SUM(CASE WHEN ts.type IN ('Q', 'D') THEN ts.soat ELSE 0 END) AS qoshimcha_soat
             FROM taqsimot_src ts
             JOIN oqituvchilar o ON o.id = ts.teacher_id
             LEFT JOIN kafedralar k ON k.id = o.kafedra_id
@@ -4372,3 +4416,4 @@ class Database{
 }
 
 ?>
+

@@ -163,6 +163,50 @@ $sql = "
       $whereKafedra
       $whereShtat
     GROUP BY t.teacher_id, s.semestr, qf.id, qf.qoshimcha_dars_id
+
+    UNION ALL
+
+    SELECT
+        t.teacher_id,
+        MAX(o.fio) AS fio,
+        MAX(o.lavozim) AS lavozim,
+        MAX(o.stavka) AS stavka,
+        MAX(iu.name) AS ilmiy_unvon,
+        MAX(id.name) AS ilmiy_daraja,
+        MAX(isht.name) AS shtat_turi,
+        CONVERT(MAX(COALESCE(y.name, '')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS talim_yonalishi,
+        CONVERT(MAX(COALESCE(y.code, '')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS yonalish_code,
+        CONVERT(MAX(COALESCE(ga.guruh_raqami, '')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS guruh_raqami,
+        MAX(COALESCE(ga.talabalar_soni, 0)) AS talabalar_soni,
+        MAX(COALESCE(y.patok_soni, 0)) AS patok_soni,
+        MAX(COALESCE(y.kattaguruh_soni, 0)) AS kattaguruh_soni,
+        MAX(COALESCE(y.kichikguruh_soni, 0)) AS kichikguruh_soni,
+        CONVERT(MAX(CASE WHEN mdy.turi = 'doktorant' THEN 'Doktorant' ELSE 'Magistr' END) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS oquv_shakli,
+        COALESCE(s.semestr, 0) AS semestr,
+        MAX(CASE WHEN COALESCE(s.semestr, 0) > 0 THEN FLOOR((s.semestr + 1)/2) ELSE mdy.kurs END) AS kurs,
+        0 AS fan_id,
+        '' COLLATE utf8mb4_unicode_ci AS fan_code,
+        CONVERT(MAX(CONCAT(mdy.kod, ' - ', mdy.ism_familiya)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS fan_name,
+        NULL AS dars_tur_id,
+        mdqr.qoshimcha_dars_id AS qoshimcha_id,
+        SUM(t.soat) AS soat,
+        'D' AS type
+    FROM taqsimotlar t
+    JOIN magistr_doktorant_qoshimcha_rejalar mdqr ON mdqr.id = t.oquv_reja_id
+    JOIN magistr_doktorant_yuklamalar mdy ON mdy.id = mdqr.magistr_doktorant_id
+    LEFT JOIN semestrlar s ON s.id = mdy.semestr_id
+    LEFT JOIN yonalishlar y ON y.id = s.yonalish_id
+    LEFT JOIN guruh_agg ga ON ga.yonalish_id = y.id
+    JOIN oqituvchilar o ON o.id = t.teacher_id
+    LEFT JOIN ilmiy_unvonlar iu ON iu.id = o.ilmiy_unvon_id
+    LEFT JOIN ilmiy_darajalar id ON id.id = o.ilmiy_daraja_id
+    LEFT JOIN ish_turlar isht ON isht.id = o.ishtur_id
+    WHERE t.type = 'D'
+      $semestrFilterSql
+      $whereTeacher
+      $whereKafedra
+      $whereShtat
+    GROUP BY t.teacher_id, COALESCE(s.semestr, 0), mdqr.id, mdqr.qoshimcha_dars_id
 ";
 
 $result = $db->query($sql);
@@ -245,7 +289,7 @@ if ($result) {
             $key = "A|{$semestr}|{$r['fan_id']}|{$yonalishCode}|{$guruh}";
         } else {
             $qId = (int)$r['qoshimcha_id'];
-            $key = "Q|{$semestr}|{$qId}|{$fanName}|{$yonalishCode}|{$guruh}";
+            $key = "{$type}|{$semestr}|{$qId}|{$fanName}|{$yonalishCode}|{$guruh}";
         }
 
         if (!isset($teachers[$tid]['rows'][$key])) {
