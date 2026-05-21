@@ -530,6 +530,7 @@ $renderGuruhCell = static function (array $row, array $codes) use ($normalizeGro
                     'jami' => 0
                 ];
                 if (!empty($oquv_yuklamalar) || !empty($qoshimcha_yuklamalar)):
+                    ob_start();
                     foreach ($oquv_yuklamalar as $idx => $row): 
                         $rejaMaruza = (float)($row['maruza_soat'] ?? ($row['reja_maruz'] ?? 0));
                         $rejaAmaliy = (float)($row['amaliy_soat'] ?? ($row['reja_amaliy'] ?? 0));
@@ -811,6 +812,10 @@ $renderGuruhCell = static function (array $row, array $codes) use ($normalizeGro
                 <?php 
                     endforeach;
                 ?>
+                <?php
+                    $tableRowsHtml = ob_get_clean();
+                    ob_start();
+                ?>
                 <tr class="total-row">
                     <td colspan="11" class="left"><strong>Jami</strong></td>
                     <!-- O'quv reja bo'yicha -->
@@ -853,6 +858,11 @@ $renderGuruhCell = static function (array $row, array $codes) use ($normalizeGro
                     <td><strong><?= $totals['jami'] ?></strong></td>
                     <td></td>
                 </tr>
+                <?php
+                    $totalRowHtml = ob_get_clean();
+                    echo $totalRowHtml;
+                    echo $tableRowsHtml;
+                ?>
                 <?php else: ?>
                 <tr>
                     <td colspan="40" style="text-align: center; padding: 20px;">

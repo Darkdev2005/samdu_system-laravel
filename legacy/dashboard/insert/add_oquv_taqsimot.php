@@ -23,7 +23,13 @@ if ($yuklama_id <= 0 || !in_array($type, ['A', 'Q', 'M', 'D'], true) || !is_arra
 if (legacy_is_kafedra_mudiri()) {
     $scopeFilters = ['kafedra_id' => legacy_user_kafedra_id()];
     if ($type === 'A') {
-        $scopeFilters['oquv_reja_id'] = $yuklama_id;
+        $virtualFanId = legacy_taqsimot_virtual_fan_id($yuklama_id);
+        if ($virtualFanId > 0) {
+            $scopeFilters['taqsimot_variant_fan_id'] = $virtualFanId;
+        } else {
+            $scopeFilters['oquv_reja_id'] = $yuklama_id;
+            $scopeFilters['strict_oquv_reja_id'] = true;
+        }
         $allowedRows = $db->get_oquv_taqsimotlar($scopeFilters);
     } elseif ($type === 'Q') {
         $scopeFilters['qoshimcha_oquv_reja_id'] = $yuklama_id;
@@ -46,6 +52,7 @@ if (legacy_is_kafedra_mudiri()) {
 }
 
 $normalizedRows = [];
+$assignedGroups = [];
 foreach ($taqsimotlar as $row) {
     $teacherId = (int)($row['oqituvchi_id'] ?? 0);
     $soat = (float)($row['soat_soni'] ?? 0);
@@ -61,10 +68,79 @@ foreach ($taqsimotlar as $row) {
         return;
     }
 
-    if (!isset($normalizedRows[$teacherId])) {
-        $normalizedRows[$teacherId] = 0.0;
+    $guruhlar = [];
+    if (!empty($row['guruhlar']) && is_array($row['guruhlar'])) {
+        foreach ($row['guruhlar'] as $guruh) {
+            $guruh = trim((string)$guruh);
+            if ($guruh !== '' && !in_array($guruh, $guruhlar, true)) {
+                $guruhlar[] = $guruh;
+            }
+        }
     }
-    $normalizedRows[$teacherId] += $soat;
+    foreach ($guruhlar as $guruh) {
+        if (isset($assignedGroups[$guruh])) {
+            echo json_encode([
+                'success' => false,
+                'message' => "{$guruh} guruhi shu fan va soat turi ichida ikki marta tanlangan."
+            ]);
+            return;
+        }
+        $assignedGroups[$guruh] = true;
+    }
+
+    $normalizedRows[] = [
+        'teacher_id' => $teacherId,
+        'soat' => $soat,
+        'guruhlar_json' => !empty($guruhlar) ? json_encode($guruhlar, JSON_UNESCAPED_UNICODE) : null,
+    ];
+}
+
+$controlSoatTurlari = ['oraliq_nazorat', 'yakuniy_nazorat'];
+$lessonSoatTurlari = ['amalda_maruz', 'amalda_amaliy'];
+if (in_array($soatTuri, $controlSoatTurlari, true) && !empty($normalizedRows)) {
+    $teacherIds = array_values(array_unique(array_map(static function (array $row): int {
+        return (int)$row['teacher_id'];
+    }, $normalizedRows)));
+
+    if (!empty($teacherIds)) {
+        $teacherIdsSql = implode(',', array_map('intval', $teacherIds));
+        $lessonSoatSql = "'" . implode("','", array_map('addslashes', $lessonSoatTurlari)) . "'";
+        $conflictSql = "
+            SELECT DISTINCT o.fio, COALESCE(t.soat_turi, '') AS soat_turi
+            FROM taqsimotlar t
+            JOIN oqituvchilar o ON o.id = t.teacher_id
+            WHERE t.oquv_reja_id = {$yuklama_id}
+              AND t.type = '" . addslashes($type) . "'
+              AND t.teacher_id IN ({$teacherIdsSql})
+              AND COALESCE(t.soat_turi, '') IN ({$lessonSoatSql})
+        ";
+        $conflictResult = $db->query($conflictSql);
+        $conflicts = [];
+        $lessonLabels = [
+            'amalda_maruz' => "ma'ruza",
+            'amalda_amaliy' => 'amaliy',
+        ];
+        if ($conflictResult) {
+            while ($conflictRow = mysqli_fetch_assoc($conflictResult)) {
+                $fio = trim((string)($conflictRow['fio'] ?? ''));
+                $lessonType = trim((string)($conflictRow['soat_turi'] ?? ''));
+                $label = $lessonLabels[$lessonType] ?? $lessonType;
+                if ($fio !== '') {
+                    $conflicts[$fio . '|' . $label] = "{$fio} ({$label})";
+                }
+            }
+        }
+
+        if (!empty($conflicts)) {
+            echo json_encode([
+                'success' => false,
+                'icon' => 'warning',
+                'title' => 'Ogohlantirish',
+                'message' => "Bu o'qituvchi ushbu fanning " . implode(', ', array_values($conflicts)) . " darslarini o'tgan. Oraliq/yakuniy nazoratni shu o'qituvchiga taqsimlash mumkin emas."
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+    }
 }
 
 $success = false;
@@ -89,15 +165,18 @@ if ($replaceMode) {
         }
 
         if ($success) {
-            foreach ($normalizedRows as $teacherId => $soat) {
+            foreach ($normalizedRows as $normalizedRow) {
                 $insertPayload = [
                     'oquv_reja_id' => $yuklama_id,
-                    'teacher_id' => (int)$teacherId,
-                    'soat' => $soat,
+                    'teacher_id' => (int)$normalizedRow['teacher_id'],
+                    'soat' => (float)$normalizedRow['soat'],
                     'type' => $type,
                 ];
                 if ($useScopedSoatTuri) {
                     $insertPayload['soat_turi'] = $soatTuri;
+                }
+                if (!empty($normalizedRow['guruhlar_json'])) {
+                    $insertPayload['guruhlar_json'] = $normalizedRow['guruhlar_json'];
                 }
                 $insertId = $db->insert('taqsimotlar', $insertPayload);
                 if ($insertId <= 0) {
@@ -117,7 +196,9 @@ if ($replaceMode) {
         $success = false;
     }
 } else {
-    foreach ($normalizedRows as $teacherId => $soat) {
+    foreach ($normalizedRows as $normalizedRow) {
+        $teacherId = (int)$normalizedRow['teacher_id'];
+        $soat = (float)$normalizedRow['soat'];
         $existsFilters = [
             'oquv_reja_id' => $yuklama_id,
             'teacher_id' => (int)$teacherId,
@@ -143,6 +224,9 @@ if ($replaceMode) {
             ];
             if ($useScopedSoatTuri) {
                 $insertPayload['soat_turi'] = $soatTuri;
+            }
+            if (!empty($normalizedRow['guruhlar_json'])) {
+                $insertPayload['guruhlar_json'] = $normalizedRow['guruhlar_json'];
             }
             $res = $db->insert('taqsimotlar', $insertPayload);
         }

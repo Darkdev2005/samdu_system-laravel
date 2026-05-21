@@ -591,6 +591,13 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                                 $rejaIdsByType[$rowType][$rejaId] = true;
                             }
                         }
+                        $variantFanId = (int)($row['variant_fan_id'] ?? 0);
+                        if ($variantFanId > 0) {
+                            if (!isset($rejaIdsByType[$rowType])) {
+                                $rejaIdsByType[$rowType] = [];
+                            }
+                            $rejaIdsByType[$rowType][legacy_taqsimot_virtual_reja_id($variantFanId)] = true;
+                        }
                     }
 
                     if (empty($rejaIdsByType)) {
@@ -602,11 +609,11 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                         $rejaIds = array_keys($ids);
                         foreach (array_chunk($rejaIds, 500) as $idChunk) {
                             $sql = "
-                                SELECT oquv_reja_id, SUM(soat) AS jami_soat
+                                SELECT oquv_reja_id, COALESCE(soat_turi, '') AS soat_turi, SUM(soat) AS jami_soat
                                 FROM taqsimotlar
                                 WHERE type = '{$rowType}'
                                   AND oquv_reja_id IN (" . implode(',', array_map('intval', $idChunk)) . ")
-                                GROUP BY oquv_reja_id
+                                GROUP BY oquv_reja_id, COALESCE(soat_turi, '')
                             ";
                             $queryResult = $db->query($sql);
                             if ($queryResult === false) {
@@ -615,7 +622,21 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
 
                             while ($taqsimotRow = mysqli_fetch_assoc($queryResult)) {
                                 $rid = (int)($taqsimotRow['oquv_reja_id'] ?? 0);
-                                $resultMap[$rowType . ':' . $rid] = (float)($taqsimotRow['jami_soat'] ?? 0);
+                                $mappedSoatTuri = trim((string)($taqsimotRow['soat_turi'] ?? ''));
+                                $jamiSoat = (float)($taqsimotRow['jami_soat'] ?? 0);
+                                $mapKey = $mappedSoatTuri !== ''
+                                    ? ($rowType . ':' . $rid . ':' . $mappedSoatTuri)
+                                    : ($rowType . ':' . $rid);
+                                $resultMap[$mapKey] = $jamiSoat;
+
+                                if ($mappedSoatTuri === '') {
+                                    foreach (['amalda_maruz', 'amalda_amaliy', 'amalda_laboratoriya', 'amalda_seminar'] as $legacyLessonType) {
+                                        $legacyScopedKey = $rowType . ':' . $rid . ':' . $legacyLessonType;
+                                        if (!isset($resultMap[$legacyScopedKey])) {
+                                            $resultMap[$legacyScopedKey] = $jamiSoat;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -654,6 +675,20 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                         $taqsimotRow = mysqli_fetch_assoc($queryResult);
                         $jamiSoat = (float)($taqsimotRow['jami_soat'] ?? 0);
                     }
+                    if ($jamiSoat <= 0 && $useScopedSoatTuri) {
+                        $legacySql = "
+                            SELECT SUM(soat) AS jami_soat
+                            FROM taqsimotlar
+                            WHERE type = '{$type}'
+                              AND oquv_reja_id = {$rejaId}
+                              AND (soat_turi IS NULL OR soat_turi = '')
+                        ";
+                        $legacyResult = $db->query($legacySql);
+                        if ($legacyResult !== false) {
+                            $legacyRow = mysqli_fetch_assoc($legacyResult);
+                            $jamiSoat = (float)($legacyRow['jami_soat'] ?? 0);
+                        }
+                    }
 
                     $taqsimotSoatMap[$cacheKey] = $jamiSoat;
                     return $jamiSoat;
@@ -664,18 +699,19 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                     int $rejaId,
                     int $legacyRejaId,
                     string $type,
-                    bool $allowLegacy
+                    bool $allowLegacy,
+                    string $soatTuri = ''
                 ): float {
-                    $assigned = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rejaId, $type);
+                    $assigned = getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rejaId, $type, $soatTuri);
                     if ($assigned > 0 || !$allowLegacy || $legacyRejaId <= 0 || $legacyRejaId === $rejaId) {
                         return $assigned;
                     }
 
-                    return getMappedTaqsimotSoat($db, $taqsimotSoatMap, $legacyRejaId, $type);
+                    return getMappedTaqsimotSoat($db, $taqsimotSoatMap, $legacyRejaId, $type, $soatTuri);
                 }
                 function getCellClass($jami, $max) {
                     if ($max <= 0) return '';
-                    if ($jami == $max) return 'full-soat';     
+                    if ($jami >= $max) return 'full-soat';     
                     if ($jami < $max && $jami > 0)  return 'partial-soat';  
                     return '';
                 }
@@ -790,7 +826,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                         $rid = 0;
                         $soat = 0.0;
                     }
-                    $assigned = $rid > 0 ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, $rowType) : 0.0;
+                    $assigned = $rid > 0 ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, $rowType, $field) : 0.0;
                     $classes = [];
                     if ($soat > 0) {
                         $classes[] = 'soat-cell';
@@ -808,7 +844,29 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                         . formatSoatValue($soat)
                         . '</td>';
                 }
+                $formatSoat = static function ($value): string {
+                    $numeric = (float)$value;
+                    if ($numeric == 0.0) {
+                        return '';
+                    }
+                    if (fmod($numeric, 1.0) == 0.0) {
+                        return (string)(int)round($numeric);
+                    }
+                    return rtrim(rtrim(number_format($numeric, 2, '.', ''), '0'), '.');
+                };
+                $totals = [
+                    'amalda_maruza' => 0, 'amalda_amaliy' => 0, 'amalda_lab' => 0, 'amalda_seminar' => 0,
+                    'oraliq' => 0, 'yakuniy' => 0,
+                    'kurs_ishi' => 0, 'kurs_loyiha' => 0,
+                    'oquv_ped' => 0, 'uzluksiz' => 0, 'dala_otm' => 0, 'dala_tash' => 0, 'ishlab' => 0,
+                    'bmi' => 0,
+                    'mag_ilmiy' => 0, 'mag_ped' => 0, 'mag_staj' => 0,
+                    'dok_tayanch' => 0, 'dok_katta' => 0, 'dok_staj' => 0,
+                    'ochiq' => 0, 'yadak' => 0, 'boshqa' => 0,
+                    'jami' => 0
+                ];
                 $taqsimotSoatMap = buildTaqsimotSoatMap($db, $oquv_taqsimotlar);
+                ob_start();
                 if (!empty($oquv_taqsimotlar) || !empty($qoshimcha_oquv_taqsimotlar)):
                     foreach ($oquv_taqsimotlar as $row): 
                         $needsResync = !empty($row['needs_resync']);
@@ -826,15 +884,31 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                         $legacyAmaliyRejaId = (int)($row['legacy_amaliy_reja_id'] ?? 0);
                         $legacyLabRejaId = (int)($row['legacy_laboratoriya_reja_id'] ?? 0);
                         $legacySeminarRejaId = (int)($row['legacy_seminar_reja_id'] ?? 0);
+                        $variantFanId = (int)($row['variant_fan_id'] ?? 0);
+                        $virtualVariantRejaId = $variantFanId > 0 ? legacy_taqsimot_virtual_reja_id($variantFanId) : 0;
+                        if ($virtualVariantRejaId > 0) {
+                            if ($maruzaRejaId <= 0 || $maruzaRejaId === $legacyMaruzaRejaId) {
+                                $maruzaRejaId = $virtualVariantRejaId;
+                            }
+                            if ($amaliyRejaId <= 0 || $amaliyRejaId === $legacyAmaliyRejaId) {
+                                $amaliyRejaId = $virtualVariantRejaId;
+                            }
+                            if ($labRejaId <= 0 || $labRejaId === $legacyLabRejaId) {
+                                $labRejaId = $virtualVariantRejaId;
+                            }
+                            if ($seminarRejaId <= 0 || $seminarRejaId === $legacySeminarRejaId) {
+                                $seminarRejaId = $virtualVariantRejaId;
+                            }
+                        }
                         $allowLegacyTaqsimot = !empty($row['is_legacy_tanlov_owner']);
                         $rowType = strtoupper(trim((string)($row['taqsimot_type'] ?? 'A')));
                         if ($rowType === '') {
                             $rowType = 'A';
                         }
-                        $maruzaJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $maruzaRejaId, $legacyMaruzaRejaId, $rowType, $allowLegacyTaqsimot);
-                        $amaliyJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $amaliyRejaId, $legacyAmaliyRejaId, $rowType, $allowLegacyTaqsimot);
-                        $labJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $labRejaId, $legacyLabRejaId, $rowType, $allowLegacyTaqsimot);
-                        $seminarJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $seminarRejaId, $legacySeminarRejaId, $rowType, $allowLegacyTaqsimot);
+                        $maruzaJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $maruzaRejaId, $legacyMaruzaRejaId, $rowType, $allowLegacyTaqsimot, 'amalda_maruz');
+                        $amaliyJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $amaliyRejaId, $legacyAmaliyRejaId, $rowType, $allowLegacyTaqsimot, 'amalda_amaliy');
+                        $labJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $labRejaId, $legacyLabRejaId, $rowType, $allowLegacyTaqsimot, 'amalda_laboratoriya');
+                        $seminarJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $seminarRejaId, $legacySeminarRejaId, $rowType, $allowLegacyTaqsimot, 'amalda_seminar');
 
                         // Izoh: Yuklama sahifasidagi qoida bilan bir xil reyting nazorat hisob-kitobi.
                         $rejaMaruza = (float)($row['reja_maruz'] ?? ($row['maruza_soat'] ?? 0));
@@ -920,6 +994,31 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                                 $qCellData['yakuniy_nazorat']['soat'] = max((float)$qCellData['yakuniy_nazorat']['soat'], (float)$yakuniyNazorat);
                             }
                         }
+                        $displayJami = (float)($row['jami_soat'] ?? 0);
+                        $totals['amalda_maruza'] += $maruzaJami;
+                        $totals['amalda_amaliy'] += $amaliyJami;
+                        $totals['amalda_lab'] += $labJami;
+                        $totals['amalda_seminar'] += $seminarJami;
+                        $totals['oraliq'] += (float)($qCellData['oraliq_nazorat']['soat'] ?? 0);
+                        $totals['yakuniy'] += (float)($qCellData['yakuniy_nazorat']['soat'] ?? 0);
+                        $totals['kurs_ishi'] += (float)($qCellData['kurs_ishi']['soat'] ?? 0);
+                        $totals['kurs_loyiha'] += (float)($qCellData['kurs_loyiha']['soat'] ?? 0);
+                        $totals['oquv_ped'] += (float)($qCellData['oquv_ped_amaliyot']['soat'] ?? 0);
+                        $totals['uzluksiz'] += (float)($qCellData['uzluksiz_malakaviy']['soat'] ?? 0);
+                        $totals['dala_otm'] += (float)($qCellData['dala_amaliyoti_otm']['soat'] ?? 0);
+                        $totals['dala_tash'] += (float)($qCellData['dala_amaliyoti_tashqarida']['soat'] ?? 0);
+                        $totals['ishlab'] += (float)($qCellData['ishlab_chiqarish']['soat'] ?? 0);
+                        $totals['bmi'] += (float)($qCellData['bmi_rahbarligi']['soat'] ?? 0);
+                        $totals['mag_ilmiy'] += (float)($qCellData['ilmiy_tadqiqot_ishi']['soat'] ?? 0);
+                        $totals['mag_ped'] += (float)($qCellData['ilmiy_pedagogik_ishi']['soat'] ?? 0);
+                        $totals['mag_staj'] += (float)($qCellData['ilmiy_stajirovka']['soat'] ?? 0);
+                        $totals['dok_tayanch'] += (float)($qCellData['tayanch_doktorantura']['soat'] ?? 0);
+                        $totals['dok_katta'] += (float)($qCellData['katta_ilmiy_tadqiqotchi']['soat'] ?? 0);
+                        $totals['dok_staj'] += (float)($qCellData['stajyor_tadqiqotchi']['soat'] ?? 0);
+                        $totals['ochiq'] += (float)($qCellData['ochiq_dars']['soat'] ?? 0);
+                        $totals['yadak'] += (float)($qCellData['yadak']['soat'] ?? 0);
+                        $totals['boshqa'] += (float)($qCellData['boshqa_soatlar']['soat'] ?? 0);
+                        $totals['jami'] += $displayJami;
                 ?>
                 <tr class="<?= $needsResync ? 'needs-resync' : '' ?>">
                     <td><?= $counter++ ?></td>
@@ -1022,7 +1121,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                     
                     <!-- JAMI soat -->
                     <td class="total-cell">
-                        <?= $row['jami_soat'] ?> 
+                        <?= $displayJami ?> 
                     </td>
                 </tr>
                 <?php 
@@ -1046,6 +1145,26 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                                 (int)($row['qoshimcha_dars_id'] ?? 0),
                                 (string)($row['subtype_code'] ?? '')
                             );
+                        $totals['oraliq'] += (float)($row['oraliq_nazorat'] ?? 0);
+                        $totals['yakuniy'] += (float)($row['yakuniy_nazorat'] ?? 0);
+                        $totals['kurs_ishi'] += (float)($row['kurs_ishi'] ?? 0);
+                        $totals['kurs_loyiha'] += (float)($row['kurs_loyiha'] ?? 0);
+                        $totals['oquv_ped'] += (float)($row['oquv_ped_amaliyot'] ?? 0);
+                        $totals['uzluksiz'] += (float)($row['uzluksiz_malakaviy'] ?? 0);
+                        $totals['dala_otm'] += (float)($row['dala_amaliyoti_otm'] ?? 0);
+                        $totals['dala_tash'] += (float)($row['dala_amaliyoti_tashqarida'] ?? 0);
+                        $totals['ishlab'] += (float)($row['ishlab_chiqarish'] ?? 0);
+                        $totals['bmi'] += (float)($row['bmi_rahbarligi'] ?? 0);
+                        $totals['mag_ilmiy'] += (float)($row['ilmiy_tadqiqot_ishi'] ?? 0);
+                        $totals['mag_ped'] += (float)($row['ilmiy_pedagogik_ishi'] ?? 0);
+                        $totals['mag_staj'] += (float)($row['ilmiy_stajirovka'] ?? 0);
+                        $totals['dok_tayanch'] += (float)($row['tayanch_doktorantura'] ?? 0);
+                        $totals['dok_katta'] += (float)($row['katta_ilmiy_tadqiqotchi'] ?? 0);
+                        $totals['dok_staj'] += (float)($row['stajyor_tadqiqotchi'] ?? 0);
+                        $totals['ochiq'] += (float)($row['ochiq_dars'] ?? 0);
+                        $totals['yadak'] += (float)($row['yadak'] ?? 0);
+                        $totals['boshqa'] += (float)($row['boshqa_soatlar'] ?? 0);
+                        $totals['jami'] += (float)($row['jami_soat'] ?? 0);
                 ?>
                 <tr class="<?= $needsResync ? 'needs-resync' : '' ?>">
                     <td><?= $counter++ ?></td>
@@ -1118,6 +1237,40 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                     </td>
                 </tr>
                 <?php endif; ?>
+                <?php
+                    $tableRowsHtml = ob_get_clean();
+                    $totalRowHtml = '
+                        <tr class="total-row">
+                            <td colspan="11" class="left"><strong>Jami</strong></td>
+                            <td><strong>' . $formatSoat($totals['amalda_maruza']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['amalda_amaliy']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['amalda_lab']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['amalda_seminar']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['oraliq']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['yakuniy']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['kurs_ishi']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['kurs_loyiha']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['oquv_ped']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['uzluksiz']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['dala_otm']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['dala_tash']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['ishlab']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['bmi']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['mag_ilmiy']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['mag_ped']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['mag_staj']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['dok_tayanch']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['dok_katta']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['dok_staj']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['ochiq']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['yadak']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['boshqa']) . '</strong></td>
+                            <td><strong>' . $formatSoat($totals['jami']) . '</strong></td>
+                        </tr>
+                    ';
+                    echo $totalRowHtml;
+                    echo $tableRowsHtml;
+                ?>
             </tbody>
         </table>
     </div>

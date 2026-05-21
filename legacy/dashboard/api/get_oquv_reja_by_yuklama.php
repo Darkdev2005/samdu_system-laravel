@@ -15,11 +15,14 @@
     }
     
     if ($type === 'A') {
-        $filters = ['oquv_reja_id' => $yuklama_id, 'limit' => 1];
+        $virtualFanId = legacy_taqsimot_virtual_fan_id($yuklama_id);
+        $filters = $virtualFanId > 0
+            ? ['taqsimot_variant_fan_id' => $virtualFanId, 'limit' => 1]
+            : ['oquv_reja_id' => $yuklama_id, 'strict_oquv_reja_id' => true, 'limit' => 1];
         legacy_apply_kafedra_scope($filters);
         $oquv_reja = $db->get_oquv_taqsimotlar($filters);
         $oquv_taqsimotlar = $db->get_taqsimot_by_teacher($yuklama_id, $type, $soatTuri);
-        if (!legacy_is_scoped_taqsimot_soat_turi($soatTuri) && empty($oquv_taqsimotlar) && $legacy_yuklama_id > 0 && $legacy_yuklama_id !== $yuklama_id) {
+        if (empty($oquv_taqsimotlar) && $legacy_yuklama_id > 0 && $legacy_yuklama_id !== $yuklama_id) {
             $oquv_taqsimotlar = $db->get_taqsimot_by_teacher($legacy_yuklama_id, $type, $soatTuri);
             if (!empty($oquv_taqsimotlar)) {
                 $db->query('START TRANSACTION');
@@ -41,21 +44,29 @@
                             'type' => $type,
                         ]);
                         if (!$exists) {
-                            $db->insert('taqsimotlar', [
+                            $insertPayload = [
                                 'oquv_reja_id' => $yuklama_id,
                                 'teacher_id' => $teacherId,
                                 'soat' => $soat,
                                 'type' => $type,
-                            ]);
+                            ];
+                            if (legacy_is_scoped_taqsimot_soat_turi($soatTuri)) {
+                                $insertPayload['soat_turi'] = $soatTuri;
+                            }
+                            if (!empty($legacyRow['guruhlar_json'])) {
+                                $insertPayload['guruhlar_json'] = (string)$legacyRow['guruhlar_json'];
+                            }
+                            $db->insert('taqsimotlar', $insertPayload);
                         }
                         $migratedTeacherIds[$teacherId] = true;
                     }
                     if (!empty($migratedTeacherIds)) {
                         $teacherIdsSql = implode(',', array_map('intval', array_keys($migratedTeacherIds)));
-                        $db->delete(
-                            'taqsimotlar',
-                            "oquv_reja_id = {$legacy_yuklama_id} AND type = '" . addslashes($type) . "' AND teacher_id IN ({$teacherIdsSql})"
-                        );
+                        $deleteCondition = "oquv_reja_id = {$legacy_yuklama_id} AND type = '" . addslashes($type) . "' AND teacher_id IN ({$teacherIdsSql})";
+                        if (legacy_is_scoped_taqsimot_soat_turi($soatTuri)) {
+                            $deleteCondition .= " AND COALESCE(soat_turi, '') = '" . addslashes($soatTuri) . "'";
+                        }
+                        $db->delete('taqsimotlar', $deleteCondition);
                     }
                     $db->query('COMMIT');
                     $oquv_taqsimotlar = $db->get_taqsimot_by_teacher($yuklama_id, $type, $soatTuri);

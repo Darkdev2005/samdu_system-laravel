@@ -148,6 +148,7 @@
 	        const magistrDoktorantOnly = <?= $isMagistrDoktorantYuklamaPage ? 'true' : 'false' ?>;
 	        const excelSheetName = <?= json_encode($excelSheetName, JSON_UNESCAPED_UNICODE) ?>;
 	        const excelFileName = <?= json_encode($excelFileName, JSON_UNESCAPED_UNICODE) ?>;
+            const defaultAcademicYearStart = '2026';
             const scopeLocked = <?= $isKafedraMudiri ? 'true' : 'false' ?>;
             const lockedKafedraId = <?= (int)$currentKafedraId ?>;
 	        let showAllRows = false;
@@ -185,7 +186,7 @@
                 const isFall = (month >= 9 || month === 1);
                 const currentAcademicStart = isFall ? year : (year - 1);
                 // Izoh: Keyingi o'quv yilini ham oldindan rejalash uchun ko'rsatamiz (masalan, 2026-2027).
-                const maxAcademicStart = currentAcademicStart + 1;
+                const maxAcademicStart = Math.max(currentAcademicStart + 1, parseInt(defaultAcademicYearStart, 10));
 
                 let options = '<option value="all">Barchasi (barcha o\'quv yillari)</option>';
                 const buildYearOptions = (startYearFrom, startYearTo) => {
@@ -202,12 +203,14 @@
 
                 $('#semestrFilter').html(options);
 
-                const hasPrev = prevSelected && $(`#semestrFilter option[value="${prevSelected}"]`).length;
+                const hasPrev = prevSelected
+                    && prevSelected !== 'all'
+                    && $(`#semestrFilter option[value="${prevSelected}"]`).length;
                 if (hasPrev) {
                     $('#semestrFilter').val(prevSelected).trigger('change');
+                } else if ($(`#semestrFilter option[value="${defaultAcademicYearStart}"]`).length) {
+                    $('#semestrFilter').val(defaultAcademicYearStart).trigger('change');
                 } else {
-                    // Izoh: Default holatda avtomatik o'quv yili/semester turi qo'ymaymiz.
-                    // Aks holda yangi biriktirilgan satrlar foydalanuvchiga "yo'qolgan" bo'lib ko'rinadi.
                     $('#semestrFilter').val('all').trigger('change');
                 }
             }
@@ -226,8 +229,11 @@
 
                 // Jadvaldagi guruh/talaba sonlari o'zgarishini dinamik ko'rsatish uchun periodik yangilash.
                 setInterval(function () {
+                    if (document.hidden) {
+                        return;
+                    }
                     applyFilters(true);
-                }, 30000);
+                }, 120000);
             
             $(document).on('wheel', function(e) {
                 if (e.ctrlKey) {
@@ -283,13 +289,16 @@
                     if (status === 'abort') {
                         return;
                     }
+                    const errorText = xhr && xhr.responseText
+                        ? String(xhr.responseText).slice(0, 300)
+                        : error;
                     container.html(`
                         <div class="alert alert-danger">
                             <i class="fas fa-exclamation-triangle me-2"></i>
-                            Ma'lumotlarni yuklab bo'lmadi: ${error}
+                            Ma'lumotlarni yuklab bo'lmadi: ${errorText}
                         </div>
                     `);
-                    console.error('Xatolik:', error);
+                    console.error('Xatolik:', error, xhr && xhr.responseText);
                 },
                 complete: function() {
                     isTableLoading = false;
@@ -374,10 +383,14 @@
 	            } else {
 	                $('#kafedraFilter').val('all').trigger('change');
 	            }
-	            $('#semestrFilter').val('all').trigger('change');
-	            $('#kursFilter').val('all').trigger('change');
 	            $('#yonalishFilter').val('all').trigger('change');
 	            $('#semestrTypeFilter').val('all').trigger('change');
+	            $('#kursFilter').val('all').trigger('change');
+	            if ($(`#semestrFilter option[value="${defaultAcademicYearStart}"]`).length) {
+	                $('#semestrFilter').val(defaultAcademicYearStart).trigger('change');
+	            } else {
+	                $('#semestrFilter').val('all').trigger('change');
+	            }
 
 	            loadTableData(scopeLocked ? String(lockedKafedraId) : '');
             

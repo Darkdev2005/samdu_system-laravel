@@ -250,7 +250,50 @@ if (!function_exists('legacy_is_scoped_taqsimot_soat_turi')) {
     function legacy_is_scoped_taqsimot_soat_turi(?string $soatTuri): bool
     {
         $soatTuri = trim((string)$soatTuri);
-        return in_array($soatTuri, ['oraliq_nazorat', 'yakuniy_nazorat'], true);
+        return in_array($soatTuri, [
+            'amalda_maruz',
+            'amalda_amaliy',
+            'amalda_laboratoriya',
+            'amalda_seminar',
+            'oraliq_nazorat',
+            'yakuniy_nazorat',
+            'kurs_ishi',
+            'kurs_loyiha',
+            'oquv_ped_amaliyot',
+            'uzluksiz_malakaviy',
+            'dala_amaliyoti',
+            'dala_amaliyoti_otm',
+            'dala_amaliyoti_tashqarida',
+            'ishlab_chiqarish',
+            'bmi_rahbarligi',
+            'ilmiy_tadqiqot_ishi',
+            'ilmiy_pedagogik_ishi',
+            'ilmiy_stajirovka',
+            'mag_ilmiy_tadqiqot',
+            'mag_ilmiy_pedagogik',
+            'mag_ilmiy_stajirovka',
+            'tayanch_doktorantura',
+            'katta_ilmiy_tadqiqotchi',
+            'stajyor_tadqiqotchi',
+            'ochiq_dars',
+            'yadak',
+            'yakuniy_attestatsiya',
+            'boshqa_soatlar',
+        ], true);
+    }
+}
+
+if (!function_exists('legacy_taqsimot_virtual_reja_id')) {
+    function legacy_taqsimot_virtual_reja_id(int $fanId): int
+    {
+        return $fanId > 0 ? (1700000000 + $fanId) : 0;
+    }
+}
+
+if (!function_exists('legacy_taqsimot_virtual_fan_id')) {
+    function legacy_taqsimot_virtual_fan_id(int $rejaId): int
+    {
+        return $rejaId > 1700000000 ? ($rejaId - 1700000000) : 0;
     }
 }
 
@@ -829,10 +872,18 @@ class Database{
             if ($taqsimotSoatTuriCol && mysqli_num_rows($taqsimotSoatTuriCol) === 0) {
                 mysqli_query($this->link, "ALTER TABLE taqsimotlar ADD COLUMN soat_turi VARCHAR(50) NULL AFTER type");
             }
+            $taqsimotGuruhlarCol = mysqli_query($this->link, "SHOW COLUMNS FROM taqsimotlar LIKE 'guruhlar_json'");
+            if ($taqsimotGuruhlarCol && mysqli_num_rows($taqsimotGuruhlarCol) === 0) {
+                mysqli_query($this->link, "ALTER TABLE taqsimotlar ADD COLUMN guruhlar_json TEXT NULL AFTER soat_turi");
+            }
         }
         $archiveSoatTuriCol = mysqli_query($this->link, "SHOW COLUMNS FROM taqsimotlar_archive LIKE 'soat_turi'");
         if ($archiveSoatTuriCol && mysqli_num_rows($archiveSoatTuriCol) === 0) {
             mysqli_query($this->link, "ALTER TABLE taqsimotlar_archive ADD COLUMN soat_turi VARCHAR(50) NULL AFTER type");
+        }
+        $archiveGuruhlarCol = mysqli_query($this->link, "SHOW COLUMNS FROM taqsimotlar_archive LIKE 'guruhlar_json'");
+        if ($archiveGuruhlarCol && mysqli_num_rows($archiveGuruhlarCol) === 0) {
+            mysqli_query($this->link, "ALTER TABLE taqsimotlar_archive ADD COLUMN guruhlar_json TEXT NULL AFTER soat_turi");
         }
 
         // Izoh: O'chirilgan yo'nalishlardan qolib ketgan orphan semestrlarni avtomatik tozalaymiz.
@@ -1850,7 +1901,7 @@ class Database{
         return $data;
     }
     public function get_taqsimot_by_teacher(int $oquvreja_id, string $type, string $soatTuri = ''): array {
-        $sql = "SELECT t.id, t.teacher_id, t.soat as soat_soni, t.type, o.fio, o.lavozim, t.oquv_reja_id
+        $sql = "SELECT t.id, t.teacher_id, t.soat as soat_soni, t.type, COALESCE(t.soat_turi, '') AS soat_turi, o.fio, o.lavozim, t.oquv_reja_id, COALESCE(t.guruhlar_json, '') AS guruhlar_json
         FROM `taqsimotlar` t 
         JOIN oqituvchilar o ON o.id = t.teacher_id
         WHERE t.oquv_reja_id=$oquvreja_id AND t.type='$type'";
@@ -3204,6 +3255,7 @@ class Database{
     }
     public function get_oquv_taqsimotlar($filters=[]){
         $limit = !empty($filters['limit']) ? max(1, (int)$filters['limit']) : 0;
+        $strictOquvRejaId = !empty($filters['strict_oquv_reja_id']);
         $whereBase = [];
         $whereMerged = [];
         $filterOquvYilCte = '';
@@ -3260,59 +3312,66 @@ class Database{
         }
         if (!empty($filters['oquv_reja_id'])) {
             $rid = (int)$filters['oquv_reja_id'];
-            $targetFanRes = mysqli_query($this->link, "
-                SELECT f.id AS fan_id
-                FROM oquv_rejalar r
-                JOIN fanlar f ON f.id = r.fan_id
-                WHERE r.id = {$rid}
-                LIMIT 1
-            ");
-            if ($targetFanRes) {
-                $targetFanRow = mysqli_fetch_assoc($targetFanRes);
-                $targetFanId = (int)($targetFanRow['fan_id'] ?? 0);
-                if ($targetFanId > 0) {
-                    $filterRejaFanIds[$targetFanId] = true;
+            if (!$strictOquvRejaId) {
+                $targetFanRes = mysqli_query($this->link, "
+                    SELECT f.id AS fan_id
+                    FROM oquv_rejalar r
+                    JOIN fanlar f ON f.id = r.fan_id
+                    WHERE r.id = {$rid}
+                    LIMIT 1
+                ");
+                if ($targetFanRes) {
+                    $targetFanRow = mysqli_fetch_assoc($targetFanRes);
+                    $targetFanId = (int)($targetFanRow['fan_id'] ?? 0);
+                    if ($targetFanId > 0) {
+                        $filterRejaFanIds[$targetFanId] = true;
 
-                    $baseRes = mysqli_query($this->link, "
-                        SELECT ir.base_fan_id
-                        FROM ishchi_oquv_reja_variants iv
-                        JOIN ishchi_oquv_reja ir ON ir.id = iv.ishchi_reja_id
-                        WHERE iv.fan_id = {$targetFanId}
-                    ");
-                    if ($baseRes) {
-                        while ($baseRow = mysqli_fetch_assoc($baseRes)) {
-                            $baseFanId = (int)($baseRow['base_fan_id'] ?? 0);
-                            if ($baseFanId > 0) {
-                                $filterRejaFanIds[$baseFanId] = true;
+                        $baseRes = mysqli_query($this->link, "
+                            SELECT ir.base_fan_id
+                            FROM ishchi_oquv_reja_variants iv
+                            JOIN ishchi_oquv_reja ir ON ir.id = iv.ishchi_reja_id
+                            WHERE iv.fan_id = {$targetFanId}
+                        ");
+                        if ($baseRes) {
+                            while ($baseRow = mysqli_fetch_assoc($baseRes)) {
+                                $baseFanId = (int)($baseRow['base_fan_id'] ?? 0);
+                                if ($baseFanId > 0) {
+                                    $filterRejaFanIds[$baseFanId] = true;
+                                }
                             }
                         }
-                    }
 
-                    $variantRes = mysqli_query($this->link, "
-                        SELECT iv.fan_id
-                        FROM ishchi_oquv_reja ir
-                        JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ir.id
-                        WHERE ir.base_fan_id IN (" . implode(',', array_map('intval', array_keys($filterRejaFanIds))) . ")
-                    ");
-                    if ($variantRes) {
-                        while ($variantRow = mysqli_fetch_assoc($variantRes)) {
-                            $variantFanId = (int)($variantRow['fan_id'] ?? 0);
-                            if ($variantFanId > 0) {
-                                $filterRejaFanIds[$variantFanId] = true;
+                        $variantRes = mysqli_query($this->link, "
+                            SELECT iv.fan_id
+                            FROM ishchi_oquv_reja ir
+                            JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ir.id
+                            WHERE ir.base_fan_id IN (" . implode(',', array_map('intval', array_keys($filterRejaFanIds))) . ")
+                        ");
+                        if ($variantRes) {
+                            while ($variantRow = mysqli_fetch_assoc($variantRes)) {
+                                $variantFanId = (int)($variantRow['fan_id'] ?? 0);
+                                if ($variantFanId > 0) {
+                                    $filterRejaFanIds[$variantFanId] = true;
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            if (!empty($filterRejaFanIds)) {
-                $fanRejaWhereSql = "WHERE f.id IN (" . implode(',', array_map('intval', array_keys($filterRejaFanIds))) . ")";
+                if (!empty($filterRejaFanIds)) {
+                    $fanRejaWhereSql = "WHERE f.id IN (" . implode(',', array_map('intval', array_keys($filterRejaFanIds))) . ")";
+                }
             }
             $whereBase[] = "(
                 {$rid} IN (fr.maruza_reja_id, fr.amaliy_reja_id, fr.laboratoriya_reja_id, fr.seminar_reja_id)
                 OR {$rid} IN (vfr.maruza_reja_id, vfr.amaliy_reja_id, vfr.laboratoriya_reja_id, vfr.seminar_reja_id)
             )";
             $whereMerged[] = "({$rid} IN (ufs.maruza_reja_id, ufs.amaliy_reja_id, ufs.laboratoriya_reja_id, ufs.seminar_reja_id))";
+        }
+        if (!empty($filters['taqsimot_variant_fan_id'])) {
+            $variantFanId = (int)$filters['taqsimot_variant_fan_id'];
+            $whereBase[] = "(tft.variant_fan_id = {$variantFanId} OR ctbg.variant_fan_id = {$variantFanId})";
+            $whereMerged[] = '1=0';
         }
 
         $whereSQLBase = '';
@@ -3703,6 +3762,7 @@ class Database{
                          )
                         THEN 1 ELSE 0
                     END AS is_legacy_tanlov_owner,
+                    COALESCE(ctbg.variant_fan_id, tft.variant_fan_id, 0) AS variant_fan_id,
                     fr.semestr_id,
                     fr.fan_code,
                     y.id AS yonalish_id,
@@ -3946,6 +4006,7 @@ class Database{
                     0 AS legacy_laboratoriya_reja_id,
                     0 AS legacy_seminar_reja_id,
                     0 AS is_legacy_tanlov_owner,
+                    0 AS variant_fan_id,
                     ufs.semestr_id,
                     ufs.fan_code,
                     0 AS yonalish_id,
@@ -4416,4 +4477,3 @@ class Database{
 }
 
 ?>
-

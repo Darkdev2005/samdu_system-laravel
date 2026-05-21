@@ -22,9 +22,9 @@ $yearNow = (int)date('Y');
 $isFallSemester = ($monthNow >= 9 || $monthNow === 1);
 $currentAcademicStart = $isFallSemester ? $yearNow : ($yearNow - 1);
 $maxAcademicStart = $currentAcademicStart + 1;
-$defaultOquvYilStart = $currentAcademicStart;
+$defaultOquvYilStart = 2026;
 $yearStart = !empty($kirishYillar) ? min(array_keys($kirishYillar)) : ($currentAcademicStart - 5);
-$yearEnd = max($maxAcademicStart, $currentAcademicStart);
+$yearEnd = max($maxAcademicStart, $currentAcademicStart, $defaultOquvYilStart);
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -213,6 +213,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                                 <tr style="background: #f8f9fa;">
                                     <th style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">#</th>
                                     <th style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">O'qituvchi</th>
+                                    <th style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">Guruhlar</th>
                                     <th style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">Soat soni</th>
                                     <th style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;"></th>
                                 </tr>
@@ -222,7 +223,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                             </tbody>
                             <tfoot style="background: #f8f9fa;">
                                 <tr>
-                                    <td colspan="2" style="border: 1px solid #dee2e6; padding: 10px; text-align: right; font-weight: bold;">Jami soat:</td>
+                                    <td colspan="3" style="border: 1px solid #dee2e6; padding: 10px; text-align: right; font-weight: bold;">Jami soat:</td>
                                     <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;"><span id="totalHoursSum">0</span> soat</td>
                                     <td style="border: 1px solid #dee2e6; padding: 10px;"></td>
                                 </tr>
@@ -252,6 +253,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
     <script>
         let currentZoom = 1;
         const rowLimit = <?= $rowLimit ?>;
+        const defaultAcademicYearStart = '2026';
         const scopeLocked = <?= $isKafedraMudiri ? 'true' : 'false' ?>;
         const lockedKafedraId = <?= (int)$currentKafedraId ?>;
         let showAllRows = false;
@@ -262,6 +264,8 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
         let currentMaxSoat = 0;
         let currentFanNomi = '';
         let currentType = '';
+        let currentRequiresGroups = false;
+        let currentGroupOptions = [];
         let teacherRows = [];
         let teacherRowCounter = 0;
         let isTableLoading = false;
@@ -270,6 +274,61 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
 
         function isScopedSoatTuri(soatTuri) {
             return ['oraliq_nazorat', 'yakuniy_nazorat'].includes(String(soatTuri || '').trim());
+        }
+
+        function requiresGroupSelection(soatTuri) {
+            return /(amaliy|laboratoriya|seminar|lab)/i.test(String(soatTuri || ''));
+        }
+
+        function parseGroupOptions(rawGroups) {
+            return String(rawGroups || '')
+                .split(/[|,]/)
+                .map(g => g.trim())
+                .filter(Boolean)
+                .filter((g, index, arr) => arr.indexOf(g) === index);
+        }
+
+        function parseSavedGroups(value) {
+            if (Array.isArray(value)) {
+                return value.map(String).filter(Boolean);
+            }
+            const raw = String(value || '').trim();
+            if (raw === '') {
+                return [];
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+            } catch (e) {
+                return raw.split('|').map(g => g.trim()).filter(Boolean);
+            }
+        }
+
+        function getGroupHourShare() {
+            const groupCount = currentGroupOptions.length;
+            if (!currentRequiresGroups || groupCount <= 0 || currentMaxSoat <= 0) {
+                return 0;
+            }
+
+            return currentMaxSoat / groupCount;
+        }
+
+        function getHoursForGroups(groups) {
+            if (!currentRequiresGroups) {
+                return 0;
+            }
+
+            const selectedGroups = Array.isArray(groups) ? groups.filter(Boolean) : [];
+            return Math.round(getGroupHourShare() * selectedGroups.length * 10) / 10;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
 
         $(document).ready(function() {
@@ -289,8 +348,11 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
 
             // Jadvaldagi guruh/talaba sonlari o'zgarishini dinamik ko'rsatish uchun periodik yangilash.
             setInterval(function () {
+                if (document.hidden) {
+                    return;
+                }
                 applyFilters(true);
-            }, 30000);
+            }, 120000);
             
             $(document).on('wheel', function(e) {
                 if (e.ctrlKey) {
@@ -360,10 +422,13 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                     if (status === 'abort') {
                         return;
                     }
+                    const errorText = xhr && xhr.responseText
+                        ? String(xhr.responseText).slice(0, 300)
+                        : error;
                     container.html(`
                         <div class="alert alert-danger">
                             <i class="fas fa-exclamation-triangle me-2"></i>
-                            Ma'lumotlarni yuklab bo'lmadi: ${error}
+                            Ma'lumotlarni yuklab bo'lmadi: ${errorText}
                         </div>
                     `);
                 },
@@ -494,6 +559,8 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             currentFanNomi = fanNomi;
             currentType = type;
             currentMaxSoat = parseFloat(maxSoat) || 0;
+            currentRequiresGroups = requiresGroupSelection(soatTuri);
+            currentGroupOptions = [];
 
             teacherRows = [];
             teacherRowCounter = 0;
@@ -533,15 +600,20 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                         $('#infoSemestr').text(data.semestr || '-');
                         $('#infoTalabalar').text(data.talabalar_soni ? data.talabalar_soni + ' ta' : '-');
                         $('#infoGuruhlarSoni').text(data.guruhlar_soni || '-');
+                        currentGroupOptions = parseGroupOptions(data.guruh_raqami || '');
 
                         $('#taqsimotList').empty();
                         taqsimotlar.forEach(t => {
-                            const soat = parseFloat(t.soat_soni || 0);
+                            const groups = parseSavedGroups(t.guruhlar_json);
+                            const soat = currentRequiresGroups && groups.length
+                                ? getHoursForGroups(groups)
+                                : parseFloat(t.soat_soni || 0);
+                            const groupText = groups.length ? `<br><small>Guruhlar: ${escapeHtml(groups.join(', '))}</small>` : '';
                             existingAssignedHours += soat;
 
                             $('#taqsimotList').append(`
                                 <div style="padding:6px;border-bottom:1px solid #dee2e6">
-                                    <strong>${t.fio}</strong> — ${soat} soat
+                                    <strong>${escapeHtml(t.fio)}</strong> — ${soat} soat${groupText}
                                 </div>
                             `);
                         });
@@ -555,7 +627,11 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
 
                         if (taqsimotlar.length > 0) {
                             taqsimotlar.forEach(t => {
-                                addTeacherRow(t.teacher_id || '', parseFloat(t.soat_soni || 0));
+                                const savedGroups = parseSavedGroups(t.guruhlar_json);
+                                const rowHours = currentRequiresGroups && savedGroups.length
+                                    ? getHoursForGroups(savedGroups)
+                                    : parseFloat(t.soat_soni || 0);
+                                addTeacherRow(t.teacher_id || '', rowHours, savedGroups);
                             });
                         } else {
                             addTeacherRow();
@@ -576,7 +652,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
 
 
 
-        function addTeacherRow(teacherId = '', hours = 0) {
+        function addTeacherRow(teacherId = '', hours = 0, groups = []) {
 
             if (currentMaxSoat <= 0) return; // soat qolmagan bo‘lsa chiqmaydi
 
@@ -586,10 +662,26 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             const row = {
                 id: rowId,
                 teacherId: teacherId,
-                hours: parseFloat(hours) || 0
+                hours: parseFloat(hours) || 0,
+                groups: Array.isArray(groups) ? groups : []
             };
+            if (currentRequiresGroups) {
+                row.hours = getHoursForGroups(row.groups);
+                hours = row.hours;
+            }
 
             teacherRows.push(row);
+            const groupOptionsHtml = currentGroupOptions.map(groupName => {
+                const selected = row.groups.includes(groupName) ? 'selected' : '';
+                return `<option value="${escapeHtml(groupName)}" ${selected}>${escapeHtml(groupName)}</option>`;
+            }).join('');
+            const groupSelectHtml = currentRequiresGroups
+                ? `<select class="form-control group-select" multiple
+                        onchange="updateTeacherHours('${rowId}')"
+                        style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px;">
+                        ${groupOptionsHtml}
+                   </select>`
+                : '<span style="color:#6c757d;">Umumiy</span>';
 
             const rowHtml = `
                 <tr id="${rowId}" style="border-bottom: 1px solid #dee2e6;">
@@ -610,13 +702,18 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                         </select>
                     </td>
 
+                    <td style="border: 1px solid #dee2e6; padding: 10px; min-width: 220px;">
+                        ${groupSelectHtml}
+                    </td>
+
                     <td style="border: 1px solid #dee2e6; padding: 10px;">
                         <input type="number" class="teacher-hours"
                             value="${hours}"
                             min="0"
                             max="${currentMaxSoat}"
-                            step="0.5"
+                            step="0.1"
                             onchange="updateTeacherHours('${rowId}')"
+                            ${currentRequiresGroups ? 'readonly' : ''}
                             style="width: 80px; padding: 6px; border: 1px solid #ced4da; border-radius: 4px; display: inline-block;">
                         <span> soat</span>
                     </td>
@@ -638,6 +735,11 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                 width: '100%',
                 dropdownParent: $('#taqsimotModal')
             });
+            $('.group-select').select2({
+                width: '100%',
+                dropdownParent: $('#taqsimotModal'),
+                placeholder: 'Guruhlarni tanlang'
+            });
 
             calculateTotalHours();
         }
@@ -648,13 +750,22 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             if (!row) return;
             
             const teacherId = row.querySelector('.teacher-select').value;
+            const groupSelect = row.querySelector('.group-select');
             const hoursInput = row.querySelector('.teacher-hours');
-            let hours = parseFloat(hoursInput.value) || 0;
+            const groups = groupSelect
+                ? Array.from(groupSelect.selectedOptions).map(option => option.value).filter(Boolean)
+                : [];
+            let hours = currentRequiresGroups
+                ? getHoursForGroups(groups)
+                : (parseFloat(hoursInput.value) || 0);
+            if (currentRequiresGroups) {
+                hoursInput.value = hours.toFixed(1);
+            }
             
             // Maksimal chegarani tekshirish
             if (hours > currentMaxSoat) {
                 hours = currentMaxSoat;
-                hoursInput.value = currentMaxSoat;
+                hoursInput.value = currentMaxSoat.toFixed(1);
             }
             
             // Massivni yangilash
@@ -662,6 +773,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             if (rowIndex !== -1) {
                 teacherRows[rowIndex].teacherId = teacherId;
                 teacherRows[rowIndex].hours = hours;
+                teacherRows[rowIndex].groups = groups;
             }
             
             calculateTotalHours();
@@ -707,11 +819,11 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
         // Soat nazoratini yangilash
         function updateHoursControl(totalHours) {
             const remaining = currentMaxSoat - totalHours;
-            const percentage = currentMaxSoat > 0 ? (totalHours / currentMaxSoat * 100) : 0;
+            const percentage = currentMaxSoat > 0 ? Math.min(totalHours / currentMaxSoat * 100, 100) : 0;
             
             $('#totalAssignedHours').text(totalHours.toFixed(1));
             $('#remainingHours').text(remaining.toFixed(1));
-            $('#maxHoursTotal').text(currentMaxSoat);
+            $('#maxHoursTotal').text(currentMaxSoat.toFixed(1));
             
             // Progress bar
             const progressBar = $('#hoursProgressBar');
@@ -816,7 +928,7 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                 Swal.fire({
                     icon: 'error',
                     title: 'Xatolik!',
-                    text: `Jami soat ${currentMaxSoat} dan ko'p bo'lishi mumkin emas!`
+                    text: `Jami soat ${currentMaxSoat.toFixed(1)} dan ko'p bo'lishi mumkin emas!`
                 });
                 return;
             }
@@ -828,12 +940,37 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                 if (!teacherId) {
                     incompleteRows.push(index + 1);
                 }
+                if (currentRequiresGroups && ($(this).find('.group-select').val() || []).length === 0) {
+                    incompleteRows.push((index + 1) + ' (guruh)');
+                }
             });
             if (incompleteRows.length > 0) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Diqqat!',
-                    text: `${incompleteRows.join(', ')}-qatorlarda o'qituvchi tanlanmagan!`
+                    text: `${incompleteRows.join(', ')}-qatorlarda ma'lumot to'liq tanlanmagan!`
+                });
+                return;
+            }
+
+            const usedGroups = {};
+            const repeatedGroups = [];
+            if (currentRequiresGroups) {
+                $('#teachersTableBody tr').each(function(index) {
+                    const groups = $(this).find('.group-select').val() || [];
+                    groups.forEach(groupName => {
+                        if (usedGroups[groupName]) {
+                            repeatedGroups.push(groupName);
+                        }
+                        usedGroups[groupName] = true;
+                    });
+                });
+            }
+            if (repeatedGroups.length > 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Guruh takror tanlangan',
+                    text: `${[...new Set(repeatedGroups)].join(', ')} guruhlar bitta fan va soat turi ichida ikki marta berilmasin.`
                 });
                 return;
             }
@@ -843,11 +980,13 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             $('#teachersTableBody tr').each(function() {
                 const teacherId = $(this).find('.teacher-select').val();
                 const hours = parseFloat($(this).find('.teacher-hours').val()) || 0;
+                const groups = currentRequiresGroups ? ($(this).find('.group-select').val() || []) : [];
                 
                 if (teacherId && hours > 0) {
                     taqsimotlar.push({
                         oqituvchi_id: teacherId,
-                        soat_soni: hours
+                        soat_soni: hours,
+                        guruhlar: groups
                     });
                 }
             });
@@ -879,8 +1018,8 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
                         });
                     } else {
                         Swal.fire({
-                            icon: 'error',
-                            title: 'Xatolik!',
+                            icon: response.icon || 'error',
+                            title: response.title || 'Xatolik!',
                             text: response.message
                         });
                     }
@@ -904,6 +1043,8 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             currentMaxSoat = 0;
             currentFanNomi = '';
             currentType = '';
+            currentRequiresGroups = false;
+            currentGroupOptions = [];
             teacherRows = [];
             teacherRowCounter = 0;
         }
@@ -951,7 +1092,11 @@ $yearEnd = max($maxAcademicStart, $currentAcademicStart);
             } else {
                 $('#kafedraFilter').val(null).trigger('change');
             }
-            $('#oquvYilFilter').val(null).trigger('change');
+            if ($(`#oquvYilFilter option[value="${defaultAcademicYearStart}"]`).length) {
+                $('#oquvYilFilter').val(defaultAcademicYearStart).trigger('change');
+            } else {
+                $('#oquvYilFilter').val(null).trigger('change');
+            }
             $('#semestrFilter').val(null).trigger('change');
 
             if (scopeLocked) {
