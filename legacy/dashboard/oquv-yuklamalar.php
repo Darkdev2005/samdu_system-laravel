@@ -253,6 +253,9 @@
                 return;
             }
             isTableLoading = true;
+            const resolvedOquvYilStart = (oquvYilStart === '' || oquvYilStart === null || typeof oquvYilStart === 'undefined') ?
+                ($('#semestrFilter').val() || '') :
+                oquvYilStart;
 
             // Loading ko'rsatish
             const container = $('#yuklamaTableContainer');
@@ -272,7 +275,7 @@
                 type: 'POST',
                 data: {
                     kafedra_id: kafedraId,
-                    oquv_yil_start: oquvYilStart,
+                    oquv_yil_start: resolvedOquvYilStart,
                     yonalish_id: yonalishId,
                     semestr_turi: semestrType,
                     kurs: kurs,

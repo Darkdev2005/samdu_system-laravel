@@ -82,11 +82,19 @@ $sql = "
         MAX(f.fan_code) AS fan_code,
         CASE
             WHEN MAX(bf.id) IS NOT NULL THEN CONCAT(MAX(bf.fan_name), ' | ', MAX(f.fan_name))
-            WHEN MAX(ivs.variant_names) IS NOT NULL AND MAX(ivs.variant_names) <> '' THEN CONCAT(MAX(f.fan_name), ' | ', MAX(ivs.variant_names))
             ELSE MAX(f.fan_name)
         END AS fan_name,
-        r.dars_tur_id,
+        CASE
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'amalda_maruz' THEN 1
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'amalda_amaliy' THEN 2
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'amalda_laboratoriya' THEN 3
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'amalda_seminar' THEN 4
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'oraliq_nazorat' THEN 20
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'yakuniy_nazorat' THEN 21
+            ELSE r.dars_tur_id
+        END AS dars_tur_id,
         NULL AS qoshimcha_id,
+        GROUP_CONCAT(DISTINCT NULLIF(t.guruhlar_json, '') SEPARATOR '|@|') AS assigned_guruhlar_json,
         SUM(t.soat) AS soat,
         'A' AS type
     FROM taqsimotlar t
@@ -95,15 +103,6 @@ $sql = "
     JOIN semestrlar s ON s.id = f.semestr_id
     JOIN yonalishlar y ON y.id = s.yonalish_id
     JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
-    LEFT JOIN (
-        SELECT
-            ir.base_fan_id,
-            GROUP_CONCAT(DISTINCT fv.fan_name ORDER BY fv.fan_name SEPARATOR ' | ') AS variant_names
-        FROM ishchi_oquv_reja ir
-        JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ir.id
-        JOIN fanlar fv ON fv.id = iv.fan_id
-        GROUP BY ir.base_fan_id
-    ) ivs ON ivs.base_fan_id = f.id
     LEFT JOIN ishchi_oquv_reja_variants iv ON iv.fan_id = f.id
     LEFT JOIN ishchi_oquv_reja ir ON ir.id = iv.ishchi_reja_id
     LEFT JOIN fanlar bf ON bf.id = ir.base_fan_id
@@ -113,11 +112,88 @@ $sql = "
     LEFT JOIN ilmiy_darajalar id ON id.id = o.ilmiy_daraja_id
     LEFT JOIN ish_turlar isht ON isht.id = o.ishtur_id
     WHERE t.type = 'A'
+      AND COALESCE(t.soat_turi, '') IN ('', 'amalda_maruz', 'amalda_amaliy', 'amalda_laboratoriya', 'amalda_seminar', 'oraliq_nazorat', 'yakuniy_nazorat')
+      AND NOT EXISTS (
+          SELECT 1
+          FROM ishchi_oquv_reja ior_base
+          WHERE ior_base.base_fan_id = f.id
+            AND ior_base.semestr_id = f.semestr_id
+      )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM tanlov_fan_talablar tft_base
+          WHERE tft_base.base_fan_id = f.id
+            AND tft_base.semestr_id = f.semestr_id
+      )
       $semestrFilterSql
       $whereTeacher
       $whereKafedra
       $whereShtat
-    GROUP BY t.teacher_id, s.semestr, f.id, r.dars_tur_id
+    GROUP BY t.teacher_id, s.semestr, f.id, r.dars_tur_id, COALESCE(t.soat_turi, '')
+
+    UNION ALL
+
+    SELECT
+        t.teacher_id,
+        MAX(o.fio) AS fio,
+        MAX(o.lavozim) AS lavozim,
+        MAX(o.stavka) AS stavka,
+        MAX(iu.name) AS ilmiy_unvon,
+        MAX(id.name) AS ilmiy_daraja,
+        MAX(isht.name) AS shtat_turi,
+        MAX(y.name) AS talim_yonalishi,
+        MAX(y.code) AS yonalish_code,
+        MAX(ga.guruh_raqami) AS guruh_raqami,
+        COALESCE(MAX(tft.talabalar_soni), MAX(ga.talabalar_soni)) AS talabalar_soni,
+        MAX(y.patok_soni) AS patok_soni,
+        MAX(y.kattaguruh_soni) AS kattaguruh_soni,
+        MAX(y.kichikguruh_soni) AS kichikguruh_soni,
+        MAX(tsh.name) AS oquv_shakli,
+        s.semestr,
+        MAX(FLOOR((s.semestr + 1)/2)) AS kurs,
+        vf.id AS fan_id,
+        MAX(vf.fan_code) AS fan_code,
+        CASE
+            WHEN MAX(bf.id) IS NOT NULL THEN CONCAT(MAX(bf.fan_name), ' | ', MAX(vf.fan_name))
+            ELSE MAX(vf.fan_name)
+        END AS fan_name,
+        CASE
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'amalda_maruz' THEN 1
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'amalda_amaliy' THEN 2
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'amalda_laboratoriya' THEN 3
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'amalda_seminar' THEN 4
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'oraliq_nazorat' THEN 20
+            WHEN MAX(COALESCE(t.soat_turi, '')) = 'yakuniy_nazorat' THEN 21
+            ELSE 0
+        END AS dars_tur_id,
+        NULL AS qoshimcha_id,
+        GROUP_CONCAT(DISTINCT NULLIF(t.guruhlar_json, '') SEPARATOR '|@|') AS assigned_guruhlar_json,
+        SUM(t.soat) AS soat,
+        'A' AS type
+    FROM taqsimotlar t
+    JOIN fanlar vf ON vf.id = (t.oquv_reja_id - 1700000000)
+    JOIN semestrlar s ON s.id = vf.semestr_id
+    JOIN yonalishlar y ON y.id = s.yonalish_id
+    JOIN talim_shakllar tsh ON tsh.id = y.talim_shakli_id
+    LEFT JOIN tanlov_fan_talablar tft
+           ON tft.variant_fan_id = vf.id
+          AND tft.semestr_id = vf.semestr_id
+    LEFT JOIN ishchi_oquv_reja_variants iv ON iv.fan_id = vf.id
+    LEFT JOIN ishchi_oquv_reja ir ON ir.id = iv.ishchi_reja_id
+    LEFT JOIN fanlar bf ON bf.id = ir.base_fan_id
+    JOIN guruh_agg ga ON ga.yonalish_id = y.id
+    JOIN oqituvchilar o ON o.id = t.teacher_id
+    LEFT JOIN ilmiy_unvonlar iu ON iu.id = o.ilmiy_unvon_id
+    LEFT JOIN ilmiy_darajalar id ON id.id = o.ilmiy_daraja_id
+    LEFT JOIN ish_turlar isht ON isht.id = o.ishtur_id
+    WHERE t.type = 'A'
+      AND t.oquv_reja_id > 1700000000
+      AND COALESCE(t.soat_turi, '') IN ('', 'amalda_maruz', 'amalda_amaliy', 'amalda_laboratoriya', 'amalda_seminar', 'oraliq_nazorat', 'yakuniy_nazorat')
+      $semestrFilterSql
+      $whereTeacher
+      $whereKafedra
+      $whereShtat
+    GROUP BY t.teacher_id, s.semestr, vf.id, COALESCE(t.soat_turi, '')
 
     UNION ALL
 
@@ -144,6 +220,7 @@ $sql = "
         MAX(qf.fan_name) AS fan_name,
         NULL AS dars_tur_id,
         qf.qoshimcha_dars_id AS qoshimcha_id,
+        GROUP_CONCAT(DISTINCT NULLIF(t.guruhlar_json, '') SEPARATOR '|@|') AS assigned_guruhlar_json,
         SUM(t.soat) AS soat,
         'Q' AS type
     FROM taqsimotlar t
@@ -189,6 +266,7 @@ $sql = "
         CONVERT(MAX(CONCAT(mdy.kod, ' - ', mdy.ism_familiya)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS fan_name,
         NULL AS dars_tur_id,
         mdqr.qoshimcha_dars_id AS qoshimcha_id,
+        GROUP_CONCAT(DISTINCT NULLIF(t.guruhlar_json, '') SEPARATOR '|@|') AS assigned_guruhlar_json,
         SUM(t.soat) AS soat,
         'D' AS type
     FROM taqsimotlar t
@@ -263,6 +341,40 @@ function semestr_prefix(int $semestr, int $pairStart, bool $useOddEvenBuckets): 
     return ($semestr === $pairStart) ? 's1_' : 's2_';
 }
 
+function assigned_groups_display(?string $value): string {
+    $value = trim((string)$value);
+    if ($value === '') {
+        return '';
+    }
+
+    $groups = [];
+    foreach (explode('|@|', $value) as $chunk) {
+        $chunk = trim($chunk);
+        if ($chunk === '') {
+            continue;
+        }
+        $decoded = json_decode($chunk, true);
+        if (is_array($decoded)) {
+            foreach ($decoded as $groupName) {
+                $groupName = trim((string)$groupName);
+                if ($groupName !== '') {
+                    $groups[$groupName] = true;
+                }
+            }
+            continue;
+        }
+
+        foreach (preg_split('/\s*[|,]\s*/', $chunk) ?: [] as $groupName) {
+            $groupName = trim((string)$groupName, " \t\n\r\0\x0B[]\"");
+            if ($groupName !== '') {
+                $groups[$groupName] = true;
+            }
+        }
+    }
+
+    return implode(' | ', array_keys($groups));
+}
+
 if ($result) {
     while ($r = mysqli_fetch_assoc($result)) {
         $tid = (int)$r['teacher_id'];
@@ -283,7 +395,8 @@ if ($result) {
         $fanName = trim($r['fan_name'] ?? '');
         $fanCode = trim($r['fan_code'] ?? '');
         $yonalishCode = trim($r['yonalish_code'] ?? '');
-        $guruh = trim($r['guruh_raqami'] ?? '');
+        $assignedGuruh = assigned_groups_display($r['assigned_guruhlar_json'] ?? '');
+        $guruh = $assignedGuruh !== '' ? $assignedGuruh : trim($r['guruh_raqami'] ?? '');
 
         if ($type === 'A') {
             $key = "A|{$semestr}|{$r['fan_id']}|{$yonalishCode}|{$guruh}";
@@ -320,6 +433,8 @@ if ($result) {
             if ($darsTur === 3) addToRow($row, $prefix . 'lab', $soat);
             if ($darsTur === 4) addToRow($row, $prefix . 'seminar', $soat);
             if ($darsTur === 5) addToRow($row, $prefix . 'konsult', $soat);
+            if ($darsTur === 20) addToRow($row, $prefix . 'oraliq', $soat);
+            if ($darsTur === 21) addToRow($row, $prefix . 'yakuniy', $soat);
         } else {
             $qId = (int)$r['qoshimcha_id'];
             $prefix = semestr_prefix($semestr, $pairStart, $useOddEvenBuckets);

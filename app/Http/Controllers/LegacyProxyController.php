@@ -69,6 +69,7 @@ class LegacyProxyController extends Controller
             'insert/add_oquv_taqsimot.php',
             'insert/update_mening_hisobim.php',
             'api/get_oquv_reja_by_yuklama.php',
+            'api/search_oqituvchilar.php',
             'api/get_teacher_total_hours.php',
         ];
 

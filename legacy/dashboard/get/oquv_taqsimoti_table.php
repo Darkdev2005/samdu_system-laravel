@@ -720,7 +720,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                     if ($num <= 0) {
                         return '';
                     }
-                    return rtrim(rtrim(number_format($num, 2, '.', ''), '0'), '.');
+                    return (string)(int)round($num);
                 }
                 function resolvePrimaryRejaId(array $row): int {
                     foreach ([
@@ -776,9 +776,15 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                         $rid = 0;
                         $soat = 0.0;
                     }
+                    $isControlSoatTuri = in_array($field, ['oraliq_nazorat', 'yakuniy_nazorat'], true);
+                    $cellType = 'Q';
+                    if ($isControlSoatTuri) {
+                        $cellType = $rowType;
+                        $rid = $soat > 0 ? resolvePrimaryRejaId($row) : 0;
+                    }
                     $clickable = $soat > 0;
                     $assigned = $rid > 0
-                        ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, $isScopedSoatTuri ? 'Q' : 'Q', $isScopedSoatTuri ? $field : '')
+                        ? getMappedTaqsimotSoat($db, $taqsimotSoatMap, $rid, $cellType, $isScopedSoatTuri ? $field : '')
                         : 0.0;
                     $classes = [];
                     if ($clickable) {
@@ -793,7 +799,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
 
                     $attrs = [
                         'class' => implode(' ', $classes),
-                        'data-type' => 'Q',
+                        'data-type' => $cellType,
                         'data-yuklama-id' => (string)$rid,
                         'data-soat-turi' => $field,
                         'data-max-soat' => (string)$soat,
@@ -849,10 +855,7 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                     if ($numeric == 0.0) {
                         return '';
                     }
-                    if (fmod($numeric, 1.0) == 0.0) {
-                        return (string)(int)round($numeric);
-                    }
-                    return rtrim(rtrim(number_format($numeric, 2, '.', ''), '0'), '.');
+                    return (string)(int)round($numeric);
                 };
                 $totals = [
                     'amalda_maruza' => 0, 'amalda_amaliy' => 0, 'amalda_lab' => 0, 'amalda_seminar' => 0,
@@ -887,24 +890,22 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                         $variantFanId = (int)($row['variant_fan_id'] ?? 0);
                         $virtualVariantRejaId = $variantFanId > 0 ? legacy_taqsimot_virtual_reja_id($variantFanId) : 0;
                         if ($virtualVariantRejaId > 0) {
-                            if ($maruzaRejaId <= 0 || $maruzaRejaId === $legacyMaruzaRejaId) {
-                                $maruzaRejaId = $virtualVariantRejaId;
-                            }
-                            if ($amaliyRejaId <= 0 || $amaliyRejaId === $legacyAmaliyRejaId) {
-                                $amaliyRejaId = $virtualVariantRejaId;
-                            }
-                            if ($labRejaId <= 0 || $labRejaId === $legacyLabRejaId) {
-                                $labRejaId = $virtualVariantRejaId;
-                            }
-                            if ($seminarRejaId <= 0 || $seminarRejaId === $legacySeminarRejaId) {
-                                $seminarRejaId = $virtualVariantRejaId;
-                            }
+                            // Tanlov fan va chet tili variantlari bitta eski reja IDni ulashishi mumkin.
+                            // Kataklar doim variant fan IDdan yasalgan virtual ID bilan saqlansin.
+                            $maruzaRejaId = $virtualVariantRejaId;
+                            $amaliyRejaId = $virtualVariantRejaId;
+                            $labRejaId = $virtualVariantRejaId;
+                            $seminarRejaId = $virtualVariantRejaId;
                         }
                         $allowLegacyTaqsimot = !empty($row['is_legacy_tanlov_owner']);
                         $rowType = strtoupper(trim((string)($row['taqsimot_type'] ?? 'A')));
                         if ($rowType === '') {
                             $rowType = 'A';
                         }
+                        $legacyMaruzaAttr = ($variantFanId > 0 || $allowLegacyTaqsimot) ? ($legacyMaruzaRejaId ?: 0) : 0;
+                        $legacyAmaliyAttr = ($variantFanId > 0 || $allowLegacyTaqsimot) ? ($legacyAmaliyRejaId ?: 0) : 0;
+                        $legacyLabAttr = ($variantFanId > 0 || $allowLegacyTaqsimot) ? ($legacyLabRejaId ?: 0) : 0;
+                        $legacySeminarAttr = ($variantFanId > 0 || $allowLegacyTaqsimot) ? ($legacySeminarRejaId ?: 0) : 0;
                         $maruzaJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $maruzaRejaId, $legacyMaruzaRejaId, $rowType, $allowLegacyTaqsimot, 'amalda_maruz');
                         $amaliyJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $amaliyRejaId, $legacyAmaliyRejaId, $rowType, $allowLegacyTaqsimot, 'amalda_amaliy');
                         $labJami = getTaqsimotSoatWithLegacy($db, $taqsimotSoatMap, $labRejaId, $legacyLabRejaId, $rowType, $allowLegacyTaqsimot, 'amalda_laboratoriya');
@@ -981,10 +982,11 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                             ];
                         }
                         if ($isMaxsusRow) {
-                            $qCellData['oraliq_nazorat']['soat'] = 0;
-                            $qCellData['yakuniy_nazorat']['soat'] = 0;
-                            $qCellData['oraliq_nazorat']['rid'] = 0;
-                            $qCellData['yakuniy_nazorat']['rid'] = 0;
+                            // Izoh: Maxsus/iqtidorli qatorlarda qo'shimcha soatlar hisoblanmaydi.
+                            foreach ($qFields as $qField) {
+                                $qCellData[$qField]['soat'] = 0;
+                                $qCellData[$qField]['rid'] = 0;
+                            }
                         } else {
                             // Izoh: Reyting formulasi bo'yicha hisoblangan qiymat bo'lsa, uni ustuvor ko'rsatamiz.
                             if ($oraliqNazorat > 0) {
@@ -1052,41 +1054,41 @@ $resolveDeletedGroupNames = static function (array $row) use ($collectCodesFromT
                     <td><?= $row['kichikguruh_soni'] ?></td>
                     <td class="soat-cell  <?= getCellClass($maruzaJami, $row['amalda_maruz']) ?>"
                         data-type="<?= htmlspecialchars($rowType) ?>"
-                        data-yuklama-id="<?= $row['maruza_reja_id'] ?: 0 ?>"
-                        data-legacy-yuklama-id="<?= $allowLegacyTaqsimot ? ($legacyMaruzaRejaId ?: 0) : 0 ?>"
+                        data-yuklama-id="<?= $maruzaRejaId ?: 0 ?>"
+                        data-legacy-yuklama-id="<?= $legacyMaruzaAttr ?>"
                         data-soat-turi="amalda_maruz"
-                        data-max-soat="<?= $row['amalda_maruz'] ?>">
-                        <?= $row['amalda_maruz'] ?: '' ?>
+                        data-max-soat="<?= htmlspecialchars((string)($row['amalda_maruz'] ?? 0), ENT_QUOTES, 'UTF-8') ?>">
+                        <?= formatSoatValue($row['amalda_maruz'] ?? 0) ?>
                         
                     </td>
                     <!-- AMALIY -->
                     <td class="soat-cell <?= getCellClass($amaliyJami, $row['amalda_amaliy']) ?>"
                         data-type="<?= htmlspecialchars($rowType) ?>"
-                        data-yuklama-id="<?= $row['amaliy_reja_id'] ?: 0 ?>"
-                        data-legacy-yuklama-id="<?= $allowLegacyTaqsimot ? ($legacyAmaliyRejaId ?: 0) : 0 ?>"
+                        data-yuklama-id="<?= $amaliyRejaId ?: 0 ?>"
+                        data-legacy-yuklama-id="<?= $legacyAmaliyAttr ?>"
                         data-soat-turi="amalda_amaliy"
-                        data-max-soat="<?= $row['amalda_amaliy'] ?: 0 ?>">
-                        <?= $row['amalda_amaliy'] ?: '' ?>
+                        data-max-soat="<?= htmlspecialchars((string)($row['amalda_amaliy'] ?? 0), ENT_QUOTES, 'UTF-8') ?>">
+                        <?= formatSoatValue($row['amalda_amaliy'] ?? 0) ?>
                         
                     </td>
                     <!-- LAB -->
                     <td class="soat-cell <?= getCellClass($labJami, $row['amalda_laboratoriya']) ?>"
                         data-type="<?= htmlspecialchars($rowType) ?>"
-                        data-yuklama-id="<?= $row['laboratoriya_reja_id'] ?: 0 ?>"
-                        data-legacy-yuklama-id="<?= $allowLegacyTaqsimot ? ($legacyLabRejaId ?: 0) : 0 ?>"
+                        data-yuklama-id="<?= $labRejaId ?: 0 ?>"
+                        data-legacy-yuklama-id="<?= $legacyLabAttr ?>"
                         data-soat-turi="amalda_laboratoriya"
-                        data-max-soat="<?= $row['amalda_laboratoriya'] ?: 0 ?>">
-                        <?= $row['amalda_laboratoriya'] ?: '' ?>
+                        data-max-soat="<?= htmlspecialchars((string)($row['amalda_laboratoriya'] ?? 0), ENT_QUOTES, 'UTF-8') ?>">
+                        <?= formatSoatValue($row['amalda_laboratoriya'] ?? 0) ?>
                         
                     </td>
                     <!-- SEMINAR -->
                     <td class="soat-cell <?= getCellClass($seminarJami, $row['amalda_seminar']) ?>"
                         data-type="<?= htmlspecialchars($rowType) ?>"
-                        data-yuklama-id="<?= $row['seminar_reja_id'] ?: 0 ?>"
-                        data-legacy-yuklama-id="<?= $allowLegacyTaqsimot ? ($legacySeminarRejaId ?: 0) : 0 ?>"
+                        data-yuklama-id="<?= $seminarRejaId ?: 0 ?>"
+                        data-legacy-yuklama-id="<?= $legacySeminarAttr ?>"
                         data-soat-turi="amalda_seminar"
-                        data-max-soat="<?= $row['amalda_seminar'] ?: 0 ?>">
-                        <?= $row['amalda_seminar'] ?: '' ?>
+                        data-max-soat="<?= htmlspecialchars((string)($row['amalda_seminar'] ?? 0), ENT_QUOTES, 'UTF-8') ?>">
+                        <?= formatSoatValue($row['amalda_seminar'] ?? 0) ?>
                         
                     </td>
                     <!-- Reyting -->

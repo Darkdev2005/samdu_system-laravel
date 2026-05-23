@@ -172,10 +172,7 @@ if ($magistrDoktorantOnly) {
                     if ($numeric == 0.0) {
                         return '';
                     }
-                    if (fmod($numeric, 1.0) == 0.0) {
-                        return (string)(int)round($numeric);
-                    }
-                    return rtrim(rtrim(number_format($numeric, 2, '.', ''), '0'), '.');
+                    return (string)(int)round($numeric);
                 };
                 $totals = [
                     'reja_maruza' => 0, 'reja_amaliy' => 0, 'reja_lab' => 0, 'reja_seminar' => 0,
@@ -392,34 +389,34 @@ if ($magistrDoktorantOnly) {
                     <td></td>
                     <td></td>
                     <!-- Reyting nazorati -->
-                    <td><?= $row['oraliq_nazorat'] ?></td>
-                    <td><?= $row['yakuniy_nazorat'] ?></td>
+                    <td><?= $formatSoat($row['oraliq_nazorat'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['yakuniy_nazorat'] ?? 0) ?></td>
                     <!-- Kurs ishlari -->
-                    <td><?= ($row['kurs_ishi'] ?? 0) ?: '' ?></td>
-                    <td><?= ($row['kurs_loyiha'] ?? 0) ?: '' ?></td>
+                    <td><?= $formatSoat($row['kurs_ishi'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['kurs_loyiha'] ?? 0) ?></td>
                     <!-- Malakaviy amaliyot -->
-                    <td><?= $row['oquv_ped_amaliyot'] ?></td>
-                    <td><?= $row['uzluksiz_malakaviy'] ?></td>
-                    <td><?= $row['dala_amaliyoti_otm'] ?></td>
-                    <td><?= $row['dala_amaliyoti_tashqarida'] ?></td>
-                    <td><?= $row['ishlab_chiqarish'] ?></td>
+                    <td><?= $formatSoat($row['oquv_ped_amaliyot'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['uzluksiz_malakaviy'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['dala_amaliyoti_otm'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['dala_amaliyoti_tashqarida'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['ishlab_chiqarish'] ?? 0) ?></td>
                     <!-- BMI rahbarligi -->
-                    <td><?= $row['bmi_rahbarligi'] ?></td>
+                    <td><?= $formatSoat($row['bmi_rahbarligi'] ?? 0) ?></td>
                     <!-- Magistratura -->
-                    <td><?= $row['ilmiy_tadqiqot_ishi'] ?></td>
-                    <td><?= $row['ilmiy_pedagogik_ishi'] ?></td>
-                    <td><?= $row['ilmiy_stajirovka'] ?></td>
+                    <td><?= $formatSoat($row['ilmiy_tadqiqot_ishi'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['ilmiy_pedagogik_ishi'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['ilmiy_stajirovka'] ?? 0) ?></td>
                     <!-- Doktorantura -->
-                    <td><?= $row['tayanch_doktorantura']  ?></td>
-                    <td><?= $row['katta_ilmiy_tadqiqotchi']  ?></td>
-                    <td><?= $row['stajyor_tadqiqotchi']  ?></td>
+                    <td><?= $formatSoat($row['tayanch_doktorantura'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['katta_ilmiy_tadqiqotchi'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['stajyor_tadqiqotchi'] ?? 0) ?></td>
                     
-                    <td><?= $row['ochiq_dars'] ?></td>
-                    <td><?= $row['yadak'] ?></td>
-                    <td><?= $row['boshqa_soatlar'] ?></td>
+                    <td><?= $formatSoat($row['ochiq_dars'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['yadak'] ?? 0) ?></td>
+                    <td><?= $formatSoat($row['boshqa_soatlar'] ?? 0) ?></td>
                     
                     <!-- JAMI soat -->
-                    <td><?= $row['jami_soat'] ?></td>
+                    <td><?= $formatSoat($row['jami_soat'] ?? 0) ?></td>
                     <td class="left"><?= htmlspecialchars($row['kafedra_nomi'] ?? '') ?></td>
                 </tr>
                 <?php 

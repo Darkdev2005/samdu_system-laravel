@@ -423,6 +423,103 @@ class Database{
         return strpos($value, 'masof') !== false;
     }
 
+    private function tableExists(string $table): bool
+    {
+        $safeTable = mysqli_real_escape_string($this->link, $table);
+        $res = mysqli_query($this->link, "SHOW TABLES LIKE '{$safeTable}'");
+        return $res && mysqli_num_rows($res) > 0;
+    }
+
+    private function addIndexIfMissing(string $table, string $indexName, string $columns): void
+    {
+        if (!$this->tableExists($table)) {
+            return;
+        }
+
+        $safeTable = str_replace('`', '``', $table);
+        if (preg_match_all('/`([^`]+)`/', $columns, $matches)) {
+            foreach ($matches[1] as $column) {
+                $safeColumn = mysqli_real_escape_string($this->link, $column);
+                $colRes = mysqli_query($this->link, "SHOW COLUMNS FROM `{$safeTable}` LIKE '{$safeColumn}'");
+                if (!$colRes || mysqli_num_rows($colRes) === 0) {
+                    return;
+                }
+            }
+        }
+
+        $safeIndex = mysqli_real_escape_string($this->link, $indexName);
+        $idxRes = mysqli_query($this->link, "SHOW INDEX FROM `{$safeTable}` WHERE Key_name = '{$safeIndex}'");
+        if ($idxRes && mysqli_num_rows($idxRes) > 0) {
+            return;
+        }
+
+        try {
+            @mysqli_query($this->link, "ALTER TABLE `{$safeTable}` ADD INDEX `{$indexName}` ({$columns})");
+        } catch (Throwable $e) {
+            // Boshqa parallel request indeksni yaratib ulgurgan bo'lsa, asosiy ishni to'xtatmaymiz.
+        }
+    }
+
+    private function indexExists(string $table, string $indexName): bool
+    {
+        if (!$this->tableExists($table)) {
+            return false;
+        }
+
+        $safeTable = str_replace('`', '``', $table);
+        $safeIndex = mysqli_real_escape_string($this->link, $indexName);
+        $idxRes = mysqli_query($this->link, "SHOW INDEX FROM `{$safeTable}` WHERE Key_name = '{$safeIndex}'");
+        return $idxRes && mysqli_num_rows($idxRes) > 0;
+    }
+
+    private function ensurePerformanceIndexes(): void
+    {
+        if ($this->indexExists('taqsimot_resync_events', 'idx_tre_status_yonalish')) {
+            return;
+        }
+
+        $this->addIndexIfMissing('taqsimotlar', 'idx_taqsimot_type_reja_soat', '`type`, `oquv_reja_id`, `soat_turi`');
+        $this->addIndexIfMissing('taqsimotlar', 'idx_taqsimot_reja_type_teacher', '`oquv_reja_id`, `type`, `teacher_id`');
+        $this->addIndexIfMissing('taqsimotlar', 'idx_taqsimot_teacher', '`teacher_id`');
+
+        $this->addIndexIfMissing('guruhlar', 'idx_guruhlar_yonalish', '`yonalish_id`');
+        $this->addIndexIfMissing('guruhlar', 'idx_guruhlar_yonalish_nomer', '`yonalish_id`, `guruh_nomer`');
+        $this->addIndexIfMissing('guruhlar_history', 'idx_gh_yonalish_change_id', '`yonalish_id`, `change_type`, `id`');
+        $this->addIndexIfMissing('guruhlar_history', 'idx_gh_yonalish_guruh_change_id', '`yonalish_id`, `guruh_nomer`, `change_type`, `id`');
+
+        $this->addIndexIfMissing('oquv_rejalar', 'idx_oquv_reja_fan_dars', '`fan_id`, `dars_tur_id`');
+        $this->addIndexIfMissing('oquv_rejalar', 'idx_oquv_reja_dars_fan_soat', '`dars_tur_id`, `fan_id`, `dars_soat`');
+        $this->addIndexIfMissing('fanlar', 'idx_fanlar_semestr_kafedra', '`semestr_id`, `kafedra_id`');
+        $this->addIndexIfMissing('fanlar', 'idx_fanlar_code_kafedra', '`fan_code`, `kafedra_id`');
+        $this->addIndexIfMissing('fanlar', 'idx_fanlar_kafedra', '`kafedra_id`');
+        $this->addIndexIfMissing('fanlar', 'idx_fanlar_name_sem_kafedra', '`fan_name`, `semestr_id`, `kafedra_id`');
+        $this->addIndexIfMissing('semestrlar', 'idx_semestrlar_sem_yon_id', '`semestr`, `yonalish_id`, `id`');
+
+        $this->addIndexIfMissing('qoshimcha_fanlar', 'idx_qf_semestr_dars', '`semestr_id`, `qoshimcha_dars_id`');
+        $this->addIndexIfMissing('qoshimcha_oquv_rejalar', 'idx_qor_qfan_kafedra', '`qoshimcha_fanid`, `kafedra_id`');
+        $this->addIndexIfMissing('maxsus_oquv_rejalar', 'idx_maxsus_scope', '`kafedra_id`, `semestr_id`, `yonalish_id`, `guruh_id`');
+        $this->addIndexIfMissing('magistr_doktorant_yuklamalar', 'idx_mdy_scope', '`kafedra_id`, `semestr_id`, `kurs`, `kirish_yili`');
+        $this->addIndexIfMissing('magistr_doktorant_qoshimcha_rejalar', 'idx_mdqr_person_dars', '`magistr_doktorant_id`, `qoshimcha_dars_id`');
+
+        $this->addIndexIfMissing('umumtalim_fanlar', 'idx_uf_code_name_kafedra', '`fan_code`, `fan_name`, `kafedra_id`');
+        $this->addIndexIfMissing('umumtalim_fanlar', 'idx_uf_kafedra_semestr', '`kafedra_id`, `semestr`');
+        $this->addIndexIfMissing('umumtalim_fan_biriktirish', 'idx_ub_source_sem', '`source_fan_id`, `semestr_id`');
+        $this->addIndexIfMissing('umumtalim_fan_biriktirish', 'idx_ub_yonalish_sem', '`yonalish_id`, `semestr_id`');
+        $this->addIndexIfMissing('umumtalim_fan_biriktirish_guruhlar', 'idx_ubg_source_group_sem', '`source_fan_id`, `guruh_id`, `semestr_id`');
+        $this->addIndexIfMissing('umumtalim_fan_biriktirish_guruhlar', 'idx_ubg_umum_yon_sem', '`biriktirish_id`, `yonalish_id`, `semestr_id`');
+
+        $this->addIndexIfMissing('chet_tili_biriktirilgan_guruhlar', 'idx_ctbg_sem_group_fan', '`semestr_id`, `guruh_id`, `fan_id`');
+        $this->addIndexIfMissing('chet_tili_biriktirilgan_guruhlar', 'idx_ctbg_fan_sem_yon', '`fan_id`, `semestr_id`, `yonalish_id`');
+        $this->addIndexIfMissing('chet_tili_talablar', 'idx_ctt_sem_group_fan', '`semestr_id`, `guruh_id`, `fan_id`');
+        $this->addIndexIfMissing('chet_tili_talablar', 'idx_ctt_fan_sem_yon', '`fan_id`, `semestr_id`, `yonalish_id`');
+        $this->addIndexIfMissing('chet_tili_guruhlar', 'idx_ctg_sem_fan', '`semestr_id`, `fan_id`');
+
+        $this->addIndexIfMissing('ishchi_oquv_reja', 'idx_ior_base_sem', '`base_fan_id`, `semestr_id`');
+        $this->addIndexIfMissing('ishchi_oquv_reja_variants', 'idx_iorv_fan_reja', '`fan_id`, `ishchi_reja_id`');
+        $this->addIndexIfMissing('tanlov_fan_talablar', 'idx_tft_sem_base_variant', '`semestr_id`, `base_fan_id`, `variant_fan_id`');
+        $this->addIndexIfMissing('taqsimot_resync_events', 'idx_tre_status_yonalish', '`status`, `yonalish_id`');
+    }
+
     function __construct() {
         $this->host = $this->readEnv('DB_HOST', $this->host);
         $this->port = (int)$this->readEnv('DB_PORT', (string)$this->port);
@@ -900,6 +997,7 @@ class Database{
                   AND NOT EXISTS (SELECT 1 FROM chet_tili_guruhlar ct WHERE ct.semestr_id = s.id)
             ");
         }
+        $this->ensurePerformanceIndexes();
     }
     private function isMutatingQuery(string $query): ?string
     {
@@ -2714,8 +2812,8 @@ class Database{
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
                             CASE
-                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
-                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 32 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 32) / 32) + 1
                             END
                         ELSE ga.guruhlar_soni
                     END AS guruhlar_soni,
@@ -2729,8 +2827,8 @@ class Database{
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
                             CASE
-                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
-                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 32 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 32) / 32) + 1
                             END
                         ELSE y.kattaguruh_soni
                     END AS kattaguruh_soni,
@@ -2748,21 +2846,34 @@ class Database{
                     fr.amaliy_soat,
                     fr.laboratoriya_soat,
                     fr.seminar_soat,
+                    (
                     fr.maruza_soat *
                     CASE
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
                         ELSE y.patok_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(COALESCE(tsh.name, '')) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END AS amalda_maruz,
+                    (
                     fr.amaliy_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
                             CASE
-                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
-                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 32 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 32) / 32) + 1
                             END
                         ELSE y.kattaguruh_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(COALESCE(tsh.name, '')) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END AS amalda_amaliy,
+                    (
                     fr.laboratoriya_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
@@ -2772,17 +2883,29 @@ class Database{
                                 ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
                             END
                         ELSE y.kichikguruh_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(COALESCE(tsh.name, '')) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END AS amalda_lab,
+                    (
                     fr.seminar_soat *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
                             CASE
-                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
-                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 32 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 32) / 32) + 1
                             END
                         ELSE y.kattaguruh_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(COALESCE(tsh.name, '')) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END AS amalda_seminar,
+                    (
                     fr.maruza_soat *
                     CASE
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
@@ -2817,6 +2940,11 @@ class Database{
                                 ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
                             END
                         ELSE y.kattaguruh_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(COALESCE(tsh.name, '')) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END
                     AS jami_soat,
                     '' AS biriktirilgan_yonalish_code,
@@ -2956,14 +3084,46 @@ class Database{
                     COALESCE(ufs.amaliy_soat, 0) AS amaliy_soat,
                     COALESCE(ufs.laboratoriya_soat, 0) AS laboratoriya_soat,
                     COALESCE(ufs.seminar_soat, 0) AS seminar_soat,
-                    COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1) AS amalda_maruz,
-                    COALESCE(uas.amalda_amaliy, 0) AS amalda_amaliy,
-                    COALESCE(uas.amalda_lab, 0) AS amalda_lab,
-                    COALESCE(uas.amalda_seminar, 0) AS amalda_seminar,
-                    (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1))
-                    + COALESCE(uas.amalda_amaliy, 0)
-                    + COALESCE(uas.amalda_lab, 0)
-                    + COALESCE(uas.amalda_seminar, 0) AS jami_soat,
+                    CASE
+                        WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1)) * 0.3
+                        ELSE COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1)
+                    END AS amalda_maruz,
+                    CASE
+                        WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_amaliy, 0) * 0.3
+                        ELSE COALESCE(uas.amalda_amaliy, 0)
+                    END AS amalda_amaliy,
+                    CASE
+                        WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_lab, 0) * 0.3
+                        ELSE COALESCE(uas.amalda_lab, 0)
+                    END AS amalda_lab,
+                    CASE
+                        WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_seminar, 0) * 0.3
+                        ELSE COALESCE(uas.amalda_seminar, 0)
+                    END AS amalda_seminar,
+                    (
+                        CASE
+                            WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1)) * 0.3
+                            ELSE COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1)
+                        END
+                    )
+                    + (
+                        CASE
+                            WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_amaliy, 0) * 0.3
+                            ELSE COALESCE(uas.amalda_amaliy, 0)
+                        END
+                    )
+                    + (
+                        CASE
+                            WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_lab, 0) * 0.3
+                            ELSE COALESCE(uas.amalda_lab, 0)
+                        END
+                    )
+                    + (
+                        CASE
+                            WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_seminar, 0) * 0.3
+                            ELSE COALESCE(uas.amalda_seminar, 0)
+                        END
+                    ) AS jami_soat,
                     COALESCE(ubi.biriktirilgan_yonalish_code, '') AS biriktirilgan_yonalish_code,
                     COALESCE(ubi.biriktirilgan_yonalishlar, '') AS biriktirilgan_yonalishlar,
                     1 AS is_birlashtirilgan
@@ -3271,8 +3431,10 @@ class Database{
                     ctbg.variant_fan_id IS NULL
                     AND (
                         (tft.variant_fan_id IS NOT NULL AND vf.kafedra_id = {$kid})
+                        OR (tft.variant_fan_id IS NULL AND ivr.variant_fan_id IS NOT NULL AND ivrf.kafedra_id = {$kid})
                         OR (
                             tft.variant_fan_id IS NULL
+                            AND ivr.variant_fan_id IS NULL
                             AND (
                                 fr.kafedra_id = {$kid}
                                 OR EXISTS (
@@ -3370,7 +3532,7 @@ class Database{
         }
         if (!empty($filters['taqsimot_variant_fan_id'])) {
             $variantFanId = (int)$filters['taqsimot_variant_fan_id'];
-            $whereBase[] = "(tft.variant_fan_id = {$variantFanId} OR ctbg.variant_fan_id = {$variantFanId})";
+            $whereBase[] = "(tft.variant_fan_id = {$variantFanId} OR ctbg.variant_fan_id = {$variantFanId} OR ivr.variant_fan_id = {$variantFanId} OR ivm.variant_fan_id = {$variantFanId})";
             $whereMerged[] = '1=0';
         }
 
@@ -3564,6 +3726,22 @@ class Database{
                 WHERE 1=1
                 $filterVariantDept
                 GROUP BY ior.base_fan_id
+            ),
+            ishchi_variant_map AS (
+                SELECT
+                    iv.fan_id AS variant_fan_id,
+                    MIN(ior.base_fan_id) AS base_fan_id
+                FROM ishchi_oquv_reja_variants iv
+                JOIN ishchi_oquv_reja ior ON ior.id = iv.ishchi_reja_id
+                GROUP BY iv.fan_id
+            ),
+            ishchi_variant_rows AS (
+                SELECT
+                    ior.base_fan_id,
+                    ior.semestr_id,
+                    iv.fan_id AS variant_fan_id
+                FROM ishchi_oquv_reja ior
+                JOIN ishchi_oquv_reja_variants iv ON iv.ishchi_reja_id = ior.id
             ),
             ishchi_variant_dept AS (
                 SELECT DISTINCT
@@ -3762,18 +3940,20 @@ class Database{
                          )
                         THEN 1 ELSE 0
                     END AS is_legacy_tanlov_owner,
-                    COALESCE(ctbg.variant_fan_id, tft.variant_fan_id, 0) AS variant_fan_id,
+                    COALESCE(ctbg.variant_fan_id, tft.variant_fan_id, ivr.variant_fan_id, ivm.variant_fan_id, 0) AS variant_fan_id,
                     fr.semestr_id,
                     fr.fan_code,
                     y.id AS yonalish_id,
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN COALESCE(NULLIF(ctbg.variant_fan_name, ''), fr.fan_name)
                         WHEN tft.variant_fan_id IS NOT NULL THEN CONCAT(fr.fan_name, ' | ', COALESCE(vf.fan_name, 'Variant'))
+                        WHEN ivr.variant_fan_id IS NOT NULL THEN CONCAT(fr.fan_name, ' | ', COALESCE(ivrf.fan_name, 'Variant'))
                         ELSE COALESCE(NULLIF(ivi.variant_names, ''), fr.fan_name)
                     END AS fan_nomi,
                     COALESCE(NULLIF(ctbg.talim_yonalishi, ''), y.name) AS talim_yonalishi,
                     COALESCE(NULLIF(ctbg.yonalish_code, ''), y.code) AS yonalish_code,
-                    COALESCE(NULLIF(ctbg.kafedra_nomi, ''), NULLIF(vk.name, ''), NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
+                    COALESCE(ctbg.kafedra_id, vf.kafedra_id, ivrf.kafedra_id, fr.kafedra_id, 0) AS kafedra_id,
+                    COALESCE(NULLIF(ctbg.kafedra_nomi, ''), NULLIF(vk.name, ''), NULLIF(ivrk.name, ''), NULLIF(k.name, ''), NULLIF(ivi.kafedra_names, ''), 'Kafedra belgilanmagan') AS kafedra_nomi,
                     CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END AS oquv_shakli,
                     s.semestr,
                     FLOOR((s.semestr + 1) / 2) AS kurs,
@@ -3796,8 +3976,8 @@ class Database{
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
                             CASE
-                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
-                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 32 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 32) / 32) + 1
                             END
                         ELSE y.kattaguruh_soni
                     END AS kattaguruh_soni,
@@ -3820,21 +4000,34 @@ class Database{
                     CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.amaliy_soat, fr.amaliy_soat) ELSE fr.amaliy_soat END AS reja_amaliy,
                     CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.laboratoriya_soat, fr.laboratoriya_soat) ELSE fr.laboratoriya_soat END AS reja_laboratoriya,
                     CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.seminar_soat, fr.seminar_soat) ELSE fr.seminar_soat END AS reja_seminar,
+                    (
                     (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.maruza_soat, fr.maruza_soat) ELSE fr.maruza_soat END) *
                     CASE
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
                         ELSE y.patok_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END AS amalda_maruz,
+                    (
                     (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.amaliy_soat, fr.amaliy_soat) ELSE fr.amaliy_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
                             CASE
-                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
-                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 32 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 32) / 32) + 1
                             END
                         ELSE y.kattaguruh_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END AS amalda_amaliy,
+                    (
                     (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.laboratoriya_soat, fr.laboratoriya_soat) ELSE fr.laboratoriya_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.kichikguruhlar_soni_12
@@ -3844,17 +4037,29 @@ class Database{
                                 ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
                             END
                         ELSE y.kichikguruh_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END AS amalda_laboratoriya,
+                    (
                     (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.seminar_soat, fr.seminar_soat) ELSE fr.seminar_soat END) *
                     CASE
                         WHEN ctbg.variant_fan_id IS NOT NULL THEN ctbg.guruhlar_soni
                         WHEN tft.variant_fan_id IS NOT NULL THEN
                             CASE
-                                WHEN COALESCE(tft.talabalar_soni, 0) <= 23 THEN 1
-                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 23) / 12) + 1
+                                WHEN COALESCE(tft.talabalar_soni, 0) <= 32 THEN 1
+                                ELSE CEIL((COALESCE(tft.talabalar_soni, 0) - 32) / 32) + 1
                             END
                         ELSE y.kattaguruh_soni
+                    END
+                    ) *
+                    CASE
+                        WHEN LOWER(CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
                     END AS amalda_seminar,
+                    (
                     (CASE WHEN tft.variant_fan_id IS NOT NULL THEN COALESCE(vfr.maruza_soat, fr.maruza_soat) ELSE fr.maruza_soat END) *
                     CASE
                         WHEN tft.variant_fan_id IS NOT NULL THEN CEIL(tft.talabalar_soni / 120)
@@ -3890,6 +4095,11 @@ class Database{
                             END
                         ELSE y.kattaguruh_soni
                     END
+                    ) *
+                    CASE
+                        WHEN LOWER(CASE WHEN y.akademik_daraja_id IN (SELECT adx.id FROM akademik_darajalar adx WHERE LOWER(adx.name) LIKE '%magistr%') THEN COALESCE((SELECT tsx.name FROM talim_shakllar tsx WHERE LOWER(tsx.name) LIKE '%magistr%' ORDER BY tsx.id LIMIT 1), 'Magistr') ELSE tsh.name END) LIKE 'masofaviy%' THEN 0.3
+                        ELSE 1
+                    END
                     AS jami_soat
                 FROM fan_reja fr
                 JOIN semestrlar s ON s.id = fr.semestr_id
@@ -3903,6 +4113,13 @@ class Database{
                 LEFT JOIN fanlar vf ON vf.id = tft.variant_fan_id
                 LEFT JOIN fan_reja vfr ON vfr.fan_id = tft.variant_fan_id
                 LEFT JOIN kafedralar vk ON vk.id = vf.kafedra_id
+                LEFT JOIN ishchi_variant_rows ivr
+                    ON ivr.base_fan_id = fr.fan_id
+                   AND ivr.semestr_id = fr.semestr_id
+                   AND tft.variant_fan_id IS NULL
+                LEFT JOIN fanlar ivrf ON ivrf.id = ivr.variant_fan_id
+                LEFT JOIN kafedralar ivrk ON ivrk.id = ivrf.kafedra_id
+                LEFT JOIN ishchi_variant_map ivm ON ivm.variant_fan_id = fr.fan_id
                 LEFT JOIN chet_tili_biriktirilgan_agg ctbg
                     ON ctbg.semestr_num = s.semestr
                    AND (
@@ -3941,11 +4158,21 @@ class Database{
                 )
                 AND (
                     tft.variant_fan_id IS NOT NULL
-                    OR NOT EXISTS (
-                        SELECT 1
-                        FROM tanlov_fan_talablar tft_any
-                        WHERE tft_any.base_fan_id = fr.fan_id
-                          AND tft_any.semestr_id = fr.semestr_id
+                    OR ivr.variant_fan_id IS NOT NULL
+                    OR ivm.variant_fan_id IS NOT NULL
+                    OR (
+                        NOT EXISTS (
+                            SELECT 1
+                            FROM tanlov_fan_talablar tft_any
+                            WHERE tft_any.base_fan_id = fr.fan_id
+                              AND tft_any.semestr_id = fr.semestr_id
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM ishchi_oquv_reja ior_any
+                            WHERE ior_any.base_fan_id = fr.fan_id
+                              AND ior_any.semestr_id = fr.semestr_id
+                        )
                     )
                 )
                 AND (
@@ -4013,6 +4240,7 @@ class Database{
                     ul.fan_name AS fan_nomi,
                     ul.talim_yonalishi,
                     ul.yonalish_code,
+                    k.id AS kafedra_id,
                     k.name AS kafedra_nomi,
                     ul.oquv_shakli,
                     ul.semestr,
@@ -4028,14 +4256,46 @@ class Database{
                     COALESCE(ufs.amaliy_soat, 0) AS reja_amaliy,
                     COALESCE(ufs.laboratoriya_soat, 0) AS reja_laboratoriya,
                     COALESCE(ufs.seminar_soat, 0) AS reja_seminar,
-                    COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1) AS amalda_maruz,
-                    COALESCE(uas.amalda_amaliy, 0) AS amalda_amaliy,
-                    COALESCE(uas.amalda_laboratoriya, 0) AS amalda_laboratoriya,
-                    COALESCE(uas.amalda_seminar, 0) AS amalda_seminar,
-                    (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1))
-                    + COALESCE(uas.amalda_amaliy, 0)
-                    + COALESCE(uas.amalda_laboratoriya, 0)
-                    + COALESCE(uas.amalda_seminar, 0) AS jami_soat
+                    CASE
+                        WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1)) * 0.3
+                        ELSE COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1)
+                    END AS amalda_maruz,
+                    CASE
+                        WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_amaliy, 0) * 0.3
+                        ELSE COALESCE(uas.amalda_amaliy, 0)
+                    END AS amalda_amaliy,
+                    CASE
+                        WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_laboratoriya, 0) * 0.3
+                        ELSE COALESCE(uas.amalda_laboratoriya, 0)
+                    END AS amalda_laboratoriya,
+                    CASE
+                        WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_seminar, 0) * 0.3
+                        ELSE COALESCE(uas.amalda_seminar, 0)
+                    END AS amalda_seminar,
+                    (
+                        CASE
+                            WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN (COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1)) * 0.3
+                            ELSE COALESCE(ufs.maruza_soat, 0) * COALESCE(uk.patok_soni, 1)
+                        END
+                    )
+                    + (
+                        CASE
+                            WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_amaliy, 0) * 0.3
+                            ELSE COALESCE(uas.amalda_amaliy, 0)
+                        END
+                    )
+                    + (
+                        CASE
+                            WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_laboratoriya, 0) * 0.3
+                            ELSE COALESCE(uas.amalda_laboratoriya, 0)
+                        END
+                    )
+                    + (
+                        CASE
+                            WHEN LOWER(COALESCE(ul.oquv_shakli, '')) LIKE 'masofaviy%' THEN COALESCE(uas.amalda_seminar, 0) * 0.3
+                            ELSE COALESCE(uas.amalda_seminar, 0)
+                        END
+                    ) AS jami_soat
                 FROM umumtalim_lecture ul
                 LEFT JOIN umumtalim_fan_soat ufs
                     ON ufs.umumtalim_fan_id = ul.umumtalim_fan_id
@@ -4418,6 +4678,25 @@ class Database{
             if ($isIqtidorliYokiMaxsus) {
                 $row['oraliq_nazorat'] = 0;
                 $row['yakuniy_nazorat'] = 0;
+                // Izoh: Maxsus/iqtidorli guruhlarda qo'shimcha reja bloklari umumiy yig'indiga
+                // tortib ketmasin; faqat auditoriya yuklamasi alohida hisobda qoladi.
+                $row['kurs_ishi'] = 0;
+                $row['kurs_loyiha'] = 0;
+                $row['oquv_ped_amaliyot'] = 0;
+                $row['uzluksiz_malakaviy'] = 0;
+                $row['dala_amaliyoti_otm'] = 0;
+                $row['dala_amaliyoti_tashqarida'] = 0;
+                $row['ishlab_chiqarish'] = 0;
+                $row['bmi_rahbarligi'] = 0;
+                $row['ilmiy_tadqiqot_ishi'] = 0;
+                $row['ilmiy_pedagogik_ishi'] = 0;
+                $row['ilmiy_stajirovka'] = 0;
+                $row['tayanch_doktorantura'] = 0;
+                $row['katta_ilmiy_tadqiqotchi'] = 0;
+                $row['stajyor_tadqiqotchi'] = 0;
+                $row['ochiq_dars'] = 0;
+                $row['yadak'] = 0;
+                $row['boshqa_soatlar'] = 0;
             } else {
                 if (($row['oraliq_nazorat'] ?? 0) <= 0 && $talaba > 0) {
                     if ($isMasofaviy) {
